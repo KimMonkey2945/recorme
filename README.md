@@ -50,8 +50,9 @@
 
 ## 📌 작업 진행 상황 (Roadmap)
 
-- [ ] 프로젝트 기획 및 요구사항 정의
-- [ ] 데이터베이스 설계 (PostgreSQL)
+- [x] 프로젝트 기획 및 요구사항 정의
+- [x] 전체 아키텍처 설계 ([docs/](./docs))
+- [x] 데이터베이스 설계 (PostgreSQL)
 - [ ] 백엔드 API 개발 (Spring Boot)
 - [ ] 앱 UI/UX 설계 및 구현 (Flutter)
 - [ ] 하루 기록 기능
@@ -63,4 +64,29 @@
 
 <br/>
 
-<!-- TODO: 프로젝트 구조, API 명세, 스크린샷 등 추후 추가 예정 -->
+## 📂 프로젝트 구조
+
+`record`는 **모노레포**로, 하나의 저장소에서 모바일 앱과 백엔드를 함께 관리합니다.
+
+```
+record/
+├─ app/        # Flutter 모바일 앱 (Dart)
+├─ backend/    # Spring Boot 백엔드 (Java, MyBatis)
+└─ docs/       # 설계 문서
+```
+
+> 현재는 설계 단계로, 모노레포 디렉터리 이전 및 백엔드 스캐폴딩은 후속 작업으로 진행됩니다.
+
+### 📑 설계 문서
+
+| 문서 | 내용 |
+| --- | --- |
+| [docs/architecture.md](./docs/architecture.md) | 전체 아키텍처 개요, 핵심 결정사항, 트레이드오프 |
+| [docs/database.md](./docs/database.md) | PostgreSQL ERD 및 전체 DDL, 인덱스 전략 |
+| [docs/backend.md](./docs/backend.md) | Spring Boot + MyBatis 구조, JWT 인증, LLM 연동 |
+| [docs/mobile.md](./docs/mobile.md) | Flutter Feature-first 구조, Riverpod, 테마 적용 |
+| [docs/api-contract.md](./docs/api-contract.md) | REST API 계약 (`/api/v1`) |
+
+<br/>
+
+<!-- TODO: API 명세 상세, 스크린샷 등 추후 추가 예정 -->
