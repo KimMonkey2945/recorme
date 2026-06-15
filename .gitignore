@@ -1,45 +1,32 @@
-# Miscellaneous
-*.class
+# ===== 공통 =====
 *.log
-*.pyc
-*.swp
+*.class
 .DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
+# ===== IDE =====
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
+.vscode/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# ===== Flutter (app/) =====
+# 상세 규칙은 app/.gitignore 참고
+app/.dart_tool/
+app/build/
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
+# ===== Spring Boot / Gradle (backend/) =====
+backend/.gradle/
+backend/build/
+backend/out/
+backend/bin/
+!backend/gradle/wrapper/gradle-wrapper.jar
 
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# ===== 환경/시크릿 =====
+*.env
+.env.*
+application-local.yml
+application-secret.yml
