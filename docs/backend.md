@@ -17,7 +17,7 @@ com.recordapp
 │  ├─ auth
 │  │  ├─ controller/ (AuthController)
 │  │  ├─ service/    (AuthService, TokenService)
-│  │  ├─ social/     (SocialVerifier(if), KakaoVerifier, GoogleVerifier, AppleVerifier)
+│  │  ├─ social/     (SocialVerifier(if), KakaoVerifier, GoogleVerifier / AppleVerifier는 추후)
 │  │  └─ dto/        (SocialLoginRequest, TokenResponse, RefreshRequest)
 │  ├─ user
 │  │  └─ controller/ service/ mapper/ dto/ vo/
@@ -81,8 +81,8 @@ public record ApiResponse<T>(boolean success, T data, ApiError error) {
 // DiaryMapper.java
 @Mapper
 public interface DiaryMapper {
-    long insert(Diary diary);
-    int update(Diary diary);                          // 하루 1기록 수정
+    long upsert(Diary diary);                         // 하루 1기록 저장(날짜 키 INSERT … ON CONFLICT DO UPDATE)
+    int update(Diary diary);                          // id 기반 명시적 수정(PUT /diaries/{id})
     Optional<DiaryResponse> findDetailById(@Param("id") long id,
                                            @Param("viewerId") long viewerId);
     List<DiaryFeedItem> findFeed(@Param("viewerId") long viewerId,
@@ -99,10 +99,22 @@ public interface DiaryMapper {
 <!-- mapper/DiaryMapper.xml -->
 <mapper namespace="com.recordapp.domain.diary.mapper.DiaryMapper">
 
-  <insert id="insert" parameterType="com.recordapp.domain.diary.vo.Diary"
-          useGeneratedKeys="true" keyProperty="id">
+  <!-- 하루 1기록 upsert: (user_id, written_date) 부분 유니크(deleted_at IS NULL)를 충돌 키로 사용.
+       날짜 미존재 시 INSERT, 존재 시 UPDATE → 클라는 id 없이 날짜+내용만으로 저장 가능, 409 경쟁 조건 없음.
+       RETURNING id 를 generated key 로 받아 신규/갱신 모두 동일하게 id 확보. -->
+  <insert id="upsert" parameterType="com.recordapp.domain.diary.vo.Diary"
+          useGeneratedKeys="true" keyProperty="id" keyColumn="id">
     INSERT INTO diaries (user_id, content, written_date, visibility, analysis_status)
     VALUES (#{userId}, #{content}, #{writtenDate}, #{visibility}, 'PENDING')
+    ON CONFLICT (user_id, written_date) WHERE deleted_at IS NULL
+    DO UPDATE SET
+      content         = EXCLUDED.content,
+      visibility      = EXCLUDED.visibility,
+      -- 내용이 실제로 바뀐 경우에만 PENDING 으로 되돌려 감정 재분석 재실행
+      analysis_status = CASE WHEN diaries.content IS DISTINCT FROM EXCLUDED.content
+                             THEN 'PENDING' ELSE diaries.analysis_status END,
+      updated_at      = now()
+    RETURNING id
   </insert>
 
   <!-- 친구(FRIENDS)·공개(PUBLIC)·본인 글을 커서 페이징으로 조회 -->
@@ -162,7 +174,7 @@ public interface DiaryMapper {
 [로그아웃] refresh revoke
 ```
 
-- **소셜 검증**: 카카오(액세스 토큰으로 사용자 API 호출), 구글/애플(idToken JWKS 서명 검증). `SocialVerifier` 인터페이스 + provider별 구현, `Map<provider, verifier>` 라우팅.
+- **소셜 검증(현재 범위: 카카오·구글)**: 카카오(액세스 토큰으로 사용자 API 호출), 구글(idToken JWKS 서명 검증). `SocialVerifier` 인터페이스 + provider별 구현, `Map<provider, verifier>` 라우팅. **애플은 추후 확장**(Android 웹 OAuth redirect, `.p8` client_secret ES256·~6개월 회전, idToken JWKS 검증이 추가로 필요해 보류) → `AppleVerifier`만 추가하면 라우팅에 끼워지는 구조 유지.
 - refresh는 평문 미저장(SHA-256 해시), 회전으로 탈취 대응.
 
 ## 6. LLM 연동 추상화 (감정 분석)

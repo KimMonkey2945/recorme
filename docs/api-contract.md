@@ -2,6 +2,8 @@
 
 > Base URL: `/api/v1`. 모든 응답은 표준 포맷을 따르며, 목록은 커서 페이징을 사용한다.
 
+> ⚠️ **이 문서는 확정 명세가 아니라 작업 기준 스냅샷이다.** 엔드포인트·요청/응답 형태·정책은 개발 진행과 요구사항 변화에 따라 **얼마든지 변경될 수 있으며**, 변경 시 관련 문서(PRD·backend·database)와 함께 정합을 맞춘다.
+
 ## 1. 표준 응답 포맷
 
 ```jsonc
@@ -38,20 +40,24 @@
   "user": { "uuid": "...", "nickname": "...", "profileImageUrl": "..." } }
 ```
 
+> `provider` 허용값은 **`KAKAO`, `GOOGLE`** (현재 구현 범위). `APPLE`은 Android 웹 OAuth 흐름·client_secret 회전 등 추가 비용이 있어 **추후 확장**으로 보류한다(`social_accounts.provider` enum에는 미리 포함).
+
 ### 일기 (diary)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/diaries` | 하루 기록 생성(하루 1개, 중복 날짜는 409) | ○ |
-| PUT | `/diaries/{id}` | 기록 수정(내용 변경 시 감정 재분석) | ○ |
+| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 내용 갱신) | ○ |
+| PUT | `/diaries/{id}` | id 기반 기록 수정(내용 변경 시 감정 재분석) | ○ |
 | GET | `/diaries/{id}` | 기록 상세(테마/음악/감정 포함) | ○ |
+| GET | `/diaries/me/summary?yearMonth=YYYY-MM` | 월별 기록 존재 요약(캘린더 dot 렌더링용) | ○ |
+| GET | `/diaries/by-date/{date}` | 특정 날짜(YYYY-MM-DD) 내 기록 단건 조회 | ○ |
 | GET | `/diaries/me` | 내 기록 목록(커서 페이징) | ○ |
 | GET | `/diaries/shared/{shareToken}` | 공유 링크로 단건 조회 | 조건부 |
 | DELETE | `/diaries/{id}` | 기록 소프트 삭제 | ○ |
 
 ```jsonc
-// POST /diaries  요청
+// POST /diaries  요청 (날짜 키 기반 upsert)
 { "content": "오늘은...", "writtenDate": "2026-06-15", "visibility": "FRIENDS" }
-// 응답 data (분석 전)
+// 응답 data (분석 전) — 신규 생성은 201 Created, 기존 갱신은 200 OK
 { "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
   "visibility": "FRIENDS", "analysisStatus": "PENDING", "theme": null, "track": null }
 
@@ -65,7 +71,22 @@
              "title": "...", "artist": "..." } }
 ```
 
+```jsonc
+// GET /diaries/me/summary?yearMonth=2026-06  응답 data
+// 해당 월에 (소프트 삭제되지 않은) 기록이 존재하는 날짜 목록 → 캘린더 dot 표시에 사용
+{ "yearMonth": "2026-06", "dates": ["2026-06-01", "2026-06-03", "2026-06-15"] }
+
+// GET /diaries/by-date/2026-06-15  응답 data
+// 해당 날짜 기록이 없으면 404 + error.code = "DIARY_NOT_FOUND"
+{ "id": 10, "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
+  "analysisStatus": "DONE", "emotion": { /* ... */ }, "theme": { /* ... */ }, "track": { /* ... */ } }
+```
+
+> **캘린더 진입 흐름**: 메인(캘린더) 화면은 `GET /diaries/me/summary`로 점(dot)을 그린다. 사용자가 날짜를 탭하면 `GET /diaries/by-date/{date}`로 단건을 조회해, **있으면 상세 화면, 404면 신규 작성 화면**으로 분기한다. 두 엔드포인트 모두 `(user_id, written_date)` 인덱스로 처리되어 `/diaries/me` 전체 페이징보다 효율적이다.
+
 > `analysisStatus`가 `PENDING`이면 클라이언트는 상세를 재조회(폴링)해 테마/음악을 갱신한다.
+
+> **하루 1기록 upsert 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 일기 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. 내용이 실제로 바뀐 경우에만 `analysis_status`를 `PENDING`으로 되돌려 감정 재분석을 재실행한다. `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로로 유지된다(동작·재분석 규칙 동일).
 
 ### 피드 (feed)
 | 메서드 | 경로 | 설명 | 인증 |
