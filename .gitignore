@@ -30,3 +30,7 @@ backend/bin/
 .env.*
 application-local.yml
 application-secret.yml
+
+# ===== MCP / 도구 임시 산출물 =====
+.playwright-mcp/
+record-calendar.png
