@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 백엔드 | Java 21, Spring Boot 3.x, MyBatis |
 | DB | PostgreSQL (Flyway) |
 | 감정 분석 | 외부 LLM API (추상화) |
-| 인증 | 소셜 로그인(카카오/구글/애플) + 자체 JWT |
+| 인증 | Supabase Auth(소셜: 카카오/구글, 애플 추후) + 백엔드 Supabase JWT 검증 |
 
 ## 현재 상태 (중요)
 
@@ -49,10 +49,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **패키지 베이스는 `com.recordapp`** — Java `record` 키워드 혼동 회피.
 - **백엔드 계층**: Controller → Service(`@Transactional`) → Mapper(MyBatis) → DB. **외부 LLM 호출은 트랜잭션 밖**에서 비동기로 수행.
+- **인증은 Supabase Auth**: 앱이 Supabase SDK로 소셜 로그인(구글: `signInWithIdToken`, 카카오: `signInWithOAuth`) → Supabase 세션(access JWT + refresh, **SDK가 저장·자동 갱신**). 백엔드는 앱이 보낸 **Supabase access token(Bearer)을 검증**(JWT secret/JWKS)하고 `sub`(uuid)로 `users`를 **JIT(최초 요청 시 자동) 프로비저닝**. **자체 JWT 발급·`refresh_tokens`·`social_accounts`·`SocialVerifier`는 미사용.** Supabase는 **PostgreSQL + Auth만** 사용(PostgREST/RLS/Edge Functions 미사용, Flyway 단일 진실원).
 - **감정 분석은 비동기**: 일기 저장/수정은 동기로 `analysis_status=PENDING` 즉시 반환 → `@Async`로 LLM 분석·테마/음악 매핑 후 `DONE` 갱신. 실패 시 `NEUTRAL` 폴백. 내용 수정 시 재분석.
 - **하루 1기록 + 수정**: 사용자·날짜당 일기 1개(`uq_diary_user_day` 부분 유니크). 같은 날짜 재작성은 INSERT가 아닌 **UPDATE**.
 - **PK 전략**: 내부 PK는 `BIGINT IDENTITY`, 외부 노출(회원/공유)은 별도 `UUID`(`users.uuid`, `diaries.share_token`).
-- **확장 포인트는 인터페이스로 격리**: `EmotionAnalyzer`/`LlmClient`(LLM provider 교체), `MusicSource` + `tracks.source_type`(음악 소스 미정 흡수), `SocialVerifier`(소셜 provider별 검증).
+- **확장 포인트는 인터페이스로 격리**: `EmotionAnalyzer`/`LlmClient`(LLM provider 교체), `MusicSource` + `tracks.source_type`(음악 소스 미정 흡수). (소셜 provider 검증은 Supabase Auth가 담당 — 백엔드 `SocialVerifier` 없음.)
 - **API 표준 응답**: `{ success, data, error }` 래퍼 + 목록은 커서 페이징(OFFSET 미사용).
 - **소셜 상호작용은 공감(리액션)만** — 댓글 기능은 범위 외.
 
@@ -81,4 +82,4 @@ cd backend
 
 - Flutter 작업은 IDE에서 **`app/`를 프로젝트 루트로 열어야** 정상 인식된다(모노레포 이전 결과).
 - 빈 패키지의 `.gitkeep`은 실제 클래스/파일 추가 시 삭제한다.
-- LLM API 키, JWT 시크릿, DB 비밀번호는 환경변수/시크릿으로 주입한다(코드·git 금지). 루트 `.gitignore`에 `*.env`, `application-secret.yml` 등이 제외되어 있다.
+- LLM API 키, Supabase JWT secret(백엔드 검증용)·Google OAuth client secret, DB 비밀번호는 환경변수/시크릿으로 주입한다(코드·git 금지). Supabase anon 키는 공개돼도 안전. 루트 `.gitignore`에 `*.env`, `application-secret.yml` 등이 제외되어 있다.

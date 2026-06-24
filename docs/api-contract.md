@@ -15,7 +15,7 @@
 ```
 
 - HTTP 상태 코드는 의미에 맞게 사용(200/201/400/401/403/404/409/500). 본문 `error.code`로 세부 사유 구분.
-- 인증 필요한 엔드포인트는 헤더 `Authorization: Bearer <accessToken>`.
+- 인증 필요한 엔드포인트는 헤더 `Authorization: Bearer <Supabase access token>`.
 
 ## 2. 커서 페이징
 
@@ -26,21 +26,25 @@
 ## 3. 엔드포인트
 
 ### 인증 (auth)
+
+로그인·세션은 **앱이 Supabase Auth로 직접 처리**한다. 별도 백엔드 로그인/리프레시/로그아웃 엔드포인트는 없다.
+
+- 앱: Supabase SDK로 소셜 로그인(구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신).
+- 앱→백엔드: 보호 API 호출 시 `Authorization: Bearer <Supabase access token>`.
+- 백엔드: Supabase JWT를 검증(secret/JWKS)하고 `sub`(uuid)로 `users`를 JIT 프로비저닝(최초 요청 시 자동 가입).
+- 로그아웃: 앱에서 `supabase.auth.signOut()`(백엔드 호출 없음).
+- 401/만료 시: Supabase SDK가 자동 갱신, 갱신 불가 시 재로그인.
+
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/auth/login` | 소셜 토큰 검증 후 JWT 발급(없으면 가입) | ✕ |
-| POST | `/auth/refresh` | refresh 토큰 회전·재발급 | ✕ |
-| POST | `/auth/logout` | refresh 토큰 폐기 | ○ |
+| GET | `/users/me` | 현재 사용자 프로필 조회(JIT 프로비저닝 보장) | ○ |
 
 ```jsonc
-// POST /auth/login  요청
-{ "provider": "KAKAO", "token": "<social access/id token>" }
-// 응답 data
-{ "accessToken": "...", "refreshToken": "...",
-  "user": { "uuid": "...", "nickname": "...", "profileImageUrl": "..." } }
+// GET /users/me  응답 data
+{ "uuid": "...", "nickname": "...", "email": "...", "profileImageUrl": "..." }
 ```
 
-> `provider` 허용값은 **`KAKAO`, `GOOGLE`** (현재 구현 범위). `APPLE`은 Android 웹 OAuth 흐름·client_secret 회전 등 추가 비용이 있어 **추후 확장**으로 보류한다(`social_accounts.provider` enum에는 미리 포함).
+> 소셜 provider 범위는 **카카오·구글**(Supabase Authorized Client IDs로 검증). **애플은 추후 Supabase Apple provider로 확장**한다.
 
 ### 일기 (diary)
 | 메서드 | 경로 | 설명 | 인증 |

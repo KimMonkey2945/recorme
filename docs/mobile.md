@@ -52,7 +52,7 @@ lib/
 
 ## 5. API 통신 계층
 
-- **Dio + 인터셉터**: `AuthInterceptor`(access 토큰 첨부, 401 시 refresh 회전 후 재시도), 공통 에러 매핑.
+- **Dio + 인터셉터**: `AuthInterceptor`(요청에 **Supabase access token** 첨부, 세션 갱신은 Supabase SDK가 담당), 공통 에러 매핑. 인증/세션 자체는 `supabase_flutter`가 관리.
 - 응답 표준 `ApiResponse<T>` 언랩 → 실패 시 `Failure`로 변환해 도메인 전달.
 - **모델 직렬화**: `freezed` + `json_serializable`(불변·copyWith·동등성).
 - 백엔드 응답 DTO와 앱 DTO는 1:1 매핑(→ [`api-contract.md`](./api-contract.md)).
@@ -75,6 +75,6 @@ lib/
 | 직렬화/모델 | `freezed`, `json_serializable` |
 | 보안 저장 | `flutter_secure_storage` |
 | 음악 재생 | `just_audio` |
-| 소셜 로그인 | `kakao_flutter_sdk`, `google_sign_in`, `sign_in_with_apple` |
+| 인증 | `supabase_flutter`(Supabase Auth: 소셜 로그인·세션), `google_sign_in`(구글 네이티브 idToken). 카카오는 Supabase 웹 OAuth로 처리, 애플은 추후 |
 
 > 실제 버전은 스캐폴딩 단계에서 `pubspec.yaml`에 확정한다.

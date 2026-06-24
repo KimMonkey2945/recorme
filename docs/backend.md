@@ -11,14 +11,12 @@ com.recordapp
 │  ├─ config/        (SecurityConfig, WebConfig, MyBatisConfig, LlmConfig, AsyncConfig)
 │  ├─ common/        (ApiResponse, PageResponse, CursorRequest)
 │  ├─ exception/     (BusinessException, ErrorCode, GlobalExceptionHandler)
-│  ├─ security/      (JwtProvider, JwtAuthenticationFilter, JwtAuthentication, SecurityUser)
+│  ├─ security/      (SupabaseJwtVerifier, SupabaseJwtFilter, SecurityConfig, SecurityUser)
 │  └─ util/
 ├─ domain
 │  ├─ auth
-│  │  ├─ controller/ (AuthController)
-│  │  ├─ service/    (AuthService, TokenService)
-│  │  ├─ social/     (SocialVerifier(if), KakaoVerifier, GoogleVerifier / AppleVerifier는 추후)
-│  │  └─ dto/        (SocialLoginRequest, TokenResponse, RefreshRequest)
+│  │  └─ service/    (UserProvisioningService — Supabase JWT의 sub/email로 users 자동 가입·매핑)
+│  │     (소셜 검증·JWT 발급·refresh 회전은 Supabase Auth가 전담 → controller/social/token 서비스 없음)
 │  ├─ user
 │  │  └─ controller/ service/ mapper/ dto/ vo/
 │  ├─ diary
@@ -157,25 +155,25 @@ public interface DiaryMapper {
 - **동적 SQL 활용 지점**: 피드 가시성 필터, 커서 페이징(`<if>`), 검색/정렬 옵션, 부분 수정(`<set>`).
 - **커서 페이징** 권장(무한 스크롤 피드, OFFSET 비효율 회피).
 
-## 5. JWT 인증 흐름
+## 5. 인증 흐름 (Supabase Auth + 백엔드 JWT 검증)
 
 ```
-[앱] 소셜 SDK 로그인 → idToken/accessToken 획득
-  → POST /api/v1/auth/login { provider, token }
-[백엔드] SocialVerifier.verify(provider, token)
-  → provider_user_id/email/nickname 추출
-  → social_accounts 조회: 없으면 users + social_accounts 생성(가입)
-  → access(JWT, ~30m) + refresh(랜덤, ~14d, 해시 저장) 발급
-  → { accessToken, refreshToken, user } 반환
-[이후] Authorization: Bearer <access>
-  → JwtAuthenticationFilter 검증 → SecurityContext 세팅
-[갱신] POST /api/v1/auth/refresh { refreshToken }
-  → 해시 매칭·만료/폐기 확인 → 회전(rotation): 기존 revoke, 신규 발급
-[로그아웃] refresh revoke
+[앱] Supabase SDK 소셜 로그인
+  - 구글: google_sign_in → idToken → supabase.signInWithIdToken(google)
+  - 카카오: supabase.signInWithOAuth(kakao) 웹 OAuth(딥링크 콜백)
+  → Supabase 세션 발급(access JWT ~1h + refresh). SDK가 저장·자동 갱신.
+[앱→백엔드] Authorization: Bearer <Supabase access token>
+[백엔드] SupabaseJwtFilter
+  → Supabase JWT secret(HS256) 또는 프로젝트 JWKS로 서명/만료 검증
+  → sub(Supabase user uuid)·email 클레임 추출
+  → UserProvisioningService: users.supabase_uid 조회, 없으면 자동 가입(JIT)
+  → SecurityContext(SecurityUser{userId, supabaseUuid}) 세팅
+[로그아웃] 앱에서 supabase signOut (백엔드 상태 없음)
 ```
 
-- **소셜 검증(현재 범위: 카카오·구글)**: 카카오(액세스 토큰으로 사용자 API 호출), 구글(idToken JWKS 서명 검증). `SocialVerifier` 인터페이스 + provider별 구현, `Map<provider, verifier>` 라우팅. **애플은 추후 확장**(Android 웹 OAuth redirect, `.p8` client_secret ES256·~6개월 회전, idToken JWKS 검증이 추가로 필요해 보류) → `AppleVerifier`만 추가하면 라우팅에 끼워지는 구조 유지.
-- refresh는 평문 미저장(SHA-256 해시), 회전으로 탈취 대응.
+- **소셜 검증·세션 관리는 Supabase가 전담**: 카카오·구글 토큰 검증, JWT 발급/갱신, refresh 회전을 모두 Supabase Auth가 처리한다. 백엔드는 **Supabase가 서명한 access token을 검증만** 한다(자체 발급 없음). **애플은 추후 Supabase Apple provider로 확장**.
+- **JIT 프로비저닝**: 백엔드는 `social_accounts`/`refresh_tokens` 테이블을 두지 않는다. `users.supabase_uid`(UNIQUE)로 Supabase 사용자를 매핑하고, 최초 인증 요청 시 JWT 클레임(email)·`user_metadata`(닉네임·프로필)로 `users` 행을 생성한다.
+- **검증 방식**: Supabase JWT secret(대칭 HS256) 또는 프로젝트 JWKS(비대칭) 중 프로젝트 설정에 맞춰 사용. secret은 환경변수/시크릿으로 주입(코드·git 금지).
 
 ## 6. LLM 연동 추상화 (감정 분석)
 

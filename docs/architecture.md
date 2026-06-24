@@ -24,7 +24,7 @@
 | 데이터 접근 | MyBatis (동적 SQL, 매퍼 XML) |
 | 데이터베이스 | PostgreSQL (Flyway 스키마 관리) |
 | 감정 분석 | 외부 LLM API (추상화 인터페이스) |
-| 인증 | 소셜 로그인(카카오/구글, 애플은 추후) + 자체 JWT |
+| 인증 | Supabase Auth(소셜: 카카오/구글, 애플은 추후) + 백엔드 Supabase JWT 검증 |
 
 ## 3. 확정된 핵심 결정사항
 
@@ -32,7 +32,7 @@
 |---|---|---|
 | 저장소 구조 | **모노레포** (`app/` + `backend/`) | 1인~소수 팀, 프론트-백 동시 변경 잦음 → 단일 PR 관리 |
 | 감정 분석 | **외부 LLM API + 비동기** | 빠른 구현·높은 정확도, 저장 UX·장애 격리 |
-| 인증 | **소셜 로그인(카카오·구글) → 자체 JWT** | 모바일 가입 진입장벽 최소화. 애플은 추후 확장 |
+| 인증 | **Supabase Auth(소셜: 카카오·구글) → 백엔드 Supabase JWT 검증** | 자체 소셜 검증·JWT 발급/회전 구현 부담 제거(Supabase 위임). 트레이드오프: Supabase 종속. 애플은 추후 확장 |
 | 음악 소스 | **미정 → 인터페이스 추상화** | 자체 음원/외부 API 어느 쪽도 흡수 |
 | 하루 기록 수 | **하루 1개 + 수정 가능** | "오늘의 일기" 컨셉, 재작성은 UPDATE |
 | 소셜 상호작용 | **공감(리액션)만** | 댓글의 알림/신고/모더레이션 복잡도 회피 |
@@ -68,19 +68,22 @@ record/
 ## 5. 계층/통신 흐름
 
 ```
-┌─────────────┐   소셜 SDK 로그인        ┌──────────────────────────┐
-│  Flutter    │ ───────────────────────▶ │  Spring Boot (백엔드)     │
-│  (app/)     │   JWT (Bearer)           │                          │
-│             │ ◀─────────────────────── │  Controller              │
-│  Riverpod   │   ApiResponse<T>         │   → Service(@Transactional)│
-│  + Dio      │                          │     → Mapper(MyBatis)     │
-└─────────────┘                          │       → PostgreSQL        │
-                                         │                          │
+┌─────────────┐                          ┌──────────────────────────┐
+│  Flutter    │  ── 소셜 로그인 ──▶  Supabase Auth  ──▶ 세션(JWT)    │
+│  (app/)     │                          │                          │
+│  Riverpod   │   Supabase access JWT    │  Spring Boot (백엔드)     │
+│  + Dio      │ ───(Bearer)────────────▶ │  SupabaseJwtFilter 검증   │
+│             │ ◀─────────────────────── │   → JIT 프로비저닝(users) │
+│             │   ApiResponse<T>         │   → Controller            │
+└─────────────┘                          │     → Service(@Transactional)│
+                                         │       → Mapper(MyBatis)   │
+                                         │         → PostgreSQL      │
                                          │  Service ─@Async─▶ LLM API│
                                          │  (감정분석, 트랜잭션 밖)   │
                                          └──────────────────────────┘
 ```
 
+- 인증 경로: 앱이 **Supabase SDK로 소셜 로그인**(구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신). 앱은 백엔드 호출 시 `Authorization: Bearer <Supabase access token>` 첨부 → 백엔드 `SupabaseJwtFilter`가 서명/만료 검증 후 `sub`(uuid)로 `users` JIT 프로비저닝. 자체 JWT 발급·refresh 회전 없음.
 - 동기 경로: 앱 요청 → Controller → Service → Mapper → DB → 표준 응답.
 - 비동기 경로: 일기 저장/수정 → `PENDING` 즉시 응답 → `@Async`로 LLM 감정 분석 → 테마/음악 매핑 → `DONE` 갱신.
 
@@ -113,7 +116,7 @@ record/
 > 아래는 큰 줄기 요약이다. **Phase·Task 단위 상세 로드맵은 [`ROADMAP.md`](./ROADMAP.md)를 기준**으로 한다.
 
 1. 모노레포 이전(`git mv`) + backend 스캐폴드 + Flyway `V1__init.sql`.
-2. 인증(소셜: 카카오 → 구글 순, 2종 범위) + JWT 골격. **애플은 추후 확장**(Android 웹 OAuth·client_secret 회전 비용으로 현재 범위 제외).
+2. 인증: **Supabase Auth**(소셜 카카오·구글, 2종 범위) — 앱은 Supabase SDK 로그인, 백엔드는 Supabase JWT 검증 + `users` JIT 프로비저닝. **애플은 추후 확장**(Supabase Apple provider 추가).
 3. 일기 CRUD(하루 1개·수정) + 비동기 감정 분석(폴백) + 테마/음악 매핑.
 4. 피드/친구 + 공유 + 공감 리액션.
 5. 앱: Dio/Riverpod/go_router 골격 → 기능 순차 구현.

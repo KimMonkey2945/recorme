@@ -6,9 +6,7 @@
 
 | 그룹 | 테이블 | 설명 |
 |---|---|---|
-| 회원/인증 | `users` | 사용자 |
-| | `social_accounts` | 소셜 로그인 연결(카카오/구글/애플) |
-| | `refresh_tokens` | 리프레시 토큰(회전·폐기) |
+| 회원 | `users` | 사용자 (Supabase Auth 사용자와 `supabase_uid`로 매핑) |
 | 기록 | `diaries` | 하루 기록(하루 1개, 수정 가능) |
 | 감정 | `emotion_types` | 감정 코드 마스터 |
 | | `emotion_analyses` | LLM 감정 분석 결과(diary 1:1) |
@@ -21,8 +19,7 @@
 ## 2. ERD (관계 개요)
 
 ```
-users 1───∞ social_accounts
-users 1───∞ refresh_tokens
+(소셜 계정·refresh 토큰은 Supabase Auth가 관리 → 백엔드 테이블 없음. users.supabase_uid로 매핑)
 users 1───∞ diaries
 users 1───∞ friendships (requester / addressee, 양방향)
 users 1───∞ diary_reactions
@@ -51,7 +48,8 @@ emotion_types 1───∞ emotion_analyses (primary_emotion)
 -- ========== 회원 ==========
 CREATE TABLE users (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    uuid              UUID NOT NULL DEFAULT gen_random_uuid(),   -- 외부 노출용 식별자
+    uuid              UUID NOT NULL DEFAULT gen_random_uuid(),   -- 외부 노출용 식별자(공유 등)
+    supabase_uid      UUID NOT NULL,                             -- Supabase auth.users.id 매핑(JWT sub)
     nickname          VARCHAR(50) NOT NULL,
     email             VARCHAR(255),                              -- 소셜 미제공 가능 → nullable
     profile_image_url TEXT,
@@ -59,32 +57,14 @@ CREATE TABLE users (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at        TIMESTAMPTZ,
-    CONSTRAINT uq_users_uuid UNIQUE (uuid)
+    CONSTRAINT uq_users_uuid UNIQUE (uuid),
+    CONSTRAINT uq_users_supabase_uid UNIQUE (supabase_uid)
 );
 
--- ========== 소셜 계정 ==========
-CREATE TABLE social_accounts (
-    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    provider         VARCHAR(20) NOT NULL,                      -- KAKAO/GOOGLE/APPLE
-    provider_user_id VARCHAR(191) NOT NULL,                     -- 제공자 고유 sub
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_social_provider_uid UNIQUE (provider, provider_user_id)
-);
-CREATE INDEX idx_social_accounts_user ON social_accounts(user_id);
-
--- ========== 리프레시 토큰 (회전/폐기) ==========
-CREATE TABLE refresh_tokens (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash  VARCHAR(64) NOT NULL,                           -- SHA-256 해시 저장(평문 X)
-    device_info VARCHAR(255),
-    expires_at  TIMESTAMPTZ NOT NULL,
-    revoked_at  TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_refresh_token_hash UNIQUE (token_hash)
-);
-CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+-- 소셜 계정·리프레시 토큰 테이블 없음:
+--   소셜 로그인 검증과 세션(access/refresh) 관리는 Supabase Auth가 전담한다.
+--   백엔드는 users.supabase_uid 로 Supabase 사용자를 매핑하고, 최초 인증 요청 시
+--   JWT 클레임(email)·user_metadata(닉네임/프로필)로 users 행을 JIT 프로비저닝한다.
 
 -- ========== 감정 타입 마스터 ==========
 CREATE TABLE emotion_types (
@@ -199,6 +179,7 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
 
 ## 5. 주요 설계 결정
 
+- **Supabase Auth 매핑**: 소셜 로그인·세션(access/refresh)은 Supabase Auth가 관리하고, 백엔드는 `users.supabase_uid`(= Supabase `auth.users.id`, JWT `sub`)로 1:1 매핑한다. 별도 `social_accounts`/`refresh_tokens` 테이블을 두지 않으며, 최초 인증 요청 시 `users` 행을 자동 생성(JIT 프로비저닝)한다. `users.uuid`(외부 공유 노출용)와 `supabase_uid`(인증 매핑용)는 용도가 다른 별개 식별자다.
 - **하루 1기록 + 수정**: `uq_diary_user_day` 부분 유니크 인덱스로 사용자·날짜당 1행 강제. 동일 날짜 재작성은 신규 INSERT가 아닌 **UPDATE**로 처리하고, 내용 변경 시 감정 분석을 재실행해 `theme_id`/`track_id`를 갱신한다.
 - **테마/음악 스냅샷**: `diaries.theme_id`·`track_id`를 결과로 저장해, 추후 프리셋(themes/tracks)이 바뀌어도 과거 기록의 분위기는 보존된다.
 - **음악 소스 추상화**: `tracks.source_type` + `source_ref` + `metadata(JSONB)`로 자체 음원·외부 API(Spotify/YouTube) 어느 쪽이든 동일 테이블로 수용.

@@ -21,8 +21,8 @@
 2. 로그인 페이지
    ↓ 소셜 로그인 버튼 탭 (카카오 / 구글)
 
-   [최초 진입 - 미가입] → 백엔드 자동 가입 → JWT 발급 → 메인 페이지
-   [재진입 - 기가입]    → JWT 발급            → 메인 페이지
+   [최초 진입 - 미가입] → Supabase 세션 발급 → (백엔드 첫 요청 시 자동 가입) → 메인 페이지
+   [재진입 - 기가입]    → Supabase 세션 발급 → 메인 페이지
    [인증 실패]          → 에러 토스트 후 로그인 페이지 유지
 
 3. 메인 페이지 (캘린더)
@@ -61,7 +61,7 @@
 
 | ID | 기능명 | 설명 | MVP 필수 이유 | 관련 페이지 |
 |----|--------|------|--------------|------------|
-| **F001** | 소셜 로그인 | 카카오/구글 SDK로 소셜 토큰 획득, 백엔드 검증 후 JWT 발급. 미가입 시 자동 가입 (애플은 추후 확장) | 서비스 진입의 유일한 인증 관문 | 로그인 페이지 |
+| **F001** | 소셜 로그인 | Supabase Auth로 소셜 로그인(카카오/구글), Supabase 세션 발급. 백엔드는 Supabase JWT 검증 + 최초 요청 시 자동 가입 (애플은 추후 확장) | 서비스 진입의 유일한 인증 관문 | 로그인 페이지 |
 | **F002** | 캘린더 날짜 선택 | 월별 캘린더 표시, 일기 작성 여부를 날짜별로 시각 표시, 날짜 탭으로 작성·조회 진입 | 날짜 기반 일기 작성의 핵심 진입점 | 메인 페이지 |
 | **F003** | 일기 작성 | 선택된 날짜에 자유 텍스트 일기 작성. 해당 날짜 일기 미존재 시 신규 생성(INSERT) | 서비스의 핵심 행위 | 글 에디터 페이지 |
 | **F004** | 일기 목록 조회 | 작성된 일기를 날짜 역순으로 나열. 날짜와 내용 미리보기 표시, 커서 기반 무한 스크롤 | 과거 기록 탐색의 기본 수단 | 글 목록 페이지 |
@@ -73,7 +73,7 @@
 
 | ID | 기능명 | 설명 | MVP 필수 이유 | 관련 페이지 |
 |----|--------|------|--------------|------------|
-| **F010** | 로그아웃 + JWT 관리 | 로그아웃 시 로컬 토큰 전체 삭제. Dio 인터셉터로 access 토큰 만료 시 refresh 토큰으로 자동 갱신 | 인증 세션 유지 및 안전한 종료 | 메인 페이지, 글 목록 페이지 |
+| **F010** | 로그아웃 + 세션 관리 | 로그아웃 시 Supabase signOut(세션 삭제). access 만료 시 Supabase SDK가 자동 갱신, Dio 인터셉터는 Supabase access token 첨부만 담당 | 인증 세션 유지 및 안전한 종료 | 메인 페이지, 글 목록 페이지 |
 
 ### 3. MVP 이후 기능 (제외)
 
@@ -135,7 +135,7 @@
 | **역할** | 소셜 인증 전용 진입 게이트. 앱의 모든 기능 이용 전 반드시 통과하는 단일 인증 화면 |
 | **진입 경로** | 앱 실행 시 토큰 없거나 만료된 경우 자동 이동. 로그아웃 후 자동 이동 |
 | **사용자 행동** | 카카오, 구글 중 하나의 소셜 로그인 버튼을 탭하여 소셜 SDK 인증 흐름 진행 |
-| **주요 기능** | • 카카오 로그인 버튼 (kakao_flutter_sdk_user)<br>• 구글 로그인 버튼 (google_sign_in)<br>• 소셜 SDK 토큰을 백엔드에 전송하여 JWT(access + refresh) 발급<br>• 미가입 사용자 자동 가입 처리 (닉네임·이메일 소셜 정보 자동 세팅)<br>• access/refresh 토큰을 flutter_secure_storage에 저장<br>• (애플 로그인은 추후 확장) |
+| **주요 기능** | • 카카오 로그인 버튼 (Supabase signInWithOAuth)<br>• 구글 로그인 버튼 (google_sign_in → Supabase signInWithIdToken)<br>• Supabase Auth가 소셜 검증·세션(JWT) 발급, SDK가 토큰 저장·자동 갱신<br>• 백엔드 첫 요청 시 미가입 사용자 자동 가입(JIT, 닉네임·이메일 소셜 정보 세팅)<br>• (애플 로그인은 추후 확장) |
 | **다음 이동** | 로그인 성공 → 메인 페이지, 인증 실패 → 에러 토스트 표시 후 로그인 페이지 유지 |
 
 ---
@@ -203,20 +203,14 @@
 | 필드 | 설명 | 타입/관계 |
 |------|------|----------|
 | id | 내부 PK | BIGINT |
-| uuid | 외부 노출용 식별자 | UUID |
+| uuid | 외부 노출용 식별자(공유 등) | UUID |
+| supabase_uid | Supabase auth.users.id 매핑(JWT sub) | UUID |
 | nickname | 표시 이름 | VARCHAR |
 | email | 소셜 제공 이메일 | VARCHAR |
 | profile_image_url | 프로필 이미지 URL | VARCHAR |
 | status | 계정 상태 (ACTIVE / DORMANT / WITHDRAWN) | VARCHAR |
 
-### social_accounts (소셜 계정 연결)
-
-| 필드 | 설명 | 타입/관계 |
-|------|------|----------|
-| id | 내부 PK | BIGINT |
-| user_id | 사용자 참조 | → users.id |
-| provider | 소셜 제공자 (KAKAO / GOOGLE / APPLE) | VARCHAR |
-| provider_user_id | 소셜 측 고유 ID | VARCHAR |
+> 소셜 계정·리프레시 토큰 테이블은 두지 않는다. 소셜 검증과 세션(access/refresh)은 **Supabase Auth**가 관리하고, 백엔드는 `users.supabase_uid`로 매핑한다.
 
 ### diaries (일기)
 
@@ -227,17 +221,6 @@
 | content | 일기 본문 | TEXT |
 | written_date | 기록 날짜 (user_id + written_date 부분 유니크, deleted_at IS NULL 한정) | DATE |
 | deleted_at | 소프트 삭제 시각 (NULL이면 활성) | TIMESTAMP |
-
-### refresh_tokens (리프레시 토큰)
-
-| 필드 | 설명 | 타입/관계 |
-|------|------|----------|
-| id | 내부 PK | BIGINT |
-| user_id | 사용자 참조 | → users.id |
-| token_hash | 리프레시 토큰 SHA-256 해시값 | VARCHAR |
-| device_info | 발급 기기 정보 | VARCHAR |
-| expires_at | 만료 일시 | TIMESTAMP |
-| revoked_at | 회전·로그아웃 시 폐기 시각 | TIMESTAMP |
 
 ---
 
@@ -257,7 +240,7 @@
 
 ### 네트워크
 
-- **dio ^5.7.x** - HTTP 클라이언트, QueuedInterceptorsWrapper로 access 토큰 만료 시 refresh 토큰 자동 갱신
+- **dio ^5.7.x** - HTTP 클라이언트, 인터셉터로 Supabase access token 첨부(세션 갱신은 Supabase SDK가 담당)
 
 ### 모델 코드 생성
 
@@ -266,13 +249,14 @@
 
 ### 보안 저장
 
-- **flutter_secure_storage ^9.2.x** - access/refresh 토큰을 OS 키체인(iOS) / Keystore(Android)에 암호화 저장
+- **flutter_secure_storage ^9.2.x** - 민감 데이터 보안 저장 (Supabase 세션 토큰은 SDK가 자체 보안 저장소에서 관리)
 
-### 소셜 로그인
+### 인증 (Supabase Auth)
 
-- **kakao_flutter_sdk_user ^1.9.x** - 카카오 로그인
-- **google_sign_in ^6.2.x** - 구글 로그인
-- (애플 로그인 sign_in_with_apple는 추후 확장 시 추가)
+- **supabase_flutter ^2.x** - Supabase Auth: 소셜 로그인·세션 관리·토큰 자동 갱신
+- **google_sign_in ^7.x** - 구글 네이티브 로그인(idToken → Supabase `signInWithIdToken`)
+- 카카오는 Supabase `signInWithOAuth`(웹 OAuth, 딥링크 콜백)로 처리 — 별도 카카오 SDK 불필요
+- (애플 로그인은 추후 Supabase Apple provider로 확장)
 
 ### 백엔드 및 데이터베이스 (참고)
 

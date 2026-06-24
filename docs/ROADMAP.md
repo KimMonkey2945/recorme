@@ -6,7 +6,7 @@
 
 `record`는 매일 짧은 글쓰기로 하루를 정리하고 싶은 모바일 사용자를 위한 **날짜 기반 개인 일기장**으로, MVP에서 다음 핵심 기능을 제공합니다:
 
-- **소셜 로그인 + JWT (F001/F010)**: 카카오/구글 SDK로 소셜 토큰을 획득하고 백엔드 검증 후 자체 JWT(access 단기 + refresh 회전)를 발급. 미가입 시 자동 가입, access 만료 시 Dio 인터셉터로 자동 갱신
+- **소셜 로그인 (Supabase Auth, F001/F010)**: Supabase Auth로 소셜 로그인(카카오/구글) → Supabase 세션(JWT). 백엔드는 Supabase JWT를 검증하고 최초 요청 시 자동 가입(JIT 프로비저닝). 세션 발급·갱신은 Supabase SDK가 담당
 - **캘린더 기반 작성·조회 (F002/F003/F005)**: 월별 캘린더에서 작성 여부를 점(dot)으로 표시하고, 날짜 탭으로 신규 작성 또는 단건 조회로 분기
 - **하루 1기록 upsert (F003/F006)**: `(user_id, written_date)` 부분 유니크 기반 upsert로 같은 날짜 재작성은 INSERT가 아닌 UPDATE 처리. 클라이언트는 일기 id 없이 날짜+내용만으로 저장
 - **목록 탐색 + 소프트 삭제 (F004/F007)**: 커서 기반 무한 스크롤로 과거 기록을 역순 탐색하고, `deleted_at` 기록으로 소프트 삭제(삭제 후 같은 날짜 재작성 허용)
@@ -17,8 +17,8 @@
 
 | 구분 | 스택 |
 |---|---|
-| 모바일(`app/`) | Flutter 3.27.x / Dart 3.6.x, feature-first 구조, Riverpod, go_router, Dio(토큰 인터셉터), freezed + json_serializable, flutter_secure_storage, kakao_flutter_sdk_user / google_sign_in |
-| 백엔드(`backend/`) | Java 21 / Spring Boot 3.3.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, JWT(access 단기 + refresh 회전) |
+| 모바일(`app/`) | Flutter 3.27.x / Dart 3.6.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), json_serializable, flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in |
+| 백엔드(`backend/`) | Java 21 / Spring Boot 3.3.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, Supabase JWT 검증(자체 발급 없음) |
 | DB | PostgreSQL 16.x, Flyway 10.x (`uq_diary_user_day` 부분 유니크) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
@@ -61,32 +61,38 @@
 
 전체 라우트/패키지 구조와 빈 화면, 스키마, 표준 응답·JWT 골격을 먼저 완성한다. 실제 비즈니스 로직 없이 앱과 백엔드가 독립적으로 빌드·실행되는 상태가 목표.
 
-- **Task 001: 백엔드 스캐폴딩 및 DB 스키마 구축** - 우선순위
+- **Task 001: 백엔드 스캐폴딩 및 DB 스키마 구축** - 구현 완료(Docker 검증 보류) · See: `/tasks/001-backend-skeleton.md`
   - 구현 기능: 인프라 기반 (전 기능 공통 토대)
+  - ✅ 스캐폴드/Flyway V1/설정/Testcontainers 테스트 코드 작성, `compileTestJava` 통과. Testcontainers 실행은 프로젝트 완성 후 Docker로 일괄 검증 예정(사용자 결정).
   - Spring Initializr로 `backend/` 스캐폴드 생성 (Gradle, Java 21, Spring Boot 3.3.x, MyBatis, PostgreSQL, Flyway)
   - 패키지 베이스 `com.recordapp`, 도메인 기반 패키지 골격 `domain.{auth,user,diary}` 생성 (`.gitkeep` 제거)
   - Flyway `V1__init.sql` 작성: `users`, `social_accounts`, `diaries`, `refresh_tokens` 테이블 + `uq_diary_user_day` 부분 유니크(`WHERE deleted_at IS NULL`)
   - `application.yml` 환경변수 주입 구조 (DB 비밀번호·JWT 시크릿·LLM 키는 시크릿으로)
   - Testcontainers(PostgreSQL)로 Flyway 마이그레이션이 정상 적용되고 부분 유니크 제약이 동작하는지 검증
+  - ⚠️ **Supabase Auth 전환**: `social_accounts`·`refresh_tokens` 제거 + `users.supabase_uid`(UNIQUE) 추가는 Task 007에서 V1 수정으로 반영(운영 DB 미배포 상태).
 
-- **Task 002: 백엔드 공통 인프라 골격 (표준 응답·예외·JWT)** - 우선순위
+- **Task 002: 백엔드 공통 인프라 골격 (표준 응답·예외·JWT)** - 구현 완료(단위 테스트 통과) · See: `/tasks/002-backend-common-infra.md`
   - 구현 기능: F001/F010 토대
+  - ✅ 표준 응답/예외/JWT/커서 페이징/SocialVerifier 골격 + JwtProvider·HashUtil 단위 테스트 통과. `@SpringBootTest` 컨텍스트 로드(Docker)는 프로젝트 완성 후 검증.
   - 표준 응답 래퍼 `{ success, data, error }` + 공통 응답 빌더
   - 전역 예외 핸들러(`@RestControllerAdvice`) + 에러 코드 enum (`DIARY_NOT_FOUND`, `UNAUTHORIZED` 등)
   - JWT 발급/검증 유틸 골격(access 단기 + refresh 회전), 인증 필터/`SecurityConfig` 골격 (실제 로그인 로직은 Phase 3)
   - 확장 포인트 인터페이스 격리: `SocialVerifier`(provider별 검증)
   - 커서 페이징 공통 응답 구조(`items`, `nextCursor`, `hasNext`) 정의
+  - ⚠️ **Supabase Auth 전환**: 위 JWT 발급/검증 골격·`SocialVerifier`·`HashUtil`·refresh 회전은 Task 007에서 제거하고 `SupabaseJwtFilter`로 대체한다(완료 기록은 보존).
 
-- **Task 003: 앱 feature-first 골격 및 라우팅 구성**
+- **Task 003: 앱 feature-first 골격 및 라우팅 구성** ✅ - 완료 · See: `/tasks/003-app-skeleton-routing.md`
   - 구현 기능: 전 화면 골격
+  - ✅ feature-first 구조, go_router 5화면 + 하단 탭 셸 + 인증 가드, 카운터 제거. `flutter analyze` 무경고.
   - `lib/core/`, `lib/features/`, `lib/shared/` 폴더 구조 확립 (`.gitkeep` 제거), 카운터 스캐폴드 정리
-  - 의존성 추가: flutter_riverpod, go_router, dio, freezed, json_serializable, flutter_secure_storage, kakao_flutter_sdk_user, google_sign_in
+  - 의존성 추가: flutter_riverpod, go_router, dio, freezed, json_serializable, flutter_secure_storage, google_sign_in (※ 인증 Supabase Auth 전환으로 kakao SDK 제거·`supabase_flutter` 추가됨 — Task 010)
   - go_router 라우트 5개 화면 빈 껍데기: 로그인 / 메인(캘린더) / 글 에디터 / 글 목록 / 글 상세
   - 인증 상태 기반 리디렉션 가드 골격(토큰 유무 → 로그인/메인 분기)
   - 하단 내비게이션 바(캘린더 탭 / 목록 탭) ShellRoute 골격
 
-- **Task 004: 앱 모델·DTO 및 네트워크 골격**
+- **Task 004: 앱 모델·DTO 및 네트워크 골격** ✅ - 완료 · See: `/tasks/004-app-models-network.md`
   - 구현 기능: F001~F007 공통 토대
+  - ✅ 모델/DTO, Dio+AuthInterceptor, secure storage, Riverpod provider. `flutter analyze` 무경고 + 모델 테스트 3/3. ⚠️ freezed 코드 생성 보류(손 작성 모델로 대체) — 아래 비고 참조.
   - freezed + json_serializable 모델: `User`, `Diary`, `DiarySummary`, 표준 응답 래퍼, 커서 페이지 모델, 토큰 응답 DTO
   - Dio 클라이언트 골격 + `AuthInterceptor` 골격(Authorization 헤더 주입, 401 → refresh 자동 갱신 자리, `QueuedInterceptorsWrapper`)
   - `flutter_secure_storage` 기반 토큰 저장소 추상화 골격
@@ -117,14 +123,14 @@
 
 백엔드 인증·일기 CRUD를 실제로 구현하고, 앱의 더미 데이터를 실제 API 호출로 교체한다. 모든 API/로직 Task는 구현 직후 스택 네이티브 테스트로 검증한다.
 
-- **Task 007: 백엔드 소셜 로그인 및 JWT 발급/갱신** - 우선순위
+- **Task 007: 백엔드 Supabase JWT 검증 + 사용자 JIT 프로비저닝** - 우선순위
   - 구현 기능: F001, F010
-  - `SocialVerifier` 구현: 카카오 우선 → 구글 (provider별 소셜 토큰 검증, `social_accounts` 매핑)
-  - `POST /auth/login`: 소셜 토큰 검증 → 미가입 시 자동 가입(닉네임·이메일·프로필 세팅) → access + refresh 발급
-  - `POST /auth/refresh`: refresh 토큰 회전(`token_hash` SHA-256 검증, 기존 토큰 `revoked_at` 기록 후 신규 발급)
-  - `POST /auth/logout`: refresh 토큰 폐기
-  - Controller → Service(@Transactional) → Mapper(MyBatis) 계층 준수
-  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 정상 로그인/자동 가입, 잘못된 소셜 토큰(401), refresh 정상 회전, 만료·폐기된 refresh(401), 로그아웃 후 재사용 차단(엣지)
+  - 레거시 정리: 자체 `JwtProvider`/`JwtProperties`/`HashUtil`, `domain/auth/social/*`(SocialVerifier·Router·Provider·SocialUserInfo)와 관련 단위 테스트(JwtProviderTest·HashUtilTest) 제거
+  - DB: `V1__init.sql`에서 `social_accounts`·`refresh_tokens` 제거, `users.supabase_uid`(UNIQUE) 추가(운영 DB 미배포라 V1 직접 수정)
+  - `SupabaseJwtVerifier` + `SupabaseJwtFilter`: `Authorization: Bearer <Supabase access token>` 검증(JWT secret HS256 또는 JWKS), `sub`/`email` 클레임 추출. `SecurityConfig`/`SecurityUser` 재사용·수정, `JwtAuthenticationEntryPoint` 유지
+  - `UserProvisioningService`: `supabase_uid`로 `users` 조회, 없으면 자동 가입(닉네임·이메일·프로필을 클레임/`user_metadata`로 세팅)
+  - `application*.yml`: `record.jwt.*` 제거 → `supabase.url`/`supabase.jwt-secret`(환경변수) 추가
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 유효 토큰 인증 통과, 위조 서명(401), 만료 토큰(401), 신규 사용자 JIT 가입, 기존 사용자 매핑(중복 가입 없음)
 
 - **Task 008: 백엔드 일기 upsert CRUD + 캘린더 엔드포인트** - 우선순위
   - 구현 기능: F002, F003, F005, F006, F007
@@ -143,13 +149,12 @@
   - 소프트 삭제(`deleted_at IS NOT NULL`) 행 제외
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 첫 페이지(cursor 생략)/다음 페이지 연속 조회, 마지막 페이지 `hasNext=false`, 경계값(size=1, 빈 결과), 삭제된 일기 미노출(엣지)
 
-- **Task 010: 앱 인증 연동 및 토큰 자동 갱신**
+- **Task 010: 앱 Supabase Auth 연동** - 우선순위
   - 구현 기능: F001, F010
-  - 카카오/구글 SDK 실제 연동 → 소셜 토큰 획득 → `POST /auth/login` 호출 → 토큰 secure storage 저장
-  - `AuthInterceptor` 완성: 401 발생 시 `POST /auth/refresh`로 access 자동 갱신 후 원요청 재시도(`QueuedInterceptorsWrapper`로 동시 401 직렬화)
-  - go_router 리디렉션 가드 실연동(토큰 유효성 기준 로그인/메인 분기)
-  - 로그아웃: `POST /auth/logout` + 로컬 토큰 전체 삭제 → 로그인 페이지 이동
-  - **(구현 직후 필수 테스트)** `integration_test` E2E — 로그인 성공 → 메인 진입, 인증 실패 → 에러 토스트 유지, access 만료 시 자동 갱신 후 요청 성공, refresh 만료 시 로그인 페이지 강제 이동, 로그아웃 후 보호 화면 접근 차단
+  - ✅ (구현됨) Supabase 초기화, 구글(`signInWithIdToken`)·카카오(`signInWithOAuth`) 로그인, `onAuthStateChange` 기반 세션 감시, go_router 가드(Supabase 세션 기준), 로그인 UI, 소셜 OAuth 콘솔 설정(Google) + 앱 설정값(`supabase_config.dart`)
+  - 잔여: `AuthInterceptor`를 **Supabase access token 첨부**로 정리(자체 401 refresh 골격 제거), 미사용 `TokenStorage`(자체 JWT용) 제거, 로그아웃 `supabase signOut` 경로 정리
+  - 잔여: Kakao provider 콘솔 설정 마무리(`tasks/_SUPABASE_SETUP.md` 3번) + 안드로이드 실제 로그인 검증
+  - **(구현 직후 필수 테스트)** `integration_test` E2E — 로그인 성공 → 메인 진입, 인증 실패 → 에러 토스트 유지, 세션 만료 시 SDK 자동 갱신 후 요청 성공, 로그아웃 후 보호 화면 접근 차단
 
 - **Task 011: 앱 일기 기능 API 연동 (더미 교체)**
   - 구현 기능: F002, F003, F004, F005, F006, F007
@@ -190,7 +195,7 @@
 - **Task 016: 성능 최적화 및 배포 개요**
   - 캘린더 summary 캐싱, 커서 페이징 인덱스 튜닝
   - CI/CD 파이프라인(앱 빌드·백엔드 테스트), 모니터링·로깅 구성
-  - 애플 로그인(`sign_in_with_apple`) 확장
+  - 애플 로그인(Supabase Apple provider) 확장
 
 ## 상태 범례
 
