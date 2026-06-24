@@ -1,4 +1,4 @@
-package com.example.record;
+package com.recorme.app;
 
 import io.flutter.embedding.android.FlutterActivity;
 

@@ -45,5 +45,26 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<!-- 소셜 OAuth(카카오 등) 콜백 딥링크: app.recordapp://login-callback -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app.recordapp</string>
+			</array>
+		</dict>
+		<!-- Google 로그인: iOS client id의 reversed 형태 URL scheme -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.579893667013-13k2qqetprqglocaf441bctfuios7nhs</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
