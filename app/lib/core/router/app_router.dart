@@ -27,6 +27,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     refreshListenable: refresh,
     redirect: (context, state) {
+      // 개발용: --dart-define=DEV_BYPASS_AUTH=true 면 인증 가드를 건너뛴다(웹 UI 테스트용)
+      if (const bool.fromEnvironment('DEV_BYPASS_AUTH')) return null;
+
       final status = ref.read(authControllerProvider);
       // 토큰 복원 중에는 분기 보류
       if (status == AuthStatus.unknown) return null;
