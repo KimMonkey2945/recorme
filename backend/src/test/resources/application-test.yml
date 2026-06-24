@@ -1,0 +1,6 @@
+# ===== 테스트 프로파일 =====
+# datasource는 @ServiceConnection(Testcontainers)으로 주입되므로 정의하지 않는다.
+# 테스트 전용 JWT 시크릿.
+record:
+  jwt:
+    secret: test-secret-key-for-junit-only-0123456789abcdef

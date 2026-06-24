@@ -1,0 +1,33 @@
+# ===== 공통 설정 (모든 프로파일 공유) =====
+# datasource는 프로파일별 파일에서 정의한다(application-local.yml / application-cloud.yml).
+spring:
+  application:
+    name: record
+  profiles:
+    # 기본 프로파일은 local. 배포 시 SPRING_PROFILES_ACTIVE=cloud 로 전환.
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  flyway:
+    enabled: true
+    # 운영 안전: clean 비활성화. 모든 스키마 변경은 신규 버전 마이그레이션으로만.
+    clean-disabled: true
+    locations: classpath:db/migration
+
+# MyBatis: snake_case 컬럼 → camelCase 프로퍼티 자동 매핑
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.recordapp
+
+# REST API 기본 경로 (/api/v1)
+server:
+  servlet:
+    context-path: /api/v1
+
+# 애플리케이션 고유 설정
+record:
+  jwt:
+    # 시크릿은 환경변수/시크릿으로 주입(코드·git 평문 금지). local/test 프로파일은 자체 dev 기본값 제공.
+    secret: ${JWT_SECRET}
+    access-expiration-ms: ${JWT_ACCESS_EXP_MS:1800000}      # 30분
+    refresh-expiration-ms: ${JWT_REFRESH_EXP_MS:1209600000} # 14일

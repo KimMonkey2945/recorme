@@ -1,0 +1,26 @@
+# ===== 배포(클라우드) 프로파일 — Supabase 관리형 PostgreSQL =====
+# 인프라 방침(B): Supabase는 "관리형 PostgreSQL"로만 사용한다.
+#   - Auth/PostgREST/RLS/Edge Functions 미사용, 스키마 진실원은 Flyway 단일.
+#   - MCP apply_migration 금지(읽기/디버깅 전용).
+#
+# 모든 값은 환경변수/시크릿으로 주입한다(코드·git에 평문 금지).
+#
+# [중요] 커넥션 포트 분리:
+#   - 앱 런타임(HikariCP): Transaction Pooler 사용 → 포트 6543
+#       예) jdbc:postgresql://aws-0-<region>.pooler.supabase.com:6543/postgres?prepareThreshold=0
+#   - Flyway 마이그레이션: Session/Direct 연결 권장 → 포트 5432
+#       (트랜잭션 풀러 + advisory lock 충돌 회피)
+#   - 무료 티어 한도에 맞춰 풀 크기를 작게 유지한다.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+  flyway:
+    # 마이그레이션은 direct(5432) 전용 URL로 분리 주입 가능.
+    # 미지정 시 위 datasource를 그대로 사용한다.
+    url: ${FLYWAY_DB_URL:${DB_URL}}
+    user: ${FLYWAY_DB_USER:${DB_USER}}
+    password: ${FLYWAY_DB_PASSWORD:${DB_PASSWORD}}
