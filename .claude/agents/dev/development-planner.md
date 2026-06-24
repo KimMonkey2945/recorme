@@ -130,7 +130,6 @@ color: red
 
 - **Task 003: 공통 컴포넌트 라이브러리 구현** ✅ - 완료
   - See: `/tasks/003-component-library.md`
-  - ✅ shadcn/ui 기반 공통 컴포넌트 구현
   - ✅ 디자인 시스템 및 스타일 가이드 적용
   - ✅ 더미 데이터 생성 및 관리 유틸리티 작성
 
