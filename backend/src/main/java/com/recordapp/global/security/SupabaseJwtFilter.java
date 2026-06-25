@@ -1,8 +1,7 @@
 package com.recordapp.global.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.JwtException;
+import com.recordapp.domain.auth.service.UserProvisioningService;
+import com.recordapp.global.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,19 +15,24 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Authorization: Bearer 토큰을 검증해 SecurityContext에 인증을 세팅한다.
- * 토큰이 없거나 유효하지 않으면 인증을 세팅하지 않고 통과시킨다
- * (보호 자원 접근은 SecurityConfig의 entry point가 401로 처리).
+ * Authorization: Bearer 의 Supabase access token을 검증하고,
+ * JIT 프로비저닝으로 확보한 {@link SecurityUser}를 SecurityContext에 세팅한다.
+ *
+ * <p>토큰이 없으면 그대로 통과시킨다(보호 자원 접근은 EntryPoint가 401 처리).
+ * 검증·프로비저닝 실패 시 인증을 세팅하지 않아 EntryPoint가 401을 응답한다.
  */
 @Component
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
+public class SupabaseJwtFilter extends OncePerRequestFilter {
 
 	private static final String BEARER_PREFIX = "Bearer ";
 
-	private final JwtProvider jwtProvider;
+	private final SupabaseJwtVerifier verifier;
+	private final UserProvisioningService provisioningService;
 
-	public JwtAuthenticationFilter(JwtProvider jwtProvider) {
-		this.jwtProvider = jwtProvider;
+	public SupabaseJwtFilter(SupabaseJwtVerifier verifier,
+			UserProvisioningService provisioningService) {
+		this.verifier = verifier;
+		this.provisioningService = provisioningService;
 	}
 
 	@Override
@@ -39,13 +43,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		String token = resolveToken(request);
 		if (token != null) {
 			try {
-				Jws<Claims> jws = jwtProvider.parse(token);
-				SecurityUser principal = jwtProvider.toPrincipal(jws);
+				SupabaseClaims claims = verifier.verify(token);
+				SecurityUser principal = provisioningService.provision(claims);
 				var authentication = new UsernamePasswordAuthenticationToken(
 						principal, null, List.of());
 				SecurityContextHolder.getContext().setAuthentication(authentication);
-			} catch (JwtException | IllegalArgumentException e) {
-				// 유효하지 않은 토큰 → 인증 미설정(이후 entry point가 401 처리)
+			} catch (BusinessException e) {
+				// 검증·프로비저닝 실패 → 인증 미설정(이후 EntryPoint가 401 처리)
 				SecurityContextHolder.clearContext();
 			}
 		}

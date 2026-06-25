@@ -14,10 +14,6 @@ public enum ErrorCode {
 	EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
 	FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
-	// 소셜 로그인
-	SOCIAL_VERIFICATION_FAILED(HttpStatus.UNAUTHORIZED, "소셜 로그인 검증에 실패했습니다."),
-	UNSUPPORTED_PROVIDER(HttpStatus.BAD_REQUEST, "지원하지 않는 소셜 제공자입니다."),
-
 	// 사용자
 	USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
 

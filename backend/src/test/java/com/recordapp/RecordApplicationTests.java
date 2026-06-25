@@ -20,7 +20,7 @@ class RecordApplicationTests {
 
 	@Container
 	@ServiceConnection
-	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:18-alpine");
 
 	@Test
 	void contextLoads() {

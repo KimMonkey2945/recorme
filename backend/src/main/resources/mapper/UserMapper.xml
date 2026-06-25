@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.user.mapper.UserMapper">
+
+    <!-- supabase_uid(UUID) 매핑 키로 내부 PK 조회. 문자열 → uuid 캐스팅. -->
+    <select id="findIdBySupabaseUid" resultType="long">
+        SELECT id
+          FROM users
+         WHERE supabase_uid = #{supabaseUid}::uuid
+    </select>
+
+    <!-- JIT 가입. supabase_uid 충돌은 DO NOTHING(동시 최초요청 1행 보장).
+         INSERT 성공 시 생성 PK를 id 프로퍼티로 회수. -->
+    <insert id="insertOnConflictNothing"
+            parameterType="com.recordapp.domain.user.dto.UserJitCommand"
+            useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO users (supabase_uid, nickname, email, profile_image_url)
+        VALUES (#{supabaseUid}::uuid, #{nickname}, #{email}, #{profileImageUrl})
+        ON CONFLICT (supabase_uid) DO NOTHING
+    </insert>
+
+    <!-- 활성 회원 프로필 조회. 외부 노출 식별자는 uuid(내부 PK 비노출).
+         profile_image_url → profileImageUrl 자동 매핑(map-underscore-to-camel-case). -->
+    <select id="findProfileByUserId" resultType="com.recordapp.domain.user.dto.UserProfileResponse">
+        SELECT uuid::text AS uuid,
+               nickname,
+               email,
+               profile_image_url,
+               bio
+          FROM users
+         WHERE id = #{userId}
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 프로필 수정. 소유권은 userId로만 식별(IDOR 차단). 갱신 행수로 대상 존재 확인. -->
+    <update id="updateProfile">
+        UPDATE users
+           SET nickname          = #{nickname},
+               profile_image_url = #{profileImageUrl},
+               bio               = #{bio},
+               updated_at        = now()
+         WHERE id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+</mapper>

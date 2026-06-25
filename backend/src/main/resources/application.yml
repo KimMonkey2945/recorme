@@ -24,10 +24,9 @@ server:
   servlet:
     context-path: /api/v1
 
-# 애플리케이션 고유 설정
-record:
-  jwt:
-    # 시크릿은 환경변수/시크릿으로 주입(코드·git 평문 금지). local/test 프로파일은 자체 dev 기본값 제공.
-    secret: ${JWT_SECRET}
-    access-expiration-ms: ${JWT_ACCESS_EXP_MS:1800000}      # 30분
-    refresh-expiration-ms: ${JWT_REFRESH_EXP_MS:1209600000} # 14일
+# ===== Supabase Auth (ES256/JWKS 검증 전용) =====
+# 백엔드는 자체 JWT를 발급하지 않고 Supabase가 ES256로 서명한 access token을 JWKS로 검증만 한다.
+# JWKS endpoint = url + /auth/v1/.well-known/jwks.json (NimbusJwtDecoder가 lazy fetch·캐싱·키회전).
+# url은 환경변수로 주입. 프로파일(local/test/cloud)이 항상 override 한다.
+supabase:
+  url: ${SUPABASE_URL:}

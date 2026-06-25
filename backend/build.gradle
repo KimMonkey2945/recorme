@@ -24,6 +24,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
+	// Supabase access token(ES256) 검증: NimbusJwtDecoder + JWKS fetch·캐싱·키회전.
+	// nimbus-jose-jwt를 추이 의존으로 제공(테스트의 EC 서명/JWKSource도 이 의존으로 충족).
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
 	// 데이터 접근: MyBatis + PostgreSQL
 	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.5'
@@ -32,11 +35,6 @@ dependencies {
 	// 스키마 마이그레이션: Flyway (Flyway 10+는 PostgreSQL 모듈이 분리됨)
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'
-
-	// JWT (access 발급/검증, refresh 해시)
-	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
 	// 테스트: JUnit5 + Spring Test + Testcontainers(PostgreSQL)
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
