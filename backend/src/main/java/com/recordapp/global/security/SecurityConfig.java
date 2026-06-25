@@ -48,6 +48,7 @@ public class SecurityConfig {
 						session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // CORS preflight
+						.requestMatchers(HttpMethod.GET, "/auth/email-exists").permitAll()  // 비번찾기 미가입 사전 안내(비로그인)
 						.requestMatchers(HttpMethod.GET, "/diaries/shared/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/files/**").permitAll()  // 업로드 이미지 공개 서빙(UUID 파일명)
 						.anyRequest().authenticated())

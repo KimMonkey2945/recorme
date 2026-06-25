@@ -10,6 +10,17 @@
          WHERE supabase_uid = #{supabaseUid}::uuid
     </select>
 
+    <!-- 활성 회원 이메일 존재 여부(대소문자 무시). 비밀번호 재설정 사전 확인용.
+         uq_users_email_active 인덱스(lower(email), deleted_at IS NULL)와 동일 조건. -->
+    <select id="existsActiveByEmail" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM users
+             WHERE lower(email) = lower(#{email})
+               AND deleted_at IS NULL
+        )
+    </select>
+
     <!-- JIT 가입. supabase_uid 충돌은 DO NOTHING(동시 최초요청 1행 보장).
          INSERT 성공 시 생성 PK를 id 프로퍼티로 회수. -->
     <insert id="insertOnConflictNothing"

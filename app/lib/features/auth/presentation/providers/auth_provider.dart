@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/error/failure.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../data/auth_repository.dart';
+import '../../data/email_lookup_repository.dart';
 
 final supabaseClientProvider =
     Provider<SupabaseClient>((ref) => Supabase.instance.client);
@@ -207,8 +208,28 @@ class EmailAuthController extends AsyncNotifier<void> {
   }
 
   /// 비밀번호 재설정 메일 요청.
+  ///
+  /// 발송 전에 백엔드로 가입 여부를 사전 확인한다. 미가입이면 메일을 보내지 않고
+  /// [Failure]로 안내한다. (Supabase는 미가입이어도 성공 응답하므로 백엔드 조회로 보완.)
+  /// 사전 확인 자체가 실패(네트워크·서버 오류)하면 가용성을 위해 그대로 발송을 시도한다.
   Future<void> requestPasswordReset(String email) async {
     state = const AsyncLoading();
+
+    // 미가입 이메일 사전 확인. 조회가 실패하면 보안 표준 동작(그냥 발송)으로 폴백한다.
+    bool exists = true;
+    try {
+      exists = await ref.read(emailLookupRepositoryProvider).emailExists(email);
+    } catch (_) {
+      exists = true;
+    }
+    if (!exists) {
+      state = const AsyncData(null);
+      throw const Failure(
+        'EMAIL_NOT_FOUND',
+        '가입되지 않았거나 이메일 인증이 완료되지 않은 이메일이에요.',
+      );
+    }
+
     try {
       await ref
           .read(authControllerProvider.notifier)

@@ -6,6 +6,7 @@
 //
 // Supabase 실서버 없이, authRepositoryProvider를 Fake로 override해 검증한다.
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:record/core/error/failure.dart';
 import 'package:record/features/auth/data/auth_repository.dart';
+import 'package:record/features/auth/data/email_lookup_repository.dart';
 import 'package:record/features/auth/presentation/email_confirm_page.dart';
 import 'package:record/features/auth/presentation/providers/auth_provider.dart';
 import 'package:record/features/auth/presentation/signup_page.dart';
@@ -117,9 +119,32 @@ AuthResponse _newEmailResponse() => AuthResponse(
       ),
     );
 
-ProviderContainer _container(AuthRepository repo) {
+/// 결정적 테스트용 가짜 이메일 조회 저장소.
+/// emailExists를 override하므로 super의 Dio는 사용되지 않는다.
+class _FakeEmailLookup extends EmailLookupRepository {
+  _FakeEmailLookup({this.exists = true, this.throwError = false}) : super(Dio());
+
+  final bool exists;
+  final bool throwError;
+  int callCount = 0;
+
+  @override
+  Future<bool> emailExists(String email) async {
+    callCount++;
+    if (throwError) {
+      throw const Failure('NETWORK', '조회 실패');
+    }
+    return exists;
+  }
+}
+
+ProviderContainer _container(AuthRepository repo, {EmailLookupRepository? lookup}) {
   final c = ProviderContainer(
-    overrides: [authRepositoryProvider.overrideWithValue(repo)],
+    overrides: [
+      authRepositoryProvider.overrideWithValue(repo),
+      if (lookup != null)
+        emailLookupRepositoryProvider.overrideWithValue(lookup),
+    ],
   );
   addTearDown(c.dispose);
   return c;
@@ -231,14 +256,43 @@ void main() {
   });
 
   group('비밀번호 재설정', () {
-    test('requestPasswordReset이 저장소로 위임된다', () async {
+    test('가입된 이메일 → 재설정 메일 발송', () async {
       final repo = _FakeAuthRepository();
-      final container = _container(repo);
+      final container =
+          _container(repo, lookup: _FakeEmailLookup(exists: true));
 
       await container
           .read(emailAuthControllerProvider.notifier)
           .requestPasswordReset('a@b.com');
 
+      expect(repo.resetRequestCount, 1);
+    });
+
+    test('미가입 이메일 → 메일 미발송 + Failure(EMAIL_NOT_FOUND)', () async {
+      final repo = _FakeAuthRepository();
+      final container =
+          _container(repo, lookup: _FakeEmailLookup(exists: false));
+
+      await expectLater(
+        container
+            .read(emailAuthControllerProvider.notifier)
+            .requestPasswordReset('ghost@b.com'),
+        throwsA(isA<Failure>().having((f) => f.code, 'code', 'EMAIL_NOT_FOUND')),
+      );
+      // 미가입이면 발송 경로를 타지 않는다.
+      expect(repo.resetRequestCount, 0);
+    });
+
+    test('사전 확인 실패(네트워크 오류) → 발송으로 폴백', () async {
+      final repo = _FakeAuthRepository();
+      final container =
+          _container(repo, lookup: _FakeEmailLookup(throwError: true));
+
+      await container
+          .read(emailAuthControllerProvider.notifier)
+          .requestPasswordReset('a@b.com');
+
+      // 조회 실패 시 가용성 우선으로 그대로 발송한다(기존 보안 표준 동작).
       expect(repo.resetRequestCount, 1);
     });
 

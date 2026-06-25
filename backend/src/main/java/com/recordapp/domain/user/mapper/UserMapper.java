@@ -15,6 +15,12 @@ public interface UserMapper {
 	Long findIdBySupabaseUid(@Param("supabaseUid") String supabaseUid);
 
 	/**
+	 * 해당 이메일로 가입한 활성 회원이 있는지(대소문자 무시). 비밀번호 재설정 사전 확인용.
+	 * uq_users_email_active(lower(email), deleted_at IS NULL) 인덱스와 동일 조건으로 조회.
+	 */
+	boolean existsActiveByEmail(@Param("email") String email);
+
+	/**
 	 * JIT INSERT. supabase_uid 충돌 시 DO NOTHING(동시 최초요청 race-safe).
 	 * INSERT가 수행되면 {@link UserJitCommand#getId()}에 생성된 PK가 채워지고,
 	 * 충돌로 무시되면 id는 null로 남는다(호출 측이 재조회).
