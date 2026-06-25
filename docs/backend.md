@@ -18,7 +18,8 @@ com.recordapp
 │  │  └─ service/    (UserProvisioningService — Supabase JWT의 sub/email로 users 자동 가입·매핑)
 │  │     (소셜 검증·JWT 발급·refresh 회전은 Supabase Auth가 전담 → controller/social/token 서비스 없음)
 │  ├─ user
-│  │  └─ controller/ service/ mapper/ dto/ vo/
+│  │  └─ controller/ (UserController — GET/PUT /users/me 프로필 조회·수정)
+│  │     service/ (UserService) mapper/ (UserMapper) dto/ (UserProfileResponse, UpdateProfileRequest) vo/
 │  ├─ diary
 │  │  ├─ controller/ (DiaryController)
 │  │  ├─ service/    (DiaryService)
@@ -158,22 +159,23 @@ public interface DiaryMapper {
 ## 5. 인증 흐름 (Supabase Auth + 백엔드 JWT 검증)
 
 ```
-[앱] Supabase SDK 소셜 로그인
+[앱] Supabase SDK 로그인 (소셜 또는 이메일)
   - 구글: google_sign_in → idToken → supabase.signInWithIdToken(google)
   - 카카오: supabase.signInWithOAuth(kakao) 웹 OAuth(딥링크 콜백)
+  - 이메일: supabase.signUp(email,password,data:{nickname}) / signInWithPassword (확인 메일 필수)
   → Supabase 세션 발급(access JWT ~1h + refresh). SDK가 저장·자동 갱신.
 [앱→백엔드] Authorization: Bearer <Supabase access token>
 [백엔드] SupabaseJwtFilter
-  → Supabase JWT secret(HS256) 또는 프로젝트 JWKS로 서명/만료 검증
+  → 프로젝트 JWKS(ES256 비대칭 공개키)로 서명/만료/aud 검증
   → sub(Supabase user uuid)·email 클레임 추출
   → UserProvisioningService: users.supabase_uid 조회, 없으면 자동 가입(JIT)
   → SecurityContext(SecurityUser{userId, supabaseUuid}) 세팅
 [로그아웃] 앱에서 supabase signOut (백엔드 상태 없음)
 ```
 
-- **소셜 검증·세션 관리는 Supabase가 전담**: 카카오·구글 토큰 검증, JWT 발급/갱신, refresh 회전을 모두 Supabase Auth가 처리한다. 백엔드는 **Supabase가 서명한 access token을 검증만** 한다(자체 발급 없음). **애플은 추후 Supabase Apple provider로 확장**.
+- **검증·세션 관리는 Supabase가 전담**: 이메일/비밀번호 인증, 카카오·구글 토큰 검증, JWT 발급/갱신, refresh 회전을 모두 Supabase Auth가 처리한다. 백엔드는 **Supabase가 서명한 access token을 검증만** 한다(자체 발급 없음). **이메일·소셜 모두 동일 형식의 토큰이라 `SupabaseJwtFilter`/`UserProvisioningService`는 provider를 참조하지 않고 같은 경로로 동작**한다(이메일 가입을 위한 추가 분기 없음). **애플은 추후 Supabase Apple provider로 확장**.
 - **JIT 프로비저닝**: 백엔드는 `social_accounts`/`refresh_tokens` 테이블을 두지 않는다. `users.supabase_uid`(UNIQUE)로 Supabase 사용자를 매핑하고, 최초 인증 요청 시 JWT 클레임(email)·`user_metadata`(닉네임·프로필)로 `users` 행을 생성한다.
-- **검증 방식**: Supabase JWT secret(대칭 HS256) 또는 프로젝트 JWKS(비대칭) 중 프로젝트 설정에 맞춰 사용. secret은 환경변수/시크릿으로 주입(코드·git 금지).
+- **검증 방식**: 프로젝트 **JWKS(ES256 비대칭)**. Supabase가 JWT Signing Keys(ES256)로 서명하므로, 백엔드는 `{supabase.url}/auth/v1/.well-known/jwks.json`의 공개키로 검증한다(`NimbusJwtDecoder` + audience `authenticated`). 대칭 secret을 보관하지 않으므로 키 회전에 자동 대응하고 유출 위험이 없다. (참고: legacy HS256 secret 방식은 이 프로젝트에 미적용.)
 
 ## 6. LLM 연동 추상화 (감정 분석)
 

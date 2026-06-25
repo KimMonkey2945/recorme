@@ -29,22 +29,30 @@
 
 로그인·세션은 **앱이 Supabase Auth로 직접 처리**한다. 별도 백엔드 로그인/리프레시/로그아웃 엔드포인트는 없다.
 
-- 앱: Supabase SDK로 소셜 로그인(구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신).
+- 앱: Supabase SDK로 **소셜 로그인**(구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) 또는 **이메일 가입/로그인**(`signUp`(닉네임은 `user_metadata`) / `signInWithPassword`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신).
 - 앱→백엔드: 보호 API 호출 시 `Authorization: Bearer <Supabase access token>`.
-- 백엔드: Supabase JWT를 검증(secret/JWKS)하고 `sub`(uuid)로 `users`를 JIT 프로비저닝(최초 요청 시 자동 가입).
+- 백엔드: Supabase JWT를 검증(**JWKS ES256 비대칭**)하고 `sub`(uuid)로 `users`를 JIT 프로비저닝(최초 요청 시 자동 가입). **이메일·소셜 모두 동일 형식의 토큰이라 provider 분기 없이 같은 경로로 처리**된다.
 - 로그아웃: 앱에서 `supabase.auth.signOut()`(백엔드 호출 없음).
 - 401/만료 시: Supabase SDK가 자동 갱신, 갱신 불가 시 재로그인.
 
+### 사용자/프로필 (users)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
 | GET | `/users/me` | 현재 사용자 프로필 조회(JIT 프로비저닝 보장) | ○ |
+| PUT | `/users/me` | 내 프로필 수정(닉네임·프로필 이미지·자기소개) | ○ |
 
 ```jsonc
 // GET /users/me  응답 data
-{ "uuid": "...", "nickname": "...", "email": "...", "profileImageUrl": "..." }
+{ "uuid": "...", "nickname": "...", "email": "...", "profileImageUrl": "...", "bio": "..." }
+
+// PUT /users/me  요청 (nickname 필수, 나머지 선택. email은 Supabase 소유라 수정 불가)
+{ "nickname": "새 닉네임", "profileImageUrl": "https://...", "bio": "한 줄 소개" }
+// 응답 data: 갱신된 user (GET /users/me 와 동일 형태)
+// 에러: 검증 실패(닉네임 빈값/길이 50 초과, bio 300 초과, URL 형식·길이 2048 초과) → 400 VALIDATION_ERROR
+//       미인증 → 401 UNAUTHORIZED
 ```
 
-> 소셜 provider 범위는 **카카오·구글**(Supabase Authorized Client IDs로 검증). **애플은 추후 Supabase Apple provider로 확장**한다.
+> provider 범위는 **이메일 + 소셜(카카오·구글)**. 소셜은 Supabase Authorized Client IDs로 검증, 이메일은 Supabase Email provider(확인 메일 필수). **애플은 추후 Supabase Apple provider로 확장**한다.
 
 ### 일기 (diary)
 | 메서드 | 경로 | 설명 | 인증 |

@@ -10,8 +10,9 @@
 실제 비즈니스 로직 없이 애플리케이션이 독립적으로 빌드되고, 초기 스키마가 정의된 상태가 목표.
 
 ### 인프라 결정 (사전 합의)
-- **(B) Supabase = 관리형 PostgreSQL로만 사용**: Spring Boot + MyBatis + Flyway + 자체 JWT 설계 유지, DataSource만 Supabase Postgres로 연결. Auth/PostgREST/RLS/Edge Functions 미사용. 스키마 진실원은 **Flyway 단일**(MCP `apply_migration` 금지, 읽기/디버깅 전용).
-- **연결 시점**: 로컬 먼저(개발/테스트는 로컬 Docker PG + Testcontainers), Supabase 연결은 배포 시 `application-cloud.yml` + 환경변수로 전환.
+- **데이터는 별도 PostgreSQL(Supabase 미사용)**: Spring Boot + MyBatis + Flyway로 별도 PostgreSQL에 연결한다(로컬: Docker, 배포: 관리형/자체호스팅). Supabase는 **Auth 전용**(데이터 저장·PostgREST/RLS/Edge Functions 미사용). 스키마 진실원은 **Flyway 단일**.
+  - ⚠️ **갱신(결정 변경)**: 초기에는 "(B) Supabase 관리형 PostgreSQL을 데이터 저장소로도 사용"이었으나, **인증만 Supabase / 데이터는 별도 PostgreSQL**로 최종 확정. `application-cloud.yml`을 별도 PG 설정으로 정리하고 `supabase/migrations/*`(profiles·RLS·트리거)는 폐기함.
+- **연결 시점**: 로컬 먼저(개발/테스트는 로컬 Docker PG + Testcontainers), 배포 DB 연결은 `application-cloud.yml` + 환경변수로 전환.
 
 ## 관련 파일
 
@@ -20,7 +21,7 @@
 - `backend/src/main/java/com/recordapp/RecordApplication.java` — 메인 클래스
 - `backend/src/main/resources/application.yml` — 공통 설정(MyBatis/Flyway/context-path `/api/v1`)
 - `backend/src/main/resources/application-local.yml` — 로컬 Docker PG 프로파일
-- `backend/src/main/resources/application-cloud.yml` — Supabase(환경변수 주입) 프로파일
+- `backend/src/main/resources/application-cloud.yml` — 배포 DB(별도 PostgreSQL, 환경변수 주입) + Supabase Auth 검증 프로파일
 - `backend/src/main/resources/db/migration/V1__init.sql` — 초기 스키마(users, social_accounts, refresh_tokens, diaries)
 - `backend/docker-compose.yml` — 로컬 PostgreSQL 16
 - `backend/src/test/java/com/recordapp/RecordApplicationTests.java` — 컨텍스트 기동 검증(Testcontainers)

@@ -18,8 +18,8 @@
 | 구분 | 스택 |
 |---|---|
 | 모바일(`app/`) | Flutter 3.27.x / Dart 3.6.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), json_serializable, flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in |
-| 백엔드(`backend/`) | Java 21 / Spring Boot 3.3.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, Supabase JWT 검증(자체 발급 없음) |
-| DB | PostgreSQL 16.x, Flyway 10.x (`uq_diary_user_day` 부분 유니크) |
+| 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)** |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -125,18 +125,34 @@
 
 ### Phase 3: 핵심 기능 구현
 
-백엔드 인증·일기 CRUD를 실제로 구현하고, 앱의 더미 데이터를 실제 API 호출로 교체한다. 모든 API/로직 Task는 구현 직후 스택 네이티브 테스트로 검증한다.
+백엔드 인증·일기 CRUD를 실제로 구현하고, 앱의 더미 데이터를 실제 API 호출로 교체한다. 인증은 소셜(카카오/구글)에 더해 **이메일 가입/로그인**(확인 메일 필수)을 지원하고, 가입 정보는 별도 PostgreSQL `users`에 JIT 저장되며 **프로필 조회·수정(F011)**을 제공한다. 인증 검증은 **JWKS(ES256 비대칭)**, 로그인 즉시 JIT 저장(워밍업), **웹 구글 OAuth·중복가입 안내·비밀번호 재설정**까지 포함한다. DB는 **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`)로 구성한다. 모든 API/로직 Task는 구현 직후 스택 네이티브 테스트로 검증한다.
 
-- **Task 007: 백엔드 Supabase JWT 검증 + 사용자 JIT 프로비저닝** - 우선순위
+> **진행 현황(2026-06-25)**: 인증·프로필 토대 완료 — 백엔드(Task 007·007-1) 구현·로컬 PG18 실측, 앱(Task 010·010-1) `flutter test` 36개 통과 + 웹 E2E로 가입→DB 저장·프로필 수정 실동작 확인. Testcontainers 통합테스트는 배포 전 Docker 일괄 검증(사용자 방침). **남은 핵심 기능: 일기 CRUD(Task 008·009·011)**.
+
+- **Task 007: 백엔드 Supabase JWT 검증 + 사용자 JIT 프로비저닝** ✅ - 구현 완료(통합테스트 Docker 대기)
   - 구현 기능: F001, F010
+  - ✅ JWKS(ES256) 검증·JIT 프로비저닝·V1(users) 재구성·레거시 제거 완료. 컴파일·`SupabaseJwtVerifierTest` 6/6 통과 + **로컬 PostgreSQL 18(`recorme`)에 bootRun 실측**(Flyway V1 적용·기동·`users` 스키마 확인). JIT/Flyway Testcontainers 통합테스트는 작성 완료, 실행은 Docker 가용 시(사용자 방침: 배포 전 일괄).
+  - ⚠️ **인프라 방침(최종 확정)**: 인증만 Supabase Auth, **앱 데이터는 별도 PostgreSQL**(Supabase 미사용). 인증↔데이터는 `users.supabase_uid` 컬럼 매핑으로만 연결 — `auth.users` FK·RLS·DB 트리거 **금지**(물리적으로 다른 DB).
   - 레거시 정리: 자체 `JwtProvider`/`JwtProperties`/`HashUtil`, `domain/auth/social/*`(SocialVerifier·Router·Provider·SocialUserInfo)와 관련 단위 테스트(JwtProviderTest·HashUtilTest) 제거
-  - DB: `V1__init.sql`에서 `social_accounts`·`refresh_tokens` 제거, `users.supabase_uid`(UNIQUE) 추가(운영 DB 미배포라 V1 직접 수정)
-  - `SupabaseJwtVerifier` + `SupabaseJwtFilter`: `Authorization: Bearer <Supabase access token>` 검증(JWT secret HS256 또는 JWKS), `sub`/`email` 클레임 추출. `SecurityConfig`/`SecurityUser` 재사용·수정, `JwtAuthenticationEntryPoint` 유지
-  - `UserProvisioningService`: `supabase_uid`로 `users` 조회, 없으면 자동 가입(닉네임·이메일·프로필을 클레임/`user_metadata`로 세팅)
-  - `application*.yml`: `record.jwt.*` 제거 → `supabase.url`/`supabase.jwt-secret`(환경변수) 추가
-  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 유효 토큰 인증 통과, 위조 서명(401), 만료 토큰(401), 신규 사용자 JIT 가입, 기존 사용자 매핑(중복 가입 없음)
+  - **Supabase profiles 경로 폐기**: `supabase/migrations/0001_init_profiles.sql`(profiles 테이블·RLS 정책·`handle_new_user` 트리거)는 제거함(데이터를 Supabase에 두지 않으므로 불필요). 사용자 마스터는 Flyway `users` 단일 출처.
+  - DB(기능별 마이그레이션 분할): `V1__init.sql`을 **`users` 전용**으로 재구성 — `social_accounts`·`refresh_tokens` 제거, `diaries`는 `V2__add_diaries.sql`로 분리(Task 008), `users.supabase_uid`(UNIQUE) + **`bio VARCHAR(300)`** + `uq_users_email_active`(이메일 부분 유니크) 추가(운영 DB 미배포라 V1 직접 재작성). 로컬은 네이티브 PostgreSQL 18(`recorme` DB/롤, 도커 미사용).
+  - **이메일 provider 흡수**: Supabase Email provider(확인 메일 필수)를 켜도 백엔드는 provider 무관 동일 JWT 검증·JIT 경로 → 이메일 가입을 위한 추가 분기 없음(테스트로 증명).
+  - `SupabaseJwtVerifier` + `SupabaseJwtFilter`: `Authorization: Bearer <Supabase access token>` 검증(**JWKS ES256 비대칭** — 프로젝트가 JWT Signing Keys 사용. `NimbusJwtDecoder.withJwkSetUri` + aud `authenticated`), `sub`/`email`/`user_metadata` 클레임 추출. `SecurityConfig`/`SecurityUser` 재사용·수정, `JwtAuthenticationEntryPoint` 유지
+  - `UserProvisioningService`: `supabase_uid`로 `users` 조회, 없으면 자동 가입. 폐기된 트리거의 폴백 규칙을 Java로 이식 — 닉네임 = `name → full_name → nickname → user_name → email local-part`, 아바타 = `avatar_url → picture`, email = JWT `email`(클레임/`user_metadata`)
+  - `application*.yml`: `record.jwt.*` 제거 → `supabase.url`(환경변수, JWKS URI 파생) 추가. JWKS(ES256)라 대칭 secret 불필요. `application-cloud.yml`은 별도 PostgreSQL 표준 설정으로 정리됨(Supabase Pooler 전제 제거 완료)
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 유효 토큰 인증 통과, 위조 서명(401), 만료 토큰(401), 신규 사용자 JIT 가입(닉네임·아바타 폴백이 메타데이터로 채워짐), 기존 사용자 매핑(트리거 없이 1행만, 중복 가입 없음), **이메일 가입 토큰도 동일 JIT 경로**, Flyway V1(users) 적용·`uq_users_email_active` 부분 유니크 동작
+
+- **Task 007-1: 백엔드 프로필 조회·수정 API** ✅ - 구현 완료(통합테스트 Docker 대기)
+  - 구현 기능: F011
+  - ✅ `domain/user/`(Controller/Service/Mapper+XML/DTO) 구현. `UserControllerTest`(@WebMvcTest) 4/4 통과(검증 400 경로). IDOR 구조적 차단·bio 빈문자열→NULL. `UserServiceTest`(Testcontainers)는 작성 완료, 실행은 Docker 가용 시.
+  - `domain/user/` 구현(현재 `.gitkeep`만): `UserController`(`GET /users/me`, `PUT /users/me`) → `UserService`(@Transactional) → `UserMapper`(+`UserMapper.xml`) → DB
+  - 수정 대상: 닉네임 + 프로필 이미지 URL + 자기소개(`bio`). 소유권은 SecurityContext의 내부 `userId`로만 결정(`UPDATE … WHERE id = #{principalUserId}`) → 타인 프로필 수정 구조적 차단(IDOR 방지)
+  - DTO: `UserProfileResponse`(uuid/nickname/email/profileImageUrl/bio), `UpdateProfileRequest`(`@NotBlank @Size(50)` nickname, `@Size(300)` bio, `@URL @Size(2048)` profileImageUrl). bio 빈 문자열 → NULL 정규화
+  - 검증 실패는 기존 `GlobalExceptionHandler`가 `VALIDATION_ERROR`(400)로 변환 — 신규 ErrorCode 불필요
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 프로필 조회(JIT 보장), 수정 정상(updated_at 갱신), 검증 실패(닉네임 빈값/길이·bio 길이·URL 형식 → 400), 본인 외 수정 불가(IDOR), 미인증(401)
 
 - **Task 008: 백엔드 일기 upsert CRUD + 캘린더 엔드포인트** - 우선순위
+  - DB: `V2__add_diaries.sql` 신설로 `diaries` 테이블·`uq_diary_user_day` 부분 유니크·인덱스 생성(Task 007에서 V1의 users만 남기고 분리됨). 기존 `FlywayMigrationTest`의 diaries 검증(부분 유니크·upsert·소프트삭제 재작성)을 여기로 이관
   - 구현 기능: F002, F003, F005, F006, F007
   - `POST /diaries`: `(user_id, written_date)` 부분 유니크 충돌 키 기반 upsert(`INSERT … ON CONFLICT DO UPDATE`) — 신규 201 / 갱신 200
   - `GET /diaries/me/summary?yearMonth=`: 해당 월 활성 기록 존재 날짜 목록(캘린더 dot용)
@@ -153,12 +169,25 @@
   - 소프트 삭제(`deleted_at IS NOT NULL`) 행 제외
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 첫 페이지(cursor 생략)/다음 페이지 연속 조회, 마지막 페이지 `hasNext=false`, 경계값(size=1, 빈 결과), 삭제된 일기 미노출(엣지)
 
-- **Task 010: 앱 Supabase Auth 연동** - 우선순위
-  - 구현 기능: F001, F010
+- **Task 010: 앱 Supabase Auth 연동 (이메일·소셜·프로필 토대)** ✅ - 구현 완료(`flutter analyze` 무경고 + `flutter test` 36개)
+  - 구현 기능: F001, F010, F011
   - ✅ (구현됨) Supabase 초기화, 구글(`signInWithIdToken`)·카카오(`signInWithOAuth`) 로그인, `onAuthStateChange` 기반 세션 감시, go_router 가드(Supabase 세션 기준), 로그인 UI, 소셜 OAuth 콘솔 설정(Google) + 앱 설정값(`supabase_config.dart`)
-  - 잔여: `AuthInterceptor`를 **Supabase access token 첨부**로 정리(자체 401 refresh 골격 제거), 미사용 `TokenStorage`(자체 JWT용) 제거, 로그아웃 `supabase signOut` 경로 정리
-  - 잔여: Kakao provider 콘솔 설정 마무리(`tasks/_SUPABASE_SETUP.md` 3번) + 안드로이드 실제 로그인 검증
-  - **(구현 직후 필수 테스트)** `integration_test` E2E — 로그인 성공 → 메인 진입, 인증 실패 → 에러 토스트 유지, 세션 만료 시 SDK 자동 갱신 후 요청 성공, 로그아웃 후 보호 화면 접근 차단
+  - **이메일 가입/로그인 UI 추가**: `signUpWithEmail`(닉네임→`user_metadata`)·`signInWithEmail`·`resendConfirmationEmail`, `EmailAuthController`(에러 한국어 매핑), `signup_page`(`/signup`)·`email_confirm_page`(`/signup/confirm`) 신설, login_page에 이메일 폼, 가드 공개경로 일반화. Supabase 콘솔 Email provider·Confirm email·Redirect URL 설정
+  - ✅ `AuthInterceptor`를 **Supabase access token 첨부**로 정리 완료, 미사용 `TokenStorage`·`token_response.dart`(자체 JWT 잔재) 제거.
+  - ✅ **인증 즉시 프로비저닝(워밍업)**: 로그인(`signedIn`)·OAuth 리다이렉트/앱 시작(`initialSession`) 시 `GET /users/me`를 1회 자동 호출 → 프로필 진입 없이 `users` 즉시 저장(웹 E2E 실측 — 이메일·구글 모두).
+  - ✅ **웹 구글 로그인**: `kIsWeb` 분기로 웹은 `signInWithOAuth(google)` 리다이렉트(모바일은 `GoogleSignIn` idToken 유지). 카카오는 이미 OAuth 방식.
+  - ✅ **중복 가입 명시**: `signUp` 응답 `user.identities` 빈 배열 감지 → "이미 가입된 이메일" 안내(enumeration protection 유지).
+  - ✅ **비밀번호 재설정**: `forgot_password_page`·`reset_password_page` 신설 + `passwordRecovery` 라우팅(`resetPasswordForEmail`/`updateUser`).
+  - 잔여(사용자 콘솔 작업): Supabase **Site URL=`http://localhost:8000`** + Redirect URLs, Google **웹 OAuth Client ID/Secret** 등록(`tasks/_SUPABASE_SETUP.md`), Kakao provider 마무리, 안드로이드 실기기 검증.
+  - **(구현 직후 필수 테스트)** `integration_test` E2E — 로그인 성공 → 메인 진입, 인증 실패 → 에러 토스트 유지, 세션 만료 시 SDK 자동 갱신 후 요청 성공, 로그아웃 후 보호 화면 접근 차단, **이메일 가입→확인 안내 화면, 미인증 로그인 차단(재전송), 인증 후 로그인 성공**
+
+- **Task 010-1: 앱 프로필 화면 (조회·수정)** ✅ - 완료
+  - 구현 기능: F011
+  - ✅ `features/profile/` 신설·`User` 모델 bio 추가·`/profile`·`/profile/edit` 라우트·메인 앱바 진입점 구현. `flutter analyze` 무경고 + `flutter test`(프로필 7건 포함) 통과. 웹에서 조회·수정 실동작 확인.
+  - `features/profile/` 신설(diary feature의 `domain abstract + data impl + Provider override` 패턴 미러링): `ProfileRepository`(getMe/updateMe) + `ApiProfileRepository`(Dio + ApiResponse 언랩), `UpdateProfileRequest` DTO, `profile_page`(조회)·`profile_edit_page`(수정)·`profile_providers`(`myProfileProvider` FutureProvider)
+  - `shared/models/user.dart`에 `bio` 추가(fromJson/toJson/copyWith/==/hashCode). 라우트 `/profile`·`/profile/edit`(push). 진입점: 메인 상단 앱바. 하단 탭은 캘린더/목록 2개 유지
+  - 수정 성공 시 `ref.invalidate(myProfileProvider)` + 스낵바 + pop. (선행: Task 007-1 백엔드 `PUT /users/me`, Task 010 `AuthInterceptor` 토큰 첨부)
+  - **(구현 직후 필수 테스트)** `integration_test`(Fake repository override) — 프로필 조회(로딩→데이터), 수정 제출(`UpdateProfileRequest.toJson` 인자 검증→invalidate→pop), bio 300자 검증, 미인증 `/profile` 접근 가드
 
 - **Task 011: 앱 일기 기능 API 연동 (더미 교체)**
   - 구현 기능: F002, F003, F004, F005, F006, F007
@@ -197,6 +226,7 @@
   - 공감(리액션): 1인 1회 추가/취소(`/diaries/{id}/reactions`). 댓글은 범위 외
 
 - **Task 016: 성능 최적화 및 배포 개요**
+  - **별도 관리형/자체호스팅 PostgreSQL 선정·프로비저닝**(RDS/Cloud SQL/자체호스팅 등) — 백엔드와 동일 리전 배치, 백업·커넥션 풀·시크릿(환경변수) 구성. `application-cloud.yml` 환경변수로 연결
   - 캘린더 summary 캐싱, 커서 페이징 인덱스 튜닝
   - CI/CD 파이프라인(앱 빌드·백엔드 테스트), 모니터링·로깅 구성
   - 애플 로그인(Supabase Apple provider) 확장

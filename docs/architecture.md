@@ -22,9 +22,9 @@
 | 모바일 | Dart, Flutter (Feature-first, Riverpod, Dio) |
 | 백엔드 | Java 21, Spring Boot 3.x |
 | 데이터 접근 | MyBatis (동적 SQL, 매퍼 XML) |
-| 데이터베이스 | PostgreSQL (Flyway 스키마 관리) |
+| 데이터베이스 | **별도 PostgreSQL**(Supabase와 무관, Flyway 스키마 관리, 기능별 마이그레이션 분할). 로컬: 네이티브 PostgreSQL 18, 배포: Docker/관리형 |
 | 감정 분석 | 외부 LLM API (추상화 인터페이스) |
-| 인증 | Supabase Auth(소셜: 카카오/구글, 애플은 추후) + 백엔드 Supabase JWT 검증 |
+| 인증 | Supabase **Auth 전용**(이메일 + 소셜: 카카오/구글, 애플은 추후) + 백엔드 Supabase JWT 검증. 데이터 저장에는 Supabase 미사용 |
 
 ## 3. 확정된 핵심 결정사항
 
@@ -32,7 +32,8 @@
 |---|---|---|
 | 저장소 구조 | **모노레포** (`app/` + `backend/`) | 1인~소수 팀, 프론트-백 동시 변경 잦음 → 단일 PR 관리 |
 | 감정 분석 | **외부 LLM API + 비동기** | 빠른 구현·높은 정확도, 저장 UX·장애 격리 |
-| 인증 | **Supabase Auth(소셜: 카카오·구글) → 백엔드 Supabase JWT 검증** | 자체 소셜 검증·JWT 발급/회전 구현 부담 제거(Supabase 위임). 트레이드오프: Supabase 종속. 애플은 추후 확장 |
+| 인증 | **Supabase Auth(이메일 + 소셜: 카카오·구글) → 백엔드 Supabase JWT 검증** | 자체 소셜 검증·JWT 발급/회전 구현 부담 제거(Supabase 위임). 이메일·소셜 모두 동일 토큰이라 백엔드 분기 없음. 트레이드오프: Auth만 Supabase 종속(데이터는 무관). 애플은 추후 확장 |
+| 데이터 저장소 | **별도 PostgreSQL(Supabase 미사용)** | 인증만 Supabase, 데이터는 별도 PG로 분리해 DB 통제권 확보·종속을 Auth로 한정. 대가: 배포 DB 운영(백업·리전·패치) 직접 부담. 인증↔데이터는 `users.supabase_uid` 컬럼 매핑으로 연결(FK·RLS·트리거 미사용) |
 | 음악 소스 | **미정 → 인터페이스 추상화** | 자체 음원/외부 API 어느 쪽도 흡수 |
 | 하루 기록 수 | **하루 1개 + 수정 가능** | "오늘의 일기" 컨셉, 재작성은 UPDATE |
 | 소셜 상호작용 | **공감(리액션)만** | 댓글의 알림/신고/모더레이션 복잡도 회피 |
@@ -78,12 +79,13 @@ record/
 └─────────────┘                          │     → Service(@Transactional)│
                                          │       → Mapper(MyBatis)   │
                                          │         → PostgreSQL      │
+                                         │   (별도 PG, Supabase 아님) │
                                          │  Service ─@Async─▶ LLM API│
                                          │  (감정분석, 트랜잭션 밖)   │
                                          └──────────────────────────┘
 ```
 
-- 인증 경로: 앱이 **Supabase SDK로 소셜 로그인**(구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신). 앱은 백엔드 호출 시 `Authorization: Bearer <Supabase access token>` 첨부 → 백엔드 `SupabaseJwtFilter`가 서명/만료 검증 후 `sub`(uuid)로 `users` JIT 프로비저닝. 자체 JWT 발급·refresh 회전 없음.
+- 인증 경로: 앱이 **Supabase SDK로 이메일/소셜 로그인**(이메일 `signUp`(닉네임→`user_metadata`)·`signInWithPassword` 확인 메일 필수 / 구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신). 앱은 백엔드 호출 시 `Authorization: Bearer <Supabase access token>` 첨부 → 백엔드 `SupabaseJwtFilter`가 JWKS(ES256 비대칭 공개키)로 서명/만료/aud 검증 후 `sub`(uuid)로 `users` JIT 프로비저닝. 자체 JWT 발급·refresh 회전 없음.
 - 동기 경로: 앱 요청 → Controller → Service → Mapper → DB → 표준 응답.
 - 비동기 경로: 일기 저장/수정 → `PENDING` 즉시 응답 → `@Async`로 LLM 감정 분석 → 테마/음악 매핑 → `DONE` 갱신.
 
@@ -116,7 +118,7 @@ record/
 > 아래는 큰 줄기 요약이다. **Phase·Task 단위 상세 로드맵은 [`ROADMAP.md`](./ROADMAP.md)를 기준**으로 한다.
 
 1. 모노레포 이전(`git mv`) + backend 스캐폴드 + Flyway `V1__init.sql`.
-2. 인증: **Supabase Auth**(소셜 카카오·구글, 2종 범위) — 앱은 Supabase SDK 로그인, 백엔드는 Supabase JWT 검증 + `users` JIT 프로비저닝. **애플은 추후 확장**(Supabase Apple provider 추가).
+2. 인증: **Supabase Auth**(이메일 + 소셜 카카오·구글) — 앱은 Supabase SDK 로그인, 백엔드는 Supabase JWT 검증 + `users` JIT 프로비저닝(이메일·소셜 동일 경로). 프로필은 `GET/PUT /users/me`로 조회·수정. **애플은 추후 확장**(Supabase Apple provider 추가).
 3. 일기 CRUD(하루 1개·수정) + 비동기 감정 분석(폴백) + 테마/음악 매핑.
 4. 피드/친구 + 공유 + 공감 리액션.
 5. 앱: Dio/Riverpod/go_router 골격 → 기능 순차 구현.
