@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/error/failure.dart';
@@ -24,6 +26,16 @@ class ApiProfileRepository implements ProfileRepository {
   @override
   Future<User> updateMe(UpdateProfileRequest request) async {
     final res = await _dio.put('/users/me', data: request.toJson());
+    return _unwrapUser(res.data);
+  }
+
+  @override
+  Future<User> uploadAvatar(Uint8List bytes, String filename) async {
+    // multipart part 이름은 백엔드 @RequestPart("file")과 일치해야 한다.
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final res = await _dio.post('/users/me/avatar', data: form);
     return _unwrapUser(res.data);
   }
 

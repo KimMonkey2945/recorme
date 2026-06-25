@@ -33,12 +33,21 @@
            AND deleted_at IS NULL
     </select>
 
-    <!-- 프로필 수정. 소유권은 userId로만 식별(IDOR 차단). 갱신 행수로 대상 존재 확인. -->
+    <!-- 프로필 수정(닉네임·자기소개). 프로필 이미지는 건드리지 않는다(아바타 업로드와 경로 분리).
+         소유권은 userId로만 식별(IDOR 차단). 갱신 행수로 대상 존재 확인. -->
     <update id="updateProfile">
         UPDATE users
-           SET nickname          = #{nickname},
-               profile_image_url = #{profileImageUrl},
-               bio               = #{bio},
+           SET nickname   = #{nickname},
+               bio        = #{bio},
+               updated_at = now()
+         WHERE id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- 프로필 이미지 경로만 갱신(아바타 업로드 전용). 닉네임·자기소개 불변. -->
+    <update id="updateProfileImage">
+        UPDATE users
+           SET profile_image_url = #{profileImageUrl},
                updated_at        = now()
          WHERE id = #{userId}
            AND deleted_at IS NULL

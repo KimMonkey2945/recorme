@@ -18,4 +18,16 @@ class ApiConfig {
   static const String apiPrefix = '/api/v1';
 
   static String get apiBaseUrl => '$baseUrl$apiPrefix';
+
+  /// 서버가 돌려준 이미지 경로를 화면에서 쓸 절대 URL로 변환한다.
+  ///
+  /// - null/빈 값 → null(표시 안 함)
+  /// - http(s)로 시작(외부 소셜 이미지) → 그대로
+  /// - 그 외(내부 업로드 상대경로 `/files/...`) → `apiBaseUrl`(호스트+/api/v1)에 결합
+  ///   백엔드 정적 서빙이 `/api/v1/files/...`이므로 컨텍스트 경로를 포함한 apiBaseUrl과 맞물린다.
+  static String? resolveImageUrl(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return '$apiBaseUrl$path';
+  }
 }

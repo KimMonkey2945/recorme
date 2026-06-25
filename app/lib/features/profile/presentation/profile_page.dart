@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/api_config.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
+import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import 'providers/profile_providers.dart';
 
@@ -60,8 +62,6 @@ class _ProfileBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final hasImage =
-        user.profileImageUrl != null && user.profileImageUrl!.isNotEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -69,20 +69,12 @@ class _ProfileBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: AppSpacing.lg),
-          // 아바타
+          // 아바타(등록 이미지 또는 닉네임 이니셜)
           Center(
-            child: CircleAvatar(
+            child: ProfileAvatar(
+              imageUrl: ApiConfig.resolveImageUrl(user.profileImageUrl),
               radius: 48,
-              backgroundColor: AppColors.accentSoft,
-              foregroundImage:
-                  hasImage ? NetworkImage(user.profileImageUrl!) : null,
-              child: hasImage
-                  ? null
-                  : const Icon(
-                      Icons.person_rounded,
-                      size: 48,
-                      color: AppColors.accent,
-                    ),
+              initial: ProfileAvatar.initialOf(user.nickname),
             ),
           ),
           const SizedBox(height: AppSpacing.lg),

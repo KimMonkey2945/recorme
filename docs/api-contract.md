@@ -39,20 +39,35 @@
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
 | GET | `/users/me` | 현재 사용자 프로필 조회(JIT 프로비저닝 보장) | ○ |
-| PUT | `/users/me` | 내 프로필 수정(닉네임·프로필 이미지·자기소개) | ○ |
+| PUT | `/users/me` | 내 프로필 수정(닉네임·자기소개) | ○ |
+| POST | `/users/me/avatar` | 프로필 이미지 업로드(multipart) | ○ |
 
 ```jsonc
 // GET /users/me  응답 data
 { "uuid": "...", "nickname": "...", "email": "...", "profileImageUrl": "...", "bio": "..." }
+// profileImageUrl: 내부 업로드는 상대 경로(/files/avatars/...), 외부 소셜 제공분은 절대 URL.
+//                  앱이 http로 시작하면 그대로, 아니면 apiBaseUrl과 결합해 표시한다.
 
-// PUT /users/me  요청 (nickname 필수, 나머지 선택. email은 Supabase 소유라 수정 불가)
-{ "nickname": "새 닉네임", "profileImageUrl": "https://...", "bio": "한 줄 소개" }
+// PUT /users/me  요청 (nickname 필수, bio 선택. email·profileImageUrl은 이 경로에서 수정 불가)
+{ "nickname": "새 닉네임", "bio": "한 줄 소개" }
 // 응답 data: 갱신된 user (GET /users/me 와 동일 형태)
-// 에러: 검증 실패(닉네임 빈값/길이 50 초과, bio 300 초과, URL 형식·길이 2048 초과) → 400 VALIDATION_ERROR
-//       미인증 → 401 UNAUTHORIZED
+// 에러: 검증 실패(닉네임 빈값/길이 50 초과, bio 300 초과) → 400 VALIDATION_ERROR / 미인증 → 401 UNAUTHORIZED
+
+// POST /users/me/avatar  요청: multipart/form-data, part name="file" (이미지 1개)
+// 응답 data: 갱신된 user (profileImageUrl이 새 경로로 갱신됨). 검증·저장·DB 갱신을 즉시 수행.
+// 에러: 비이미지/손상 파일 → 400 INVALID_FILE / 용량 초과 → 413 FILE_TOO_LARGE / 미인증 → 401 UNAUTHORIZED
 ```
 
+> **프로필 이미지 = 백엔드 파일 업로드.** 닉네임/자기소개 수정(`PUT`)과 이미지 업로드(`POST .../avatar`)를 **분리**해, 텍스트 수정이 이미지를 덮어쓰지 않는다. 파일 바이너리는 백엔드 로컬 디스크에 저장하고 DB에는 경로만 보관한다(BYTEA 미사용, Supabase Storage 미사용). 허용 형식 jpg/png/webp, 최대 5MB(매직바이트 검증).
+
 > provider 범위는 **이메일 + 소셜(카카오·구글)**. 소셜은 Supabase Authorized Client IDs로 검증, 이메일은 Supabase Email provider(확인 메일 필수). **애플은 추후 Supabase Apple provider로 확장**한다.
+
+### 정적 파일 (files)
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| GET | `/files/**` | 업로드된 이미지 서빙(UUID 파일명) | ✕(공개) |
+
+> 프로필 이미지는 공유 화면에서 비로그인자도 보므로 공개 서빙한다. 파일명이 UUID라 URL 추측·열거가 불가하다. 컨텍스트 경로를 포함한 실제 URL은 `/api/v1/files/...`이며, DB에는 호스트 비종속 상대 경로(`/files/...`)만 저장한다.
 
 ### 일기 (diary)
 | 메서드 | 경로 | 설명 | 인증 |

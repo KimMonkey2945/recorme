@@ -127,7 +127,7 @@
 
 백엔드 인증·일기 CRUD를 실제로 구현하고, 앱의 더미 데이터를 실제 API 호출로 교체한다. 인증은 소셜(카카오/구글)에 더해 **이메일 가입/로그인**(확인 메일 필수)을 지원하고, 가입 정보는 별도 PostgreSQL `users`에 JIT 저장되며 **프로필 조회·수정(F011)**을 제공한다. 인증 검증은 **JWKS(ES256 비대칭)**, 로그인 즉시 JIT 저장(워밍업), **웹 구글 OAuth·중복가입 안내·비밀번호 재설정**까지 포함한다. DB는 **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`)로 구성한다. 모든 API/로직 Task는 구현 직후 스택 네이티브 테스트로 검증한다.
 
-> **진행 현황(2026-06-25)**: 인증·프로필 토대 완료 — 백엔드(Task 007·007-1) 구현·로컬 PG18 실측, 앱(Task 010·010-1) `flutter test` 36개 통과 + 웹 E2E로 가입→DB 저장·프로필 수정 실동작 확인. Testcontainers 통합테스트는 배포 전 Docker 일괄 검증(사용자 방침). **남은 핵심 기능: 일기 CRUD(Task 008·009·011)**.
+> **진행 현황(2026-06-25)**: 인증·프로필 토대 + **프로필 이미지 파일 업로드** 완료 — 백엔드(Task 007·007-1·**007-2**) 구현·로컬 PG18 실측, 앱(Task 010·010-1·**010-2**) `flutter test` 45개 통과 + 웹 E2E로 가입→DB 저장·프로필 수정 실동작 확인. 프로필 이미지는 **백엔드 파일 업로드 방식**(로컬 디스크 `StorageService`, DB엔 경로만, `POST /users/me/avatar` + `/files/**` 정적 서빙)으로 추가했고, 앱 상단 프로필 버튼은 등록 이미지/닉네임 이니셜 아바타로 교체했다. Testcontainers 통합테스트는 배포 전 Docker 일괄 검증(사용자 방침). **남은 핵심 기능: 일기 CRUD(Task 008·009·011)**.
 
 - **Task 007: 백엔드 Supabase JWT 검증 + 사용자 JIT 프로비저닝** ✅ - 구현 완료(통합테스트 Docker 대기)
   - 구현 기능: F001, F010
@@ -150,6 +150,16 @@
   - DTO: `UserProfileResponse`(uuid/nickname/email/profileImageUrl/bio), `UpdateProfileRequest`(`@NotBlank @Size(50)` nickname, `@Size(300)` bio, `@URL @Size(2048)` profileImageUrl). bio 빈 문자열 → NULL 정규화
   - 검증 실패는 기존 `GlobalExceptionHandler`가 `VALIDATION_ERROR`(400)로 변환 — 신규 ErrorCode 불필요
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 프로필 조회(JIT 보장), 수정 정상(updated_at 갱신), 검증 실패(닉네임 빈값/길이·bio 길이·URL 형식 → 400), 본인 외 수정 불가(IDOR), 미인증(401)
+
+- **Task 007-2: 백엔드 프로필 이미지 업로드(StorageService + 정적 서빙)** ✅ - 구현 완료(통합테스트 Docker 대기)
+  - 구현 기능: F011 (프로필 이미지 파일 첨부)
+  - ✅ `infra/storage`(StorageService(if)/LocalDiskStorageService/StorageProperties)·`global/config/WebMvcConfig`(정적 서빙)·`POST /users/me/avatar`(multipart) 구현. 컴파일 통과 + `UserControllerTest`(업로드 슬라이스 포함) 4/4·`SupabaseJwtVerifierTest` 통과. `updateAvatar`/분리 회귀 Testcontainers 테스트는 작성 완료, 실행은 Docker 가용 시.
+  - **저장 방식(확정)**: 파일 바이너리는 백엔드 **로컬 디스크**(`record.storage.root`, 기본 `./var/storage`)에 `avatars/yyyy/MM/{uuid}.{ext}`로 저장하고, DB(`users.profile_image_url`)에는 **호스트 비종속 상대경로**(`/files/...`)만 저장(BYTEA·Supabase Storage 미사용). **DB 스키마 변경 없음**(`profile_image_url TEXT` 재사용).
+  - **검증/보안**: 매직바이트(jpg/png/webp) 검증, 서버 생성 UUID 파일명(경로 탐색 차단), 멀티파트 한도 5MB(`spring.servlet.multipart.*`) → `GlobalExceptionHandler`가 `FILE_TOO_LARGE`(413). 신규 `ErrorCode`: `INVALID_FILE`/`FILE_TOO_LARGE`.
+  - **정적 서빙**: `WebMvcConfig`가 `/files/**` → 저장 루트 매핑, `SecurityConfig`에서 `GET /files/**` permitAll(공개, UUID 파일명으로 열거 차단).
+  - **PUT 분리(중요)**: `UpdateProfileRequest`에서 `profileImageUrl` 제거 + `updateProfile` 매퍼가 `profile_image_url`을 더 이상 갱신하지 않음 → 닉네임/자기소개 수정이 아바타를 NULL로 덮어쓰던 잠재 버그 해소. 아바타는 `updateAvatar`(파일 저장 tx 밖 + 단일 UPDATE + 실패 시 보상 삭제 + 구 파일 best-effort 삭제)로만 갱신.
+  - ⚠️ **배포 영속성**: 로컬 디스크는 컨테이너 ephemeral → 운영 진입 전 `S3StorageService` 교체 또는 영속 볼륨 마운트 결정 필요(인터페이스 격리로 구현체만 교체).
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 정상 업로드(경로 저장·디스크 파일 생성), 기존 파일 교체 시 구 파일 삭제, 잘못된 MIME → INVALID_FILE(기존 이미지 보존), 외부 URL 보유자 업로드 시 no-op 삭제, **PUT 닉네임 수정이 이미지 보존(분리 회귀)**, 업로드 슬라이스 200·미인증 401
 
 - **Task 008: 백엔드 일기 upsert CRUD + 캘린더 엔드포인트** - 우선순위
   - DB: `V2__add_diaries.sql` 신설로 `diaries` 테이블·`uq_diary_user_day` 부분 유니크·인덱스 생성(Task 007에서 V1의 users만 남기고 분리됨). 기존 `FlywayMigrationTest`의 diaries 검증(부분 유니크·upsert·소프트삭제 재작성)을 여기로 이관
@@ -188,6 +198,14 @@
   - `shared/models/user.dart`에 `bio` 추가(fromJson/toJson/copyWith/==/hashCode). 라우트 `/profile`·`/profile/edit`(push). 진입점: 메인 상단 앱바. 하단 탭은 캘린더/목록 2개 유지
   - 수정 성공 시 `ref.invalidate(myProfileProvider)` + 스낵바 + pop. (선행: Task 007-1 백엔드 `PUT /users/me`, Task 010 `AuthInterceptor` 토큰 첨부)
   - **(구현 직후 필수 테스트)** `integration_test`(Fake repository override) — 프로필 조회(로딩→데이터), 수정 제출(`UpdateProfileRequest.toJson` 인자 검증→invalidate→pop), bio 300자 검증, 미인증 `/profile` 접근 가드
+
+- **Task 010-2: 앱 프로필 이미지 표시·업로드 (앱바 아바타·기본이미지·image_picker)** ✅ - 완료
+  - 구현 기능: F011 (프로필 이미지 파일 첨부)
+  - ✅ 공용 `shared/widgets/profile_avatar.dart`(등록 이미지/닉네임 이니셜/사람 아이콘 폴백, onTap 시맨틱스) 신설 → 메인 앱바 프로필 버튼(아이콘→아바타, 48dp 탭영역)·프로필 화면 아바타에 재사용. `ApiConfig.resolveImageUrl`(http→그대로 / 상대경로→apiBaseUrl 결합) 추가.
+  - ✅ 이미지 선택·업로드: `image_picker` 추가, `ProfileEditImageSection`(미리보기·업로드 오버레이·"사진 변경") 신설, `profile_edit_page`에 삽입 + URL 텍스트필드 제거. `_onPickImage`가 바이트(`Uint8List`, 웹·모바일 공통)를 읽어 즉시 `uploadAvatar`→`invalidate(myProfileProvider)`. 닉네임/bio 저장과 분리.
+  - ✅ `ProfileRepository.uploadAvatar(bytes, filename)`(+ `ApiProfileRepository` FormData multipart) 추가, 앱 `UpdateProfileRequest`에서 `profileImageUrl` 제거(백엔드 DTO 정합).
+  - ✅ `flutter analyze` 무경고 + `flutter test` 45개(프로필 이미지 9건 신설 포함) 통과. ⚠️ `cached_network_image`는 네이티브 의존성·테스트 결정성 고려로 미도입(`Image.network`+세션 ImageCache 사용), 향후 최적화로 남김.
+  - **(구현 직후 필수 테스트)** `flutter test` — `ProfileAvatar`(이미지/이니셜/아이콘 폴백·onTap), `ProfileEditImageSection`(업로드 오버레이·로컬 미리보기·사진변경 콜백), `uploadAvatar` 저장소 계약(바이트·파일명 전달·실패 INVALID_FILE). image_picker 실선택 E2E는 웹/실기기 수동 검증.
 
 - **Task 011: 앱 일기 기능 API 연동 (더미 교체)**
   - 구현 기능: F002, F003, F004, F005, F006, F007

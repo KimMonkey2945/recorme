@@ -49,6 +49,7 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // CORS preflight
 						.requestMatchers(HttpMethod.GET, "/diaries/shared/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/files/**").permitAll()  // 업로드 이미지 공개 서빙(UUID 파일명)
 						.anyRequest().authenticated())
 				.exceptionHandling(handler ->
 						handler.authenticationEntryPoint(authenticationEntryPoint))

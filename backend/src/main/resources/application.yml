@@ -11,6 +11,11 @@ spring:
     # 운영 안전: clean 비활성화. 모든 스키마 변경은 신규 버전 마이그레이션으로만.
     clean-disabled: true
     locations: classpath:db/migration
+  # 프로필 이미지 업로드 한도. 초과 시 GlobalExceptionHandler가 FILE_TOO_LARGE(413)로 변환.
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 # MyBatis: snake_case 컬럼 → camelCase 프로퍼티 자동 매핑
 mybatis:
@@ -23,6 +28,15 @@ mybatis:
 server:
   servlet:
     context-path: /api/v1
+
+# ===== 파일 스토리지 (프로필 이미지 등) =====
+# 파일 바이너리는 로컬 디스크 root에 저장하고 DB에는 url-path 기준 상대 경로만 보관한다.
+# 정적 서빙은 WebMvcConfig가 {url-path}/** → root로 매핑(실제 URL은 컨텍스트 경로 포함 /api/v1/files/...).
+# ⚠️ 배포 시 root는 영속 볼륨 경로로 주입하거나 S3 구현으로 교체할 것(컨테이너 ephemeral).
+record:
+  storage:
+    root: ${STORAGE_ROOT:./var/storage}
+    url-path: /files
 
 # ===== Supabase Auth (ES256/JWKS 검증 전용) =====
 # 백엔드는 자체 JWT를 발급하지 않고 Supabase가 ES256로 서명한 access token을 JWKS로 검증만 한다.

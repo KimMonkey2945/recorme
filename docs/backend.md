@@ -18,7 +18,7 @@ com.recordapp
 │  │  └─ service/    (UserProvisioningService — Supabase JWT의 sub/email로 users 자동 가입·매핑)
 │  │     (소셜 검증·JWT 발급·refresh 회전은 Supabase Auth가 전담 → controller/social/token 서비스 없음)
 │  ├─ user
-│  │  └─ controller/ (UserController — GET/PUT /users/me 프로필 조회·수정)
+│  │  └─ controller/ (UserController — GET/PUT /users/me, POST /users/me/avatar)
 │  │     service/ (UserService) mapper/ (UserMapper) dto/ (UserProfileResponse, UpdateProfileRequest) vo/
 │  ├─ diary
 │  │  ├─ controller/ (DiaryController)
@@ -40,8 +40,11 @@ com.recordapp
 │     └─ controller/ service/ mapper/ dto/
 └─ infra
    ├─ llm/           (LlmClient(if), ClaudeLlmClient, OpenAiLlmClient, prompt/)
-   └─ music/         (LocalFileMusicSource, SpotifyMusicSource ... 추후)
+   ├─ music/         (LocalFileMusicSource, SpotifyMusicSource ... 추후)
+   └─ storage/       (StorageService(if), LocalDiskStorageService, StorageProperties — S3StorageService 추후)
 ```
+
+> **파일 업로드/정적 서빙**: 프로필 이미지는 `POST /users/me/avatar`(multipart)로 받아 `StorageService`(인프라 격리, 로컬 디스크 → S3 교체 가능)가 매직바이트 검증 후 `{root}/avatars/yyyy/MM/{uuid}.{ext}`에 저장하고 상대 경로(`/files/...`)를 반환한다. DB(`users.profile_image_url`)에는 경로만 저장(BYTEA 미사용). 정적 서빙은 `global/config/WebMvcConfig`가 `/files/**`를 저장 루트로 매핑하고, `SecurityConfig`에서 `GET /files/**`를 permitAll(공개)로 연다. 멀티파트 한도(5MB)는 `application.yml`(`spring.servlet.multipart.*`), 초과 시 `GlobalExceptionHandler`가 `FILE_TOO_LARGE`(413)로 변환한다.
 
 - MyBatis XML: `backend/src/main/resources/mapper/*.xml` (mapper 인터페이스와 1:1).
 - **도메인 기반 채택 근거**: 기능 경계가 명확(auth/diary/emotion/social)하고 신규 기능을 패키지 단위로 응집·추가/삭제할 수 있다. 레이어 기반은 도메인이 적을 때만 유리하나 본 앱은 도메인이 다수.

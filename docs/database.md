@@ -53,7 +53,7 @@ CREATE TABLE users (
     supabase_uid      UUID NOT NULL,                             -- Supabase auth.users.id 매핑(JWT sub)
     nickname          VARCHAR(50) NOT NULL,
     email             VARCHAR(255),                              -- 소셜 미제공 가능 → nullable
-    profile_image_url TEXT,
+    profile_image_url TEXT,                                      -- 이미지 참조(경로/URL)만, 바이너리 아님. 내부 업로드=상대경로(/files/avatars/...), 외부 소셜=절대 URL. 호스트는 앱이 조립
     bio               VARCHAR(300),                              -- 자기소개(프로필 수정 대상, nullable)
     status            VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',     -- ACTIVE/DORMANT/WITHDRAWN
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),

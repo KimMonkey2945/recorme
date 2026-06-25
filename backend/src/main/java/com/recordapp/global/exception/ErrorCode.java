@@ -20,6 +20,10 @@ public enum ErrorCode {
 	// 일기
 	DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "일기를 찾을 수 없습니다."),
 
+	// 파일 업로드
+	INVALID_FILE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일입니다."),
+	FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 너무 큽니다."),
+
 	// 공통
 	VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다."),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");

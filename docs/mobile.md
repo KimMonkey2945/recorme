@@ -57,6 +57,11 @@ lib/
 - **모델 직렬화**: `freezed` + `json_serializable`(불변·copyWith·동등성).
 - 백엔드 응답 DTO와 앱 DTO는 1:1 매핑(→ [`api-contract.md`](./api-contract.md)).
 
+### 5-1. 프로필 이미지(파일 첨부) 흐름
+- **선택·업로드**: `profile` 수정 화면에서 `image_picker`로 이미지를 고르면 바이트(`Uint8List`, 웹·모바일 공통)를 읽어 즉시 `POST /users/me/avatar`(multipart)로 업로드한다. 닉네임/자기소개 저장(`PUT /users/me`)과 **분리**된 별도 액션이라 텍스트 수정이 이미지를 덮어쓰지 않는다.
+- **표시**: 공용 `ProfileAvatar` 위젯이 메인 앱바(작은 radius)와 프로필 화면(큰 radius)에서 재사용된다. 등록 이미지가 없으면 **닉네임 이니셜**(없으면 사람 아이콘)로 폴백.
+- **URL 조립**: 서버가 돌려준 `profileImageUrl`은 `ApiConfig.resolveImageUrl`로 절대 URL화한다 — `http(s)`로 시작하면(외부 소셜) 그대로, 아니면(내부 업로드 상대경로 `/files/...`) `apiBaseUrl`(호스트+`/api/v1`)과 결합. 호스트는 DB에 저장하지 않아 환경 이전에 안전하다.
+
 ## 6. 감정 테마/음악 동적 적용 전략
 
 - 백엔드 `DiaryResponse`에 테마 스펙(`backgroundType`/`backgroundValue`, `fontFamily`, `textColor`)과 트랙(`streamUrl`/`sourceType`/`sourceRef`) 포함.

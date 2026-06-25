@@ -25,12 +25,21 @@ public interface UserMapper {
 	UserProfileResponse findProfileByUserId(@Param("userId") Long userId);
 
 	/**
-	 * 내부 PK 기준 프로필 수정. 소유권은 userId로만 식별(요청 바디에 id 없음 → IDOR 차단).
+	 * 내부 PK 기준 프로필 수정(닉네임·자기소개). 프로필 이미지는 건드리지 않는다.
+	 * 소유권은 userId로만 식별(요청 바디에 id 없음 → IDOR 차단).
 	 *
 	 * @return 갱신된 행 수(0이면 대상 부재/탈퇴)
 	 */
 	int updateProfile(@Param("userId") Long userId,
 			@Param("nickname") String nickname,
-			@Param("profileImageUrl") String profileImageUrl,
 			@Param("bio") String bio);
+
+	/**
+	 * 내부 PK 기준 프로필 이미지 경로만 갱신(닉네임·자기소개 불변).
+	 * 아바타 업로드 전용 — 이미지와 텍스트 필드 수정 경로를 분리한다.
+	 *
+	 * @return 갱신된 행 수(0이면 대상 부재/탈퇴)
+	 */
+	int updateProfileImage(@Param("userId") Long userId,
+			@Param("profileImageUrl") String profileImageUrl);
 }

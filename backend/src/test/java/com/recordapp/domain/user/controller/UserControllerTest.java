@@ -1,10 +1,14 @@
 package com.recordapp.domain.user.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.recordapp.domain.user.dto.UserProfileResponse;
 import com.recordapp.domain.user.service.UserService;
 import com.recordapp.global.security.JwtAuthenticationEntryPoint;
 import com.recordapp.global.security.SecurityConfig;
@@ -18,8 +22,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * UserController 검증(400) 슬라이스 테스트(Docker 불필요).
@@ -70,7 +76,26 @@ class UserControllerTest {
 	}
 
 	@Test
-	void update_invalidProfileImageUrl_returns400() throws Exception {
-		expectValidationError("{\"nickname\":\"valid\",\"profileImageUrl\":\"not a url\"}");
+	void uploadAvatar_valid_returns200() throws Exception {
+		// 서비스(저장·검증)는 모킹 — 컨트롤러가 multipart를 받아 서비스로 위임하고 표준 응답을 내는지만 검증.
+		when(userService.updateAvatar(any(), any(MultipartFile.class)))
+				.thenReturn(new UserProfileResponse("u-uuid", "닉", "u@e.com", "/files/avatars/2026/06/x.png", null));
+		MockMultipartFile file = new MockMultipartFile(
+				"file", "a.png", MediaType.IMAGE_PNG_VALUE, new byte[] {1, 2, 3});
+
+		mockMvc.perform(multipart("/users/me/avatar").file(file))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.profileImageUrl").value("/files/avatars/2026/06/x.png"));
+	}
+
+	@Test
+	void uploadAvatar_missingFilePart_returns400() throws Exception {
+		// file 파트 없는 multipart → MissingServletRequestPartException → 400 VALIDATION_ERROR(500 아님)
+		mockMvc.perform(multipart("/users/me/avatar"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+		verifyNoInteractions(userService);
 	}
 }
