@@ -1,39 +1,22 @@
 import 'package:dio/dio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../storage/secure_storage.dart';
-
-/// access 토큰 첨부 + 401 시 refresh 자동 갱신 골격.
+/// 모든 요청에 현재 Supabase 세션의 access token을 Authorization 헤더로 첨부한다.
 ///
-/// `QueuedInterceptorsWrapper`는 동시에 발생한 401을 직렬화해,
-/// refresh가 한 번만 일어나도록 한다. 실제 refresh 호출/원요청 재시도 로직은
-/// Phase 3(Task 010)에서 완성한다.
+/// 세션 저장·자동 갱신은 supabase_flutter SDK가 담당하므로, 여기서는 매 요청 시
+/// 최신 access token을 읽어 붙이기만 한다(만료 임박 시 SDK가 갱신해 둔 값).
+/// 401 발생 시 별도 refresh 로직은 두지 않는다 — 갱신 불가 상태면 SDK가
+/// 세션을 비우고 `onAuthStateChange`가 라우터 가드를 로그인 화면으로 보낸다.
 class AuthInterceptor extends QueuedInterceptorsWrapper {
-  AuthInterceptor(this._tokenStorage);
-
-  final TokenStorage _tokenStorage;
-
   @override
   Future<void> onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await _tokenStorage.readAccessToken();
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
     }
     handler.next(options);
-  }
-
-  @override
-  Future<void> onError(
-    DioException err,
-    ErrorInterceptorHandler handler,
-  ) async {
-    if (err.response?.statusCode == 401) {
-      // TODO(Task 010): POST /auth/refresh 로 access 갱신 후 원요청 재시도.
-      //  - refresh 성공: 새 access 저장 → 원요청 재시도(resolve)
-      //  - refresh 실패: 토큰 삭제 → 로그인 화면 강제 이동
-    }
-    handler.next(err);
   }
 }

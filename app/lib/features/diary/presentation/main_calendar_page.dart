@@ -89,6 +89,11 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
           title: const Text('캘린더'),
           actions: [
             IconButton(
+              tooltip: '프로필',
+              onPressed: () => context.push('/profile'),
+              icon: const Icon(Icons.person_outline_rounded),
+            ),
+            IconButton(
               tooltip: '로그아웃',
               onPressed: () =>
                   ref.read(authControllerProvider.notifier).signOut(),

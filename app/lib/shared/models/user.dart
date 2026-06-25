@@ -10,6 +10,7 @@ class User {
     required this.nickname,
     this.email,
     this.profileImageUrl,
+    this.bio,
   });
 
   final String uuid;
@@ -17,11 +18,15 @@ class User {
   final String? email;
   final String? profileImageUrl;
 
+  /// 자기소개(최대 300자). 미설정 시 null.
+  final String? bio;
+
   factory User.fromJson(Map<String, dynamic> json) => User(
         uuid: json['uuid'] as String,
         nickname: json['nickname'] as String,
         email: json['email'] as String?,
         profileImageUrl: json['profileImageUrl'] as String?,
+        bio: json['bio'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +34,7 @@ class User {
         'nickname': nickname,
         'email': email,
         'profileImageUrl': profileImageUrl,
+        'bio': bio,
       };
 
   User copyWith({
@@ -36,12 +42,14 @@ class User {
     String? nickname,
     String? email,
     String? profileImageUrl,
+    String? bio,
   }) =>
       User(
         uuid: uuid ?? this.uuid,
         nickname: nickname ?? this.nickname,
         email: email ?? this.email,
         profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+        bio: bio ?? this.bio,
       );
 
   @override
@@ -50,8 +58,10 @@ class User {
       other.uuid == uuid &&
       other.nickname == nickname &&
       other.email == email &&
-      other.profileImageUrl == profileImageUrl;
+      other.profileImageUrl == profileImageUrl &&
+      other.bio == bio;
 
   @override
-  int get hashCode => Object.hash(uuid, nickname, email, profileImageUrl);
+  int get hashCode =>
+      Object.hash(uuid, nickname, email, profileImageUrl, bio);
 }
