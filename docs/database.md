@@ -120,27 +120,44 @@ CREATE INDEX idx_emotion_track_emotion ON emotion_track_map(emotion_code);
 
 -- ========== 일기 기록 ==========
 -- [V2__add_diaries.sql] Task 008(일기 CRUD)에서 생성. users(id) FK라 users(V1) 이후 적용.
+-- ⚠️ MVP 실제 적용본(V2)은 theme_id/track_id 및 공개 피드 인덱스(idx_diaries_visibility_created)를
+--    제외한다(Phase 4에서 ALTER/추가). 아래는 최종 목표 스키마 통합 뷰이며, theme_id/track_id 줄은 Phase 4 표시.
 CREATE TABLE diaries (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     share_token     UUID NOT NULL DEFAULT gen_random_uuid(),    -- 공유 링크용
     user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content         TEXT NOT NULL,
     written_date    DATE NOT NULL,                              -- 기록 대상 날짜
-    visibility      VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',     -- PRIVATE/FRIENDS/PUBLIC
-    analysis_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',     -- PENDING/DONE/FAILED
-    theme_id        BIGINT REFERENCES themes(id),               -- 적용 테마 스냅샷
-    track_id        BIGINT REFERENCES tracks(id),               -- 적용 음악 스냅샷
+    visibility      VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',     -- PRIVATE/FRIENDS/PUBLIC (enum 검증은 앱·백엔드)
+    analysis_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',     -- PENDING/DONE/FAILED (enum 검증은 앱·백엔드)
+    theme_id        BIGINT REFERENCES themes(id),               -- [Phase 4] 적용 테마 스냅샷 (V2 미포함)
+    track_id        BIGINT REFERENCES tracks(id),               -- [Phase 4] 적용 음악 스냅샷 (V2 미포함)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at      TIMESTAMPTZ,
-    CONSTRAINT uq_diaries_share_token UNIQUE (share_token)
+    CONSTRAINT uq_diaries_share_token UNIQUE (share_token),
+    -- 본문 길이 1~500: 백엔드 DiaryConstraints.CONTENT_MAX · 앱 maxLength 와 동일 상수(LLM 비용·품질 가드).
+    CONSTRAINT chk_diaries_content_len CHECK (char_length(content) BETWEEN 1 AND 500)
 );
 -- 하루 1기록 제한(수정은 동일 행 UPDATE) — 소프트 삭제분 제외
 CREATE UNIQUE INDEX uq_diary_user_day ON diaries(user_id, written_date) WHERE deleted_at IS NULL;
 -- 내 일기 목록(최신순)
 CREATE INDEX idx_diaries_user_date ON diaries(user_id, written_date DESC) WHERE deleted_at IS NULL;
--- 공개 피드
+-- 공개 피드 [Phase 4] (friendships 등장 시점에 추가 — V2 미포함)
 CREATE INDEX idx_diaries_visibility_created ON diaries(visibility, created_at DESC) WHERE deleted_at IS NULL;
+
+-- ========== 일기 첨부 사진 (diary 1:N) ==========
+-- [V3__add_diary_images.sql] Task 008(사진 첨부)에서 생성. diaries(id) FK라 diaries(V2) 이후 적용.
+-- 바이너리는 스토리지(로컬 디스크→S3)에 두고 DB엔 상대경로(/files/diaries/yyyy/MM/{uuid}.ext)만 저장.
+-- 일기당 최대 5장(서비스 레이어 검증, DB 트리거 미사용). 소프트삭제 컬럼 없음 — 삭제 시 행+디스크 파일 즉시 회수.
+CREATE TABLE diary_images (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    diary_id   BIGINT NOT NULL REFERENCES diaries(id) ON DELETE CASCADE,
+    image_url  TEXT NOT NULL,                                  -- 스토리지 상대경로
+    sort_order INT NOT NULL DEFAULT 0,                         -- 표시 순서(0부터)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_diary_images_diary ON diary_images(diary_id, sort_order);
 
 -- ========== 감정 분석 결과 (diary 1:1) ==========
 CREATE TABLE emotion_analyses (
@@ -198,7 +215,8 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
 - 스키마 변경은 MyBatis와 무관하게 Flyway로 버전 관리. 이 문서(§4)는 **최종 목표 전체 스키마**를 한곳에 모은 통합 뷰이고, 실제 적용은 **기능 구현 단위로 마이그레이션 파일을 하나씩 추가**한다("구현 때마다 테이블 하나씩").
 - **마이그레이션 분할 매핑**:
   - `V1__init.sql` — `users` (인증·프로필. 본 단계)
-  - `V2__add_diaries.sql` — `diaries` (Task 008, 일기 CRUD)
-  - 이후 감정/테마/음악/사회 도메인은 구현 시점에 `Vn__*.sql`로 추가. 마스터 데이터(`emotion_types`, 초기 `themes`/`tracks`)는 별도 `Vn__seed_*.sql`로 분리.
+  - `V2__add_diaries.sql` — `diaries` (Task 008, 일기 CRUD). MVP 스코프상 `theme_id`/`track_id`·공개 피드 인덱스 제외, `chk_diaries_content_len`(1~500) 포함.
+  - `V3__add_diary_images.sql` — `diary_images` (Task 008, 사진 첨부 1:N)
+  - 이후 감정/테마/음악/사회 도메인은 구현 시점에 `Vn__*.sql`로 추가(예: `diaries.theme_id`/`track_id`는 Phase 4에서 `ALTER TABLE ADD COLUMN`). 마스터 데이터(`emotion_types`, 초기 `themes`/`tracks`)는 별도 `Vn__seed_*.sql`로 분리.
 - **로컬 개발**: 네이티브 PostgreSQL 18(`recorme` DB/롤)에 빈 DB만 준비하면 `./gradlew bootRun` 시 Flyway가 자동 적용. DBeaver는 조회용. 도커는 배포 시점(Task 016)에 사용.
 - 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 신규 버전 마이그레이션으로만(기배포된 Vn은 수정 금지 — 미배포 단계에서만 V1 직접 재작성 허용).

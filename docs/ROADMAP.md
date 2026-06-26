@@ -17,9 +17,9 @@
 
 | 구분 | 스택 |
 |---|---|
-| 모바일(`app/`) | Flutter 3.27.x / Dart 3.6.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), json_serializable, flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in |
+| 모바일(`app/`) | Flutter / Dart 3.10.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in, image_picker, **flutter_quill(리치 텍스트 에디터, Delta JSON) + flutter_localizations** |
 | 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)** |
-| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`) |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -127,7 +127,8 @@
 
 백엔드 인증·일기 CRUD를 실제로 구현하고, 앱의 더미 데이터를 실제 API 호출로 교체한다. 인증은 소셜(카카오/구글)에 더해 **이메일 가입/로그인**(확인 메일 필수)을 지원하고, 가입 정보는 별도 PostgreSQL `users`에 JIT 저장되며 **프로필 조회·수정(F011)**을 제공한다. 인증 검증은 **JWKS(ES256 비대칭)**, 로그인 즉시 JIT 저장(워밍업), **웹 구글 OAuth·중복가입 안내·비밀번호 재설정**까지 포함한다. DB는 **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`)로 구성한다. 모든 API/로직 Task는 구현 직후 스택 네이티브 테스트로 검증한다.
 
-> **진행 현황(2026-06-25)**: 인증·프로필 토대 + **프로필 이미지 파일 업로드** 완료 — 백엔드(Task 007·007-1·**007-2**) 구현·로컬 PG18 실측, 앱(Task 010·010-1·**010-2**) `flutter test` 45개 통과 + 웹 E2E로 가입→DB 저장·프로필 수정 실동작 확인. 프로필 이미지는 **백엔드 파일 업로드 방식**(로컬 디스크 `StorageService`, DB엔 경로만, `POST /users/me/avatar` + `/files/**` 정적 서빙)으로 추가했고, 앱 상단 프로필 버튼은 등록 이미지/닉네임 이니셜 아바타로 교체했다. Testcontainers 통합테스트는 배포 전 Docker 일괄 검증(사용자 방침). **남은 핵심 기능: 일기 CRUD(Task 008·009·011)**.
+> **진행 현황(2026-06-26)**: 인증·프로필 토대(Task 007 계열·010 계열) + **일기 CRUD·사진 첨부·글자수 제한(Task 008·009·011·011-1) 구현 완료**. 백엔드: `V2 diaries`(content CHECK 1~500)·`V3 diary_images`(1:N, 경로만 저장), DiaryController/Service/Mapper(upsert ON CONFLICT 201/200·커서 페이징·소유권 IDOR 차단), 사진 업로드/삭제(StorageService 재사용, 파일 IO 트랜잭션 밖+보상삭제, **삭제 시 디스크 파일 즉시 회수**), `IMAGE_LIMIT_EXCEEDED`(409)·multipart 26MB. 컴파일·@WebMvcTest 통과, Testcontainers(DiaryServiceTest·DiaryIntegrationTest) 작성 완료(실행은 배포 전 Docker 일괄). 앱: 에디터 사진 썸네일·글자수 카운터(하드 500)·`ApiDiaryRepository` 실연동, `flutter test` 63개 + `integration_test` 4개 통과, `flutter analyze` 무경고. 확정 정책: **글자수 500자 하드 제한**(앱 maxLength+백엔드 @Size+DB CHECK 동일 상수), **사진 일기당 5장·장당 5MB**(디스크 저장·DB 경로만·삭제 시 디스크 회수). MVP 스코프상 theme/track·피드는 Phase 4. **남은 검증: Testcontainers Docker 일괄 실행**.
+> **추가 고도화(Task 011-2, 2026-06-26)**: 본문을 **리치 텍스트(flutter_quill, Delta JSON)**로 전환하고 **사진을 본문 인라인으로 통합** → `diary_images` 테이블 제거(`V4`=리치 본문/`content_text`, `V5`=테이블 드롭), 글자수 500자는 **순수 텍스트 기준**. **목록 실시간 갱신**(provider invalidate)·**미래 날짜 선택 차단** 적용. 웹 한글 IME는 flutter_quill 한계로 모바일에서 검증(수용).
 
 - **Task 007: 백엔드 Supabase JWT 검증 + 사용자 JIT 프로비저닝** ✅ - 구현 완료(통합테스트 Docker 대기)
   - 구현 기능: F001, F010
@@ -161,8 +162,9 @@
   - ⚠️ **배포 영속성**: 로컬 디스크는 컨테이너 ephemeral → 운영 진입 전 `S3StorageService` 교체 또는 영속 볼륨 마운트 결정 필요(인터페이스 격리로 구현체만 교체).
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 정상 업로드(경로 저장·디스크 파일 생성), 기존 파일 교체 시 구 파일 삭제, 잘못된 MIME → INVALID_FILE(기존 이미지 보존), 외부 URL 보유자 업로드 시 no-op 삭제, **PUT 닉네임 수정이 이미지 보존(분리 회귀)**, 업로드 슬라이스 200·미인증 401
 
-- **Task 008: 백엔드 일기 upsert CRUD + 캘린더 엔드포인트** - 우선순위
-  - DB: `V2__add_diaries.sql` 신설로 `diaries` 테이블·`uq_diary_user_day` 부분 유니크·인덱스 생성(Task 007에서 V1의 users만 남기고 분리됨). 기존 `FlywayMigrationTest`의 diaries 검증(부분 유니크·upsert·소프트삭제 재작성)을 여기로 이관
+- **Task 008: 백엔드 일기 upsert CRUD + 캘린더 엔드포인트 (+사진 첨부·글자수 제한)** ✅ - 구현 완료(통합테스트 Docker 대기)
+  - ✅ `V2 diaries`(content CHECK 1~500)·`V3 diary_images`(1:N) 마이그레이션 + FlywayMigrationTest, DiaryConstraints(500자·5장)·VO·DTO·DiaryMapper/DiaryImageMapper(+XML, upsert RETURNING xmax 201/200·images resultMap), DiaryService(소유권 IDOR·트랜잭션 경계·사진 업로드/삭제 파일 IO 트랜잭션 밖+보상삭제·삭제 시 디스크 즉시 회수)·DiaryController(+@WebMvcTest 5건)·ErrorCode IMAGE_LIMIT_EXCEEDED(409)·multipart 26MB. DiaryServiceTest(Testcontainers, CRUD/엣지/이미지/디스크 회수) 작성. 컴파일·@WebMvcTest 통과, Testcontainers 실행은 Docker 일괄.
+  - DB: `V2__add_diaries.sql` 신설로 `diaries` 테이블·`uq_diary_user_day` 부분 유니크·인덱스 생성(Task 007에서 V1의 users만 남기고 분리됨). 기존 `FlywayMigrationTest`의 diaries 검증(부분 유니크·upsert·소프트삭제 재작성)을 여기로 이관. 사진은 `V3__add_diary_images.sql`(1:N, 경로만 저장)로 분리
   - 구현 기능: F002, F003, F005, F006, F007
   - `POST /diaries`: `(user_id, written_date)` 부분 유니크 충돌 키 기반 upsert(`INSERT … ON CONFLICT DO UPDATE`) — 신규 201 / 갱신 200
   - `GET /diaries/me/summary?yearMonth=`: 해당 월 활성 기록 존재 날짜 목록(캘린더 dot용)
@@ -173,7 +175,8 @@
   - 본인 소유 검증(타인 일기 접근 403)
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — 정상 생성/조회/수정/삭제, 같은 날짜 재저장 시 UPDATE 동작(엣지), 소프트 삭제 후 같은 날짜 재INSERT 허용(엣지), 존재하지 않는 id/date(404), 타인 일기 접근(403), 잘못된 날짜·빈 content(유효성 400)
 
-- **Task 009: 백엔드 일기 목록 커서 페이징**
+- **Task 009: 백엔드 일기 목록 커서 페이징** ✅ - 구현 완료(통합테스트 Docker 대기)
+  - ✅ `GET /diaries/me?cursor=&size=`(DiaryMapper.findList, id DESC, size+1로 hasNext·nextCursor), 목록 N+1 회피 위해 `DiaryListItem`(대표 thumbnailUrl·imageCount만, 이미지 전체 미포함). DiaryServiceTest에 커서 페이징 7케이스 추가. 컴파일 통과, Testcontainers 실행은 Docker 일괄.
   - 구현 기능: F004
   - `GET /diaries/me?cursor=&size=`: `id DESC` 정렬, OFFSET 미사용 커서 페이징, `{ items, nextCursor, hasNext }` 반환
   - 소프트 삭제(`deleted_at IS NOT NULL`) 행 제외
@@ -207,8 +210,9 @@
   - ✅ `flutter analyze` 무경고 + `flutter test` 45개(프로필 이미지 9건 신설 포함) 통과. ⚠️ `cached_network_image`는 네이티브 의존성·테스트 결정성 고려로 미도입(`Image.network`+세션 ImageCache 사용), 향후 최적화로 남김.
   - **(구현 직후 필수 테스트)** `flutter test` — `ProfileAvatar`(이미지/이니셜/아이콘 폴백·onTap), `ProfileEditImageSection`(업로드 오버레이·로컬 미리보기·사진변경 콜백), `uploadAvatar` 저장소 계약(바이트·파일명 전달·실패 INVALID_FILE). image_picker 실선택 E2E는 웹/실기기 수동 검증.
 
-- **Task 011: 앱 일기 기능 API 연동 (더미 교체)**
-  - 구현 기능: F002, F003, F004, F005, F006, F007
+- **Task 011: 앱 일기 기능 API 연동 (더미 교체) (+사진 첨부·글자수 카운터)** ✅ - 완료
+  - ✅ 에디터 UI(사진 썸네일 수평스크롤·추가/삭제·5장 비활성, 글자수 카운터 하드 500·3단계 색), `DiaryPhotoItem`/`DiaryPhotoThumbnail`, `ApiDiaryRepository`(getByDate 404→null·커서·multipart files·삭제) + provider 교체, `Diary.images`/thumbnailUrl 정합, 4개 화면 실연동·더미 제거, image_picker 다중선택·저장 시 upsert→uploadImages/deleteImage 일괄 반영. `flutter test` 63개 + `integration_test` 4개 통과, `flutter analyze` 무경고.
+  - 구현 기능: F002, F003, F004, F005, F006, F007, F012
   - 캘린더: `GET /diaries/me/summary`로 dot 렌더링, 날짜 탭 시 `GET /diaries/by-date/{date}` → 있으면 상세, 404면 신규 에디터로 분기
   - 에디터 저장: `POST /diaries`(날짜+내용 upsert, id 불필요), 상세 수정은 `PUT /diaries/{id}`
   - 목록: `GET /diaries/me` 커서 무한 스크롤 실연동
@@ -216,12 +220,23 @@
   - 모든 더미 데이터 제거, 로딩/에러/빈 상태 처리
   - **(구현 직후 필수 테스트)** `integration_test` E2E — 캘린더 dot 표시, 신규 작성 → 캘린더 반영, 같은 날짜 재작성 시 수정 반영(엣지), 목록 스크롤 페이징, 상세 조회, 수정, 삭제 후 같은 날짜 재작성 허용(엣지), API 오류 시 에러 UI 노출
 
-- **Task 011-1: 핵심 기능 통합 테스트**
-  - 구현 기능: F001~F007, F010 전체 검증
+- **Task 011-1: 핵심 기능 통합 테스트** ✅ - 구현 완료(백엔드 Testcontainers Docker 대기)
+  - ✅ 앱 `integration_test/diary_journey_test.dart`(작성[카운터·500 하드제한]→목록→상세→수정[같은 날짜 UPDATE]→삭제[재작성 허용]+저장 실패 에러 UI+사진 섹션 한도, Supabase/Dio override로 결정성) 4건 통과. 백엔드 `DiaryIntegrationTest`(@SpringBootTest+Testcontainers: JIT 가입→CRUD→이미지 업로드/삭제·디스크 회수→커서 페이징→IDOR 404·프로비저닝 멱등·이미지 한도) 작성·컴파일 통과.
+  - 구현 기능: F001~F007, F010, F012 전체 검증
   - `integration_test`로 전체 사용자 여정 E2E: 로그인 → 캘린더 → 작성 → 목록 → 상세 → 수정 → 삭제 → 로그아웃 (시나리오별 단계 명시)
   - 백엔드: `@SpringBootTest` + Testcontainers로 auth·diary 도메인 간 통합 시나리오 검증
   - 에러 핸들링 및 엣지 케이스: 중복 날짜 upsert, 소프트 삭제 후 재작성, 토큰 만료·갱신, 비인가/타인 일기 접근(401/403), 빈 데이터·경계값
-  - 모든 시나리오 통과 확인 후 Phase 3 완료 처리 (테스트 통과 전 ✅ 표시 금지)
+  - ⚠️ **잔여 검증**: 백엔드 Testcontainers(DiaryServiceTest·DiaryIntegrationTest·FlywayMigrationTest)는 코드 작성 완료, **실행은 배포 전 Docker 일괄**(007 계열과 동일 방침). 이 실행 통과 후 Phase 3 전체 ✅ 확정.
+
+- **Task 011-2: 리치 텍스트 에디터 전환 + 인라인 이미지 통합 + 목록 실시간 갱신 + 미래 날짜 차단** ✅ - 완료(백엔드 Testcontainers Docker 대기)
+  - 구현 기능: F003/F005/F006(에디터·상세 고도화), F012(이미지) 재설계
+  - **에디터 리치 텍스트 전환**: 일기 본문 입력을 plain `TextField` → **flutter_quill**(Delta JSON)로 교체. 폰트·글자 크기·굵게/기울임/밑줄·정렬·목록 등 서식 툴바 + **본문 중간 인라인 이미지 삽입**. 본문은 `diaries.content`에 **Quill Delta JSON 문자열**로 저장(`V4__diary_rich_content.sql`).
+  - **순수 텍스트 분리(`content_text`)**: 서식·이미지 마크업을 제외한 순수 텍스트를 별도 컬럼으로 저장 → **글자수 500자 하드 제한은 순수 텍스트 기준**(LLM 비용·품질 정책 유지), 목록 미리보기·향후 LLM 입력에 사용. DB CHECK도 `content`(JSON, 길이 무의미)에서 `content_text`로 이전.
+  - **이미지 모델 인라인 통합 + `diary_images` 테이블 제거(`V5__drop_diary_images.sql`)**: 사진을 본문과 분리된 하단 첨부에서 **본문 Delta 임베드로 단일화**. content가 이미지의 **단일 진실 공급원**이 되어 별도 1:N 테이블 폐지. 업로드는 작성 중 `POST /diaries/images`(part `file` → `{url}`)로 즉시 업로드해 Delta에 임베드. **목록 썸네일·개수는 content의 jsonb에서 산출**, **디스크 파일 회수는 content 파싱**(삭제 시 본문 이미지 파일 회수, 수정 시 본문에서 빠진 이미지 파일 회수). 미참조 업로드 파일은 MVP 허용(향후 GC). 관련 코드 정리: 백엔드 `DiaryImageMapper`·`DiaryImageResponse`·`DiaryResponse.images` 제거, 앱 `DiaryImage`·`DiaryPhotoItem`·`DiaryPhotoThumbnail` 제거.
+  - **목록 실시간 갱신**: `StatefulShellRoute.indexedStack`이 목록 페이지 State를 유지해 새 글이 안 보이던 문제를, 월 목록을 `monthDiariesProvider`(FutureProvider.family)로 전환하고 저장/삭제 시 `ref.invalidate` → **탭 복귀 없이 즉시 반영**.
+  - **미래 날짜 선택 차단**: 캘린더에서 오늘 이후 날짜는 흐리게+탭 무효(`_DayCell.isDisabled`), 이번 달이면 다음 달 chevron 비활성(스와이프 포함, 캘린더·목록 공통), 에디터/탭 진입에 이중 방어 가드.
+  - ⚠️ **웹 한글 IME 한계(수용)**: flutter_quill 에디터는 Flutter **웹**에서 한글(CJK) IME 조합 입력이 제한됨(알려진 한계, 영문 정상). **한글 입력은 Android/iOS에서 검증**(코드·`tasks/_LOCAL_E2E_TEST_DIARY.md`에 명시). 웹은 영문·서식·이미지·날짜·실시간 갱신 검증용.
+  - 검증: 앱 `flutter analyze` 무경고 + `flutter test` 60건 통과. 백엔드 `compileJava/compileTestJava` 통과, 로컬 PostgreSQL 18(`recorme`)에 **Flyway V4/V5 적용 실측**(기존 일기가 Delta+인라인 이미지로 변환 확인). Testcontainers 실행은 배포 전 Docker 일괄(기존 방침).
 
 ### Phase 4: MVP 이후 (개요)
 

@@ -79,23 +79,30 @@
 | GET | `/diaries/by-date/{date}` | 특정 날짜(YYYY-MM-DD) 내 기록 단건 조회 | ○ |
 | GET | `/diaries/me` | 내 기록 목록(커서 페이징) | ○ |
 | GET | `/diaries/shared/{shareToken}` | 공유 링크로 단건 조회 | 조건부 |
-| DELETE | `/diaries/{id}` | 기록 소프트 삭제 | ○ |
+| DELETE | `/diaries/{id}` | 기록 소프트 삭제(+첨부 사진 행·디스크 파일 즉시 회수) | ○ |
+| POST | `/diaries/{id}/images` | 첨부 사진 업로드(multipart, part명 `files`, 1~N장, 일기당 최대 5장·장당 5MB) | ○ |
+| DELETE | `/diaries/{id}/images/{imageId}` | 첨부 사진 1장 삭제(행·디스크 파일 회수) | ○ |
 
 ```jsonc
 // POST /diaries  요청 (날짜 키 기반 upsert)
 { "content": "오늘은...", "writtenDate": "2026-06-15", "visibility": "FRIENDS" }
 // 응답 data (분석 전) — 신규 생성은 201 Created, 기존 갱신은 200 OK
+// content는 1~500자(앱 maxLength·백엔드 @Size(500)·DB CHECK 동일 상수). 초과 시 400 VALIDATION_ERROR.
+// ⚠️ MVP: theme/track/emotion 필드는 Phase 4. 현재 DiaryResponse는 images 포함, theme/track 미포함.
 { "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
-  "visibility": "FRIENDS", "analysisStatus": "PENDING", "theme": null, "track": null }
+  "visibility": "FRIENDS", "analysisStatus": "PENDING", "images": [] }
 
-// GET /diaries/{id}  응답 data (분석 완료)
-{ "id": 10, "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
-  "analysisStatus": "DONE",
-  "emotion": { "primaryEmotion": "CALM", "confidence": 0.82, "summary": "차분한 하루" },
-  "theme": { "backgroundType": "GRADIENT", "backgroundValue": "{...}",
-             "fontFamily": "nanum_handwriting", "textColor": "#222222FF" },
-  "track": { "sourceType": "LOCAL_FILE", "sourceRef": "calm_01", "streamUrl": "...",
-             "title": "...", "artist": "..." } }
+// GET /diaries/{id}  응답 data (MVP)
+{ "id": 10, "shareToken": "...", "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
+  "analysisStatus": "PENDING",
+  "images": [ { "id": 1, "url": "/files/diaries/2026/06/{uuid}.jpg" },
+              { "id": 2, "url": "/files/diaries/2026/06/{uuid}.jpg" } ] }
+//    (Phase 4에서 emotion/theme/track 필드가 추가될 예정 — analysisStatus=DONE 시 채워짐)
+
+// POST /diaries/{id}/images  요청: multipart/form-data, part명 "files"(여러 장 가능)
+//    응답 data: 갱신된 전체 이미지 목록 [{ id, url }]. 일기당 5장 초과 시 409 IMAGE_LIMIT_EXCEEDED,
+//    비이미지/손상 파일 413·400(INVALID_FILE), 장당 5MB 초과 413(FILE_TOO_LARGE).
+// DELETE /diaries/{id}/images/{imageId}  응답: success=true (행·디스크 파일 회수)
 ```
 
 ```jsonc
@@ -105,8 +112,14 @@
 
 // GET /diaries/by-date/2026-06-15  응답 data
 // 해당 날짜 기록이 없으면 404 + error.code = "DIARY_NOT_FOUND"
-{ "id": 10, "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
-  "analysisStatus": "DONE", "emotion": { /* ... */ }, "theme": { /* ... */ }, "track": { /* ... */ } }
+{ "id": 10, "shareToken": "...", "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
+  "analysisStatus": "DONE", "images": [ /* { id, url } ... */ ] }
+
+// GET /diaries/me?cursor=&size=  응답 data (커서 페이징, id DESC, OFFSET 미사용)
+// 목록 항목은 N+1 회피를 위해 이미지 전체 대신 대표 1장(thumbnailUrl)·총 개수(imageCount)만 포함.
+{ "items": [ { "id": 12, "content": "...", "writtenDate": "2026-06-16", "analysisStatus": "DONE",
+               "thumbnailUrl": "/files/diaries/2026/06/{uuid}.jpg", "imageCount": 2 } ],
+  "nextCursor": 12, "hasNext": true }
 ```
 
 > **캘린더 진입 흐름**: 메인(캘린더) 화면은 `GET /diaries/me/summary`로 점(dot)을 그린다. 사용자가 날짜를 탭하면 `GET /diaries/by-date/{date}`로 단건을 조회해, **있으면 상세 화면, 404면 신규 작성 화면**으로 분기한다. 두 엔드포인트 모두 `(user_id, written_date)` 인덱스로 처리되어 `/diaries/me` 전체 페이징보다 효율적이다.
