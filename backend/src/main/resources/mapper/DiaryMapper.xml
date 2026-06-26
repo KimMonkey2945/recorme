@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.diary.mapper.DiaryMapper">
+
+    <!-- 일기 단건 스칼라 매핑. 인라인 이미지는 content(Quill Delta JSON)에 직접 임베드되므로 별도 조립이 없다.
+         share_token 은 ::text 로 캐스팅해 String 매핑을 안정화(외부 노출 식별자). -->
+    <resultMap id="diaryRowMap" type="com.recordapp.domain.diary.dto.DiaryRow">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="share_token" javaType="java.lang.String"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="content_text" javaType="java.lang.String"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+            <arg column="visibility" javaType="java.lang.String"/>
+            <arg column="analysis_status" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 일기 목록 항목 매핑(record 생성자 기반). 대표 이미지·총 장수는 content(Delta) jsonb 파싱으로 채운다.
+         미리보기 텍스트는 content_text(순수 텍스트)를 'content' 컬럼 별칭으로 받는다(앱 변경 최소화).
+         image_count 는 SQL 에서 ::int 캐스팅해 count(*)의 bigint 를 int 로 받는다. -->
+    <resultMap id="diaryListItemMap" type="com.recordapp.domain.diary.dto.DiaryListItem">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+            <arg column="analysis_status" javaType="java.lang.String"/>
+            <arg column="thumbnail_url" javaType="java.lang.String"/>
+            <arg column="image_count" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 하루 1기록 upsert. 부분 유니크(uq_diary_user_day: user_id+written_date WHERE deleted_at IS NULL)
+         충돌 시 UPDATE. 본문이 실제로 바뀐 경우(IS DISTINCT FROM)에만 analysis_status 를 PENDING 으로 재설정.
+         RETURNING 다중 컬럼(id, inserted)을 useGeneratedKeys 로 회수한다.
+         ⚠️ keyColumn 은 지정하지 않는다: (xmax=0) AS inserted 는 실 컬럼이 아닌 계산식이라
+            keyColumn 으로 넘기면 pgJDBC 가 존재하지 않는 컬럼명으로 RETURNING 을 재생성해 실패한다.
+            keyColumn 미지정 시 MyBatis 는 RETURN_GENERATED_KEYS 로 실행하고
+            pg 드라이버가 SQL 의 명시적 RETURNING 컬럼을 순서대로 반환(id←1, inserted←2). -->
+    <insert id="upsert"
+            parameterType="com.recordapp.domain.diary.dto.DiaryUpsertCommand"
+            useGeneratedKeys="true" keyProperty="id,inserted">
+        INSERT INTO diaries (user_id, content, content_text, written_date, visibility, analysis_status)
+        VALUES (#{userId}, #{content}, #{contentText}, #{writtenDate}, COALESCE(#{visibility}, 'PRIVATE'), 'PENDING')
+        ON CONFLICT (user_id, written_date) WHERE deleted_at IS NULL
+        DO UPDATE SET
+            content         = EXCLUDED.content,
+            content_text    = EXCLUDED.content_text,
+            visibility      = EXCLUDED.visibility,
+            analysis_status = CASE
+                                  WHEN diaries.content_text IS DISTINCT FROM EXCLUDED.content_text
+                                  THEN 'PENDING'
+                                  ELSE diaries.analysis_status
+                              END,
+            updated_at      = now()
+        RETURNING id, (xmax = 0) AS inserted
+    </insert>
+
+    <!-- 내 일기 목록(커서 페이징, id DESC). cursor 가 있으면 id < cursor 인 다음 페이지.
+         대표 이미지(첫 임베드 1장)와 총 장수는 content(Quill Delta JSON)를 jsonb 로 파싱해 산출한다 —
+         일기당 ops 가 작고(본문+이미지 최대 5장) 단건 화면 외엔 컬렉션이 불필요해 별도 테이블 없이 충분하다.
+         V4 이후 content 는 항상 유효한 Delta JSON 문자열이라 ::jsonb 캐스트가 안전하다. -->
+    <select id="findList" resultMap="diaryListItemMap">
+        SELECT d.id              AS id,
+               d.content_text    AS content,
+               d.written_date    AS written_date,
+               d.analysis_status AS analysis_status,
+               (SELECT op->'insert'->>'image'
+                  FROM jsonb_array_elements(d.content::jsonb -> 'ops')
+                       WITH ORDINALITY AS t(op, ord)
+                 WHERE op->'insert'->>'image' IS NOT NULL
+                 ORDER BY ord
+                 LIMIT 1)        AS thumbnail_url,
+               (SELECT count(*)::int
+                  FROM jsonb_array_elements(d.content::jsonb -> 'ops') AS op
+                 WHERE op->'insert'->>'image' IS NOT NULL) AS image_count
+          FROM diaries d
+         WHERE d.user_id = #{userId}
+           AND d.deleted_at IS NULL
+        <if test="cursor != null">
+           AND d.id &lt; #{cursor}
+        </if>
+         ORDER BY d.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 사용자+날짜 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다. -->
+    <select id="findByDateAndUser" resultMap="diaryRowMap">
+        SELECT id,
+               share_token::text AS share_token,
+               content,
+               content_text,
+               written_date,
+               visibility,
+               analysis_status
+          FROM diaries
+         WHERE user_id = #{userId}
+           AND written_date = #{date}
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 내부 PK+사용자 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다. -->
+    <select id="findByIdAndUser" resultMap="diaryRowMap">
+        SELECT id,
+               share_token::text AS share_token,
+               content,
+               content_text,
+               written_date,
+               visibility,
+               analysis_status
+          FROM diaries
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 해당 월 내 일기 목록(written_date DESC, id DESC). 활성 행만.
+         대표 이미지·총 장수는 content(Delta) 를 jsonb 파싱해 산출(findList 와 동일 전략). -->
+    <select id="findByMonth" resultMap="diaryListItemMap">
+        SELECT d.id              AS id,
+               d.content_text    AS content,
+               d.written_date    AS written_date,
+               d.analysis_status AS analysis_status,
+               (SELECT op->'insert'->>'image'
+                  FROM jsonb_array_elements(d.content::jsonb -> 'ops')
+                       WITH ORDINALITY AS t(op, ord)
+                 WHERE op->'insert'->>'image' IS NOT NULL
+                 ORDER BY ord
+                 LIMIT 1)        AS thumbnail_url,
+               (SELECT count(*)::int
+                  FROM jsonb_array_elements(d.content::jsonb -> 'ops') AS op
+                 WHERE op->'insert'->>'image' IS NOT NULL) AS image_count
+          FROM diaries d
+         WHERE d.user_id = #{userId}
+           AND to_char(d.written_date, 'YYYY-MM') = #{yearMonth}
+           AND d.deleted_at IS NULL
+         ORDER BY d.written_date DESC, d.id DESC
+    </select>
+
+    <!-- 사용자 소유 활성 일기 존재 여부. -->
+    <select id="existsOwned" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM diaries
+             WHERE id = #{id}
+               AND user_id = #{userId}
+               AND deleted_at IS NULL
+        )
+    </select>
+
+    <!-- 해당 월 활성 일기의 작성일 목록(DISTINCT, 오름차순). to_char 로 'yyyy-MM-dd' text. -->
+    <select id="findSummaryDates" resultType="string">
+        SELECT DISTINCT to_char(written_date, 'YYYY-MM-DD') AS d
+          FROM diaries
+         WHERE user_id = #{userId}
+           AND to_char(written_date, 'YYYY-MM') = #{yearMonth}
+           AND deleted_at IS NULL
+         ORDER BY d ASC
+    </select>
+
+    <!-- 본문/공개범위 수정. 순수 텍스트(content_text)가 바뀐 경우에만 analysis_status 를 PENDING 으로
+         재설정한다(서식·이미지만 바뀌면 재분석 불필요). content 는 항상 갱신(Delta JSON). -->
+    <update id="updateByIdAndUser">
+        UPDATE diaries
+           SET content         = #{content},
+               content_text    = #{contentText},
+               visibility      = #{visibility},
+               analysis_status = CASE
+                                     WHEN content_text IS DISTINCT FROM #{contentText}
+                                     THEN 'PENDING'
+                                     ELSE analysis_status
+                                 END,
+               updated_at      = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- 소프트 삭제. 활성 행만 대상(이미 삭제된 행은 0). -->
+    <update id="softDeleteByIdAndUser">
+        UPDATE diaries
+           SET deleted_at = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+</mapper>

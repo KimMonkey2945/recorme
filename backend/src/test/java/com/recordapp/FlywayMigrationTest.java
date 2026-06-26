@@ -17,14 +17,20 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Flyway V1(users) 마이그레이션과 회원 스키마 제약을 Testcontainers PostgreSQL로 검증한다.
+ * Flyway V1(users)·V2(diaries) 마이그레이션과 스키마 제약을 Testcontainers PostgreSQL로 검증한다.
  *  (a) 마이그레이션 무오류 적용 + users 테이블 생성 + uq_users_email_active 부분 유니크 인덱스
  *  (b) uq_users_supabase_uid: 같은 supabase_uid 중복 INSERT → 유니크 제약 위반
  *  (c) uq_users_email_active: 같은 lower(email) 활성 중복 거부 /
  *      email NULL 다중 행 허용 / 소프트 삭제 후 같은 email 재INSERT 허용
  *
- * diaries(부분 유니크·upsert·소프트삭제 재작성) 검증은 V2__add_diaries.sql(Task 008)에서
- * 별도 테스트로 복원한다 — diaries 가 V1에서 빠졌으므로 본 클래스에서 제거.
+ * diaries(V2) 검증:
+ *  (d) diaries 테이블 + uq_diary_user_day 부분 유니크 인덱스(UNIQUE·deleted_at IS NULL) 존재
+ *  (e) uq_diary_user_day: 같은 user_id+written_date 활성 중복 거부(23505) /
+ *      소프트 삭제 후 같은 날짜 재INSERT 허용
+ *  (f) chk_diaries_content_len: 501자·빈 문자열 content INSERT 거부(23514)
+ *
+ * diary_images 제거(V5) 검증:
+ *  (g) V5 가 diary_images 테이블을 제거(인라인 이미지는 diaries.content Delta 가 단일 진실원)
  *
  * 이미지는 운영 DB(PostgreSQL 18, recorme)와 일치시키기 위해 postgres:18-alpine 사용.
  */
@@ -59,6 +65,35 @@ class FlywayMigrationTest {
 			st.executeUpdate(
 					"INSERT INTO users (supabase_uid, nickname, email) VALUES ("
 							+ "'" + supabaseUid + "', '" + nickname + "', " + emailLiteral + ")");
+		}
+	}
+
+	/**
+	 * 테스트용 회원 1명 INSERT 후 IDENTITY 로 발급된 users.id 를 조회해 반환한다.
+	 * diaries 는 user_id FK(NOT NULL)가 필요하므로 부모 행 생성 + id 확보용.
+	 * 호출자가 매번 고유한 supabase_uid·email 을 넘겨 충돌을 피한다.
+	 */
+	private long insertUserAndGetId(Connection c, String supabaseUid, String nickname, String email)
+			throws SQLException {
+		insertUser(c, supabaseUid, nickname, email);
+		try (Statement st = c.createStatement();
+				ResultSet rs = st.executeQuery(
+						"SELECT id FROM users WHERE supabase_uid = '" + supabaseUid + "'")) {
+			rs.next();
+			return rs.getLong(1);
+		}
+	}
+
+	/**
+	 * 테스트용 일기 1건 INSERT. content·written_date 만 지정하고 나머지는 DDL 기본값에 맡긴다.
+	 * written_date 는 'YYYY-MM-DD' 문자열로 전달한다.
+	 */
+	private void insertDiary(Connection c, long userId, String content, String writtenDate)
+			throws SQLException {
+		try (Statement st = c.createStatement()) {
+			st.executeUpdate(
+					"INSERT INTO diaries (user_id, content, written_date) VALUES ("
+							+ userId + ", '" + content + "', DATE '" + writtenDate + "')");
 		}
 	}
 
@@ -149,6 +184,110 @@ class FlywayMigrationTest {
 							"SELECT count(*) FROM users WHERE email = '" + email + "'")) {
 				rs.next();
 				assertThat(rs.getInt(1)).as("전체 2행(삭제 1 + 활성 1)").isEqualTo(2);
+			}
+		}
+	}
+
+	// ===================== diaries(V2) =====================
+
+	// (d) diaries 테이블 + uq_diary_user_day 부분 유니크 인덱스(UNIQUE·deleted_at IS NULL) 존재 확인
+	@Test
+	void diaries_table_and_partialUniqueIndex_exist() throws SQLException {
+		try (Connection c = conn()) {
+			// diaries 테이블 존재
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT to_regclass('public.diaries') IS NOT NULL")) {
+				rs.next();
+				assertThat(rs.getBoolean(1)).as("diaries 테이블 존재").isTrue();
+			}
+			// 하루 1기록 부분 유니크 인덱스 정의 확인
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_diary_user_day'")) {
+				assertThat(rs.next()).as("uq_diary_user_day 인덱스 존재").isTrue();
+				assertThat(rs.getString(1))
+						.contains("UNIQUE")
+						.contains("deleted_at IS NULL");
+			}
+		}
+	}
+
+	// (e) uq_diary_user_day: 같은 user_id+written_date 활성 2건 → 유니크 위반(SQLState 23505)
+	@Test
+	void uqDiaryUserDay_rejectsDuplicateActiveDay() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "88888888-8888-8888-8888-888888888888", "diary_dup", "diarydup@example.com");
+			insertDiary(c, userId, "오늘의 첫 기록", "2026-06-26");
+
+			// 같은 사용자·같은 날짜 활성 일기 재INSERT → 충돌
+			assertThatThrownBy(() -> insertDiary(c, userId, "같은 날 두 번째 기록", "2026-06-26"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23505"));
+		}
+	}
+
+	// (e) 소프트 삭제 후 같은 날짜 재INSERT 허용 — 부분 인덱스에서 제외됨
+	@Test
+	void uqDiaryUserDay_allowsReinsertAfterSoftDelete() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "99999999-9999-9999-9999-999999999999", "diary_recycle", "diaryrecycle@example.com");
+			String day = "2026-06-25";
+			insertDiary(c, userId, "삭제될 기록", day);
+
+			// 기존 일기 소프트 삭제
+			try (Statement st = c.createStatement()) {
+				st.executeUpdate(
+						"UPDATE diaries SET deleted_at = now() WHERE user_id = " + userId
+								+ " AND written_date = DATE '" + day + "'");
+			}
+
+			// 삭제분은 부분 인덱스에서 제외되므로 같은 날짜 재작성 가능해야 한다
+			insertDiary(c, userId, "다시 쓴 기록", day);
+
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT count(*) FROM diaries WHERE user_id = " + userId
+									+ " AND written_date = DATE '" + day + "'")) {
+				rs.next();
+				assertThat(rs.getInt(1)).as("전체 2행(삭제 1 + 활성 1)").isEqualTo(2);
+			}
+		}
+	}
+
+	// (f) chk_diaries_content_len: 501자·빈 문자열 content → 체크 제약 위반(SQLState 23514)
+	@Test
+	void contentCheck_rejectsTooLongAndEmpty() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "diary_len", "diarylen@example.com");
+
+			// 501자(최대 500 초과) → check_violation
+			String tooLong = "x".repeat(501);
+			assertThatThrownBy(() -> insertDiary(c, userId, tooLong, "2026-06-24"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
+
+			// 빈 문자열(최소 1 미만) → check_violation
+			assertThatThrownBy(() -> insertDiary(c, userId, "", "2026-06-23"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
+		}
+	}
+
+	// ===================== diary_images 제거(V5) =====================
+
+	// (g) V5 가 diary_images 테이블을 제거한다(인라인 이미지는 diaries.content Delta 가 단일 진실원)
+	@Test
+	void diaryImages_tableDroppedByV5() throws SQLException {
+		try (Connection c = conn()) {
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT to_regclass('public.diary_images') IS NULL")) {
+				rs.next();
+				assertThat(rs.getBoolean(1)).as("V5 가 diary_images 테이블 제거").isTrue();
 			}
 		}
 	}

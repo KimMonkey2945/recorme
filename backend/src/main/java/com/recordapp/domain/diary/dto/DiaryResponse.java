@@ -1,0 +1,21 @@
+package com.recordapp.domain.diary.dto;
+
+import java.time.LocalDate;
+
+/**
+ * 일기 단건 응답. 외부 노출 식별자는 share_token(공유 링크용)이며 내부 PK(id)도 함께 제공한다.
+ * theme/track/emotion(감정 분석 결과)은 MVP 범위 밖이라 제외한다.
+ *
+ * <p>{@code content} 는 리치 텍스트(Quill Delta JSON 문자열)이며 인라인 이미지를 직접 임베드한다 —
+ * 앱은 content Delta 에서 이미지를 렌더하므로 별도 이미지 목록을 두지 않는다.
+ * {@code contentText} 는 서식/이미지 마크업을 제거한 순수 텍스트다(미리보기·길이 제약·LLM 입력용).
+ */
+public record DiaryResponse(
+		Long id,
+		String shareToken,
+		String content,
+		String contentText,
+		LocalDate writtenDate,
+		String visibility,
+		String analysisStatus) {
+}

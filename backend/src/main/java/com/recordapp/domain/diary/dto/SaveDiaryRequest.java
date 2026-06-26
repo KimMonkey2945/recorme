@@ -1,0 +1,23 @@
+package com.recordapp.domain.diary.dto;
+
+import com.recordapp.domain.diary.DiaryConstraints;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+
+/**
+ * 일기 저장(upsert) 요청. 하루 1기록 정책상 같은 날짜 재작성은 INSERT 가 아닌 UPDATE 로 처리된다.
+ * visibility 는 nullable — 미지정 시 서비스/SQL 기본값 PRIVATE 적용.
+ * 소유권은 SecurityContext 의 userId 로만 식별하므로 바디에 사용자 식별자를 두지 않는다(IDOR 차단).
+ *
+ * <p>{@code content} 는 리치 텍스트(Quill Delta JSON 문자열)로, 인라인 이미지를 포함한다 —
+ * JSON 이라 길이 제약(@Size)을 두지 않는다. 길이 제약·미리보기·LLM 입력은 서식/이미지 마크업을 제거한
+ * 순수 텍스트 {@code contentText} 가 담당한다(DB CHECK 1~500 과 동일 상수).
+ */
+public record SaveDiaryRequest(
+		@NotBlank String content,
+		@NotBlank @Size(max = DiaryConstraints.CONTENT_MAX) String contentText,
+		@NotNull LocalDate writtenDate,
+		String visibility) {
+}

@@ -11,11 +11,12 @@ spring:
     # 운영 안전: clean 비활성화. 모든 스키마 변경은 신규 버전 마이그레이션으로만.
     clean-disabled: true
     locations: classpath:db/migration
-  # 프로필 이미지 업로드 한도. 초과 시 GlobalExceptionHandler가 FILE_TOO_LARGE(413)로 변환.
+  # 업로드 한도. 초과 시 GlobalExceptionHandler가 FILE_TOO_LARGE(413)로 변환.
+  # max-request-size 는 일기 다중 사진 업로드(최대 5장 × 5MB + 멀티파트 오버헤드 여유)를 수용한다.
   servlet:
     multipart:
       max-file-size: 5MB
-      max-request-size: 6MB
+      max-request-size: 26MB
 
 # MyBatis: snake_case 컬럼 → camelCase 프로퍼티 자동 매핑
 mybatis:
