@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:  # flutter_quill 로컬라이제이션(Global* 델리게이트)용
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -42,9 +44,15 @@ dependencies:
   supabase_flutter: ^2.15.0
   flutter_svg: ^2.3.0
   image_picker: ^1.1.2  # 프로필 이미지 파일 첨부(갤러리 선택)
+  flutter_quill: ^11.5.0  # 일기 리치 텍스트 에디터(Delta JSON, 서식·인라인 이미지)
+  flutter_quill_extensions: ^11.0.0  # Quill 인라인 이미지 임베드 빌더
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+
+  # E2E(통합) 테스트 바인딩. integration_test/ 디렉터리의 시나리오 테스트에 사용한다.
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

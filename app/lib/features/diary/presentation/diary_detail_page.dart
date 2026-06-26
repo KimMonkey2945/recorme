@@ -77,6 +77,7 @@ class DiaryDetailPage extends ConsumerWidget {
     try {
       await ref.read(diaryRepositoryProvider).delete(id);
       ref.invalidate(monthlySummaryProvider);
+      ref.invalidate(monthDiariesProvider);
       ref.invalidate(diaryByDateProvider);
       if (!context.mounted) return;
       showAppSnackBar(context, '삭제했어요');

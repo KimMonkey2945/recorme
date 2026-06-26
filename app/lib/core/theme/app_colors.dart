@@ -55,7 +55,7 @@ class AppColors {
   static const Color hairline = Color(0xFFECE8E1);
 
   // ──────────────────────────────────────────
-  // 시맨틱 (에러/성공 등)
+  // 시맨틱 (에러/경고/성공 등)
   // ──────────────────────────────────────────
 
   /// 에러 / 파괴적 액션 강조색
@@ -63,4 +63,10 @@ class AppColors {
 
   /// 에러 틴트 배경
   static const Color errorSoft = Color(0xFFFCECEC);
+
+  /// 경고색 — 글자수 80~95% 구간·주의 강조 (웜 앰버 #E09B2D)
+  static const Color warning = Color(0xFFE09B2D);
+
+  /// 경고 틴트 배경 — 경고 메시지 배경 등
+  static const Color warningSoft = Color(0xFFFAF0DC);
 }

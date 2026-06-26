@@ -35,7 +35,11 @@ void main() {
       final before = await repo.getByDate(today);
       expect(before, isNotNull, reason: '시드에 오늘 일기가 있어야 한다');
 
-      final updated = await repo.upsert(date: today, content: '수정된 내용');
+      final updated = await repo.upsert(
+        date: today,
+        content: '수정된 내용',
+        contentText: '수정된 내용',
+      );
       expect(updated.id, before!.id, reason: 'INSERT가 아닌 UPDATE라 id 유지');
       expect(updated.content, '수정된 내용');
 
@@ -48,7 +52,11 @@ void main() {
       final newDate = DateTime(2030, 1, 1);
       expect(await repo.getByDate(newDate), isNull);
 
-      final created = await repo.upsert(date: newDate, content: '새 일기');
+      final created = await repo.upsert(
+        date: newDate,
+        content: '새 일기',
+        contentText: '새 일기',
+      );
       expect(created.content, '새 일기');
       expect(created.analysisStatus, 'PENDING');
 
@@ -72,7 +80,11 @@ void main() {
       );
 
       // 같은 날짜 재작성 허용
-      final recreated = await repo.upsert(date: today, content: '다시 쓴 일기');
+      final recreated = await repo.upsert(
+        date: today,
+        content: '다시 쓴 일기',
+        contentText: '다시 쓴 일기',
+      );
       expect(recreated.content, '다시 쓴 일기');
     });
 

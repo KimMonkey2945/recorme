@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import '../../../core/error/failure.dart';
 import '../../../shared/models/cursor_page.dart';
+import '../domain/diary_content.dart';
 import '../domain/diary_repository.dart';
 import 'dto/diary_dto.dart';
 
@@ -38,9 +41,12 @@ class FakeDiaryRepository implements DiaryRepository {
       // 위 표현은 그대로 dayOffsets 순서를 유지(가독성용). 큰 값부터 들어 있다.
       final date = base.subtract(Duration(days: offset));
       final id = _nextId++;
+      final text = _sampleContents[id % _sampleContents.length];
       _diaries[id] = Diary(
         id: id,
-        content: _sampleContents[id % _sampleContents.length],
+        // 신버전 본문은 Delta JSON 문자열로 저장된다(시드도 동일하게 래핑).
+        content: contentJsonFromPlain(text),
+        contentText: text,
         writtenDate: date,
         visibility: 'PRIVATE',
         analysisStatus: 'DONE',
@@ -68,6 +74,19 @@ class FakeDiaryRepository implements DiaryRepository {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+
+  /// 목록 아이템 표현으로 변환한다(백엔드 미러링).
+  ///
+  /// 목록 응답의 `content`는 서식을 제거한 **순수 텍스트 미리보기**다(상세는 Delta JSON).
+  Diary _asListItem(Diary d) => Diary(
+        id: d.id,
+        content: d.contentText ?? plainTextOf(documentFromContent(d.content)),
+        writtenDate: d.writtenDate,
+        visibility: d.visibility,
+        analysisStatus: d.analysisStatus,
+        thumbnailUrl: d.thumbnailUrl,
+        imageCount: d.imageCount,
+      );
 
   // ── DiaryRepository 구현 ────────────────────────────────────
 
@@ -114,16 +133,27 @@ class FakeDiaryRepository implements DiaryRepository {
     final hasNext = filtered.length > size;
     final nextCursor = (hasNext && page.isNotEmpty) ? page.last.id : null;
     return CursorPage<Diary>(
-      items: page,
+      items: page.map(_asListItem).toList(),
       nextCursor: nextCursor,
       hasNext: hasNext,
     );
   }
 
   @override
+  Future<List<Diary>> getMonthList(String yearMonth) async {
+    await Future<void>.delayed(_latency);
+    final items = _diaries.values
+        .where((d) => _dateKey(d.writtenDate).startsWith(yearMonth))
+        .toList()
+      ..sort((a, b) => b.writtenDate.compareTo(a.writtenDate));
+    return items.map(_asListItem).toList();
+  }
+
+  @override
   Future<Diary> upsert({
     required DateTime date,
     required String content,
+    required String contentText,
   }) async {
     await Future<void>.delayed(_latency);
     final key = _dateKey(date);
@@ -134,6 +164,7 @@ class FakeDiaryRepository implements DiaryRepository {
         final updated = Diary(
           id: entry.key,
           content: content,
+          contentText: contentText,
           writtenDate: entry.value.writtenDate,
           visibility: entry.value.visibility,
           analysisStatus: 'PENDING', // 내용 변경 → 재분석 대기(더미)
@@ -149,6 +180,7 @@ class FakeDiaryRepository implements DiaryRepository {
     final created = Diary(
       id: id,
       content: content,
+      contentText: contentText,
       writtenDate: DateTime(date.year, date.month, date.day),
       visibility: 'PRIVATE',
       analysisStatus: 'PENDING',
@@ -163,5 +195,12 @@ class FakeDiaryRepository implements DiaryRepository {
     await Future<void>.delayed(_latency);
     // 소프트 삭제 시뮬레이션: 활성 저장소에서 제거하면 해당 날짜 재작성이 가능해진다.
     _diaries.remove(id);
+  }
+
+  @override
+  Future<String> uploadImage(Uint8List bytes, String filename) async {
+    // 인메모리 더미: 실제 저장 없이 가짜 상대 경로를 돌려준다.
+    await Future<void>.delayed(_latency);
+    return '/files/diaries/fake/${_nextId++}_$filename';
   }
 }

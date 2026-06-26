@@ -1,18 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/app_snackbar.dart';
+import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
+import '../data/dto/diary_dto.dart';
+import '../domain/diary_content.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/diary_editor_view.dart';
 
 /// 일기 작성/수정 화면.
 ///
-/// 라우트 쿼리 [date](yyyy-MM-dd)로 대상 날짜를 받는다. 해당 날짜에 일기가
-/// 있으면 수정 모드(기존 내용 프리필), 없으면 신규 작성. 저장은 upsert.
-/// 표현은 [DiaryEditorView], 데이터/저장 로직은 이 래퍼가 담당.
+/// 라우트 쿼리 [date](yyyy-MM-dd)로 대상 날짜를 받는다. 해당 날짜에 일기가 있으면
+/// 수정 모드(기존 Delta 프리필), 없으면 신규 작성. 저장은 upsert(하루 1기록).
+///
+/// 본문은 [QuillController]로 리치 텍스트(서식·인라인 이미지)를 다룬다. 사진은
+/// 작성 중 [uploadImage]로 즉시 업로드해 반환된 경로를 본문 Delta에 임베드하고,
+/// 저장 시 서버가 Delta를 파싱해 실제 사용 이미지를 확정한다(별도 첨부 단계 없음).
 class DiaryEditorPage extends ConsumerStatefulWidget {
   const DiaryEditorPage({super.key, this.date});
 
@@ -24,28 +32,164 @@ class DiaryEditorPage extends ConsumerStatefulWidget {
 }
 
 class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
+  /// 본문에 삽입 가능한 최대 사진 수.
+  static const int _maxPhotos = 5;
+
+  /// 본문 최대 글자 수(순수 텍스트 기준 하드 제한).
+  static const int _maxLength = 500;
+
   late final DateTime _date;
+  late final QuillController _controller;
+
   bool _saving = false;
+  bool _picking = false;
+
+  /// 기존 일기 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
+  bool _prefilled = false;
+
+  /// 현재 순수 텍스트 길이(카운터·저장 가능 판단용).
+  int _plainLength = 0;
+
+  /// 글자수 초과 시 되돌릴 마지막 유효 상태.
+  String _lastValidJson = '';
+  TextSelection _lastValidSelection = const TextSelection.collapsed(offset: 0);
+
+  /// 제한 초과 되돌리기 중 재진입(리스너 재호출) 방지 플래그.
+  bool _enforcing = false;
 
   @override
   void initState() {
     super.initState();
     final parsed = widget.date != null ? DateTime.tryParse(widget.date!) : null;
     final base = parsed ?? DateTime.now();
-    _date = DateTime(base.year, base.month, base.day);
+    // 미래 날짜로 직접 진입(라우트 조작 등)하면 오늘로 클램프(방어).
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final baseDay = DateTime(base.year, base.month, base.day);
+    _date = baseDay.isAfter(today) ? today : baseDay;
+
+    _controller = QuillController.basic();
+    _lastValidJson = contentJsonFromDocument(_controller.document);
+    _controller.addListener(_onDocumentChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onDocumentChanged)
+      ..dispose();
+    super.dispose();
   }
 
   String get _dateText => '${_date.year}년 ${_date.month}월 ${_date.day}일';
 
-  Future<void> _onSave(String content) async {
-    if (content.isEmpty) return;
+  bool get _canSave => _plainLength > 0 && !_saving;
+
+  /// 기존 일기가 처음 도착하면 Delta를 1회 프리필한다.
+  void _ensurePrefilled(Diary? diary) {
+    if (_prefilled) return;
+    _prefilled = true;
+    if (diary != null) {
+      _controller.document = documentFromContent(diary.content);
+    }
+    _lastValidJson = contentJsonFromDocument(_controller.document);
+    _lastValidSelection = _controller.selection;
+    _plainLength = plainTextOf(_controller.document).length;
+  }
+
+  /// 본문 변경 감지 → 글자수 갱신 + 순수 텍스트 500자 하드 제한.
+  void _onDocumentChanged() {
+    if (_enforcing) return;
+    final length = plainTextOf(_controller.document).length;
+
+    if (length > _maxLength) {
+      // 초과분이 생긴 변경 → 마지막 유효 상태로 되돌린다.
+      _enforcing = true;
+      _controller.document = documentFromContent(_lastValidJson);
+      final docLen = _controller.document.length;
+      final offset = _lastValidSelection.baseOffset.clamp(0, docLen - 1);
+      _controller.updateSelection(
+        TextSelection.collapsed(offset: offset),
+        ChangeSource.local,
+      );
+      _enforcing = false;
+      if (mounted) {
+        showAppSnackBar(context, '본문은 최대 $_maxLength자까지 작성할 수 있어요');
+        setState(() => _plainLength = plainTextOf(_controller.document).length);
+      }
+      return;
+    }
+
+    _lastValidJson = contentJsonFromDocument(_controller.document);
+    _lastValidSelection = _controller.selection;
+    if (length != _plainLength && mounted) {
+      setState(() => _plainLength = length);
+    }
+  }
+
+  /// 본문에 박힌 이미지(임베드) 개수.
+  int _imageCount() {
+    var count = 0;
+    for (final op in _controller.document.toDelta().toList()) {
+      final data = op.data;
+      if (data is Map && data.containsKey('image')) count++;
+    }
+    return count;
+  }
+
+  /// 사진 삽입: 갤러리 1장 선택 → 업로드 → 커서 위치에 image 임베드 삽입.
+  Future<void> _onPickImage() async {
+    if (_picking || _saving) return;
+    if (_imageCount() >= _maxPhotos) {
+      showAppSnackBar(context, '사진은 최대 $_maxPhotos장까지 넣을 수 있어요');
+      return;
+    }
+    _picking = true;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final filename = picked.name.isNotEmpty ? picked.name : 'image.jpg';
+      final url = await ref.read(diaryRepositoryProvider).uploadImage(bytes, filename);
+      if (!mounted) return;
+
+      // 현재 커서(없으면 문서 끝)에 이미지 임베드 삽입.
+      final selection = _controller.selection;
+      final index = selection.isValid
+          ? selection.baseOffset
+          : _controller.document.length - 1;
+      final length =
+          selection.isValid ? selection.extentOffset - selection.baseOffset : 0;
+      _controller.replaceText(
+        index,
+        length,
+        BlockEmbed.image(url),
+        TextSelection.collapsed(offset: index + 1),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnackBar(context, '이미지 업로드에 실패했어요', isError: true);
+    } finally {
+      _picking = false;
+    }
+  }
+
+  Future<void> _onSave() async {
+    final plain = plainTextOf(_controller.document);
+    if (plain.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await ref
-          .read(diaryRepositoryProvider)
-          .upsert(date: _date, content: content);
-      // 캘린더 dot·날짜/단건 캐시 갱신
+      final repo = ref.read(diaryRepositoryProvider);
+      final content = contentJsonFromDocument(_controller.document);
+      await repo.upsert(date: _date, content: content, contentText: plain);
+
+      // 캘린더 dot·월 목록·날짜/단건 캐시 갱신(목록 탭 실시간 반영).
       ref.invalidate(monthlySummaryProvider);
+      ref.invalidate(monthDiariesProvider);
       ref.invalidate(diaryByDateProvider);
       ref.invalidate(diaryByIdProvider);
       if (!mounted) return;
@@ -60,7 +204,6 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 기존 일기 존재 여부 → 수정/신규 모드 및 프리필 결정
     final existing = ref.watch(diaryByDateProvider(_date));
     final isEdit = existing.asData?.value != null;
 
@@ -75,22 +218,31 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         body: SafeArea(
           child: existing.when(
             loading: () => const LoadingView(),
-            error: (_, _) => DiaryEditorView(
-              dateText: _dateText,
-              saving: _saving,
-              onSave: _onSave,
-              onCancel: () => context.pop(),
+            // 조회 실패(404 아님 — getByDate가 404는 null로 처리) 시 빈 에디터로 진입하면
+            // 저장 시 upsert가 기존 일기를 덮어쓸 수 있다. 편집을 막고 재시도를 제공한다.
+            error: (_, _) => ErrorView(
+              message: '일기를 불러오지 못했어요',
+              onRetry: () => ref.invalidate(diaryByDateProvider(_date)),
             ),
-            data: (diary) => DiaryEditorView(
-              dateText: _dateText,
-              initialContent: diary?.content,
-              saving: _saving,
-              onSave: _onSave,
-              onCancel: () => context.pop(),
-            ),
+            data: (diary) {
+              _ensurePrefilled(diary);
+              return _editorView();
+            },
           ),
         ),
       ),
     );
   }
+
+  Widget _editorView() => DiaryEditorView(
+        dateText: _dateText,
+        controller: _controller,
+        plainLength: _plainLength,
+        maxLength: _maxLength,
+        saving: _saving,
+        canSave: _canSave,
+        onSave: _onSave,
+        onCancel: () => context.pop(),
+        onPickImage: _onPickImage,
+      );
 }

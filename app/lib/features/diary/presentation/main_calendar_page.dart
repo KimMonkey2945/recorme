@@ -13,7 +13,7 @@ import 'widgets/calendar_month_view.dart';
 
 /// 메인(캘린더) 화면.
 ///
-/// 더미 데이터(요약 provider)로 작성 날짜에 dot을 표시하고, 날짜 탭 시
+/// 요약 provider(API)로 작성 날짜에 dot을 표시하고, 날짜 탭 시
 /// 일기 존재 여부에 따라 상세/에디터로 분기한다. (표현은 [CalendarMonthView] 담당.)
 class MainCalendarPage extends ConsumerStatefulWidget {
   const MainCalendarPage({super.key});
@@ -44,9 +44,23 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
+  /// 이번 달(미래 달 이동 상한). 시간 무시, 연·월만.
+  DateTime get _maxMonth {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month);
+  }
+
+  /// 표시 중인 달이 이번 달이면 true(다음 달 chevron 비활성 판단).
+  bool get _atCurrentMonth =>
+      _displayMonth.year == _maxMonth.year &&
+      _displayMonth.month == _maxMonth.month;
+
   void _changeMonth(int delta) {
+    final candidate =
+        DateTime(_displayMonth.year, _displayMonth.month + delta);
+    if (candidate.isAfter(_maxMonth)) return; // 미래 달 금지(스와이프·chevron 공통)
     setState(() {
-      _displayMonth = DateTime(_displayMonth.year, _displayMonth.month + delta);
+      _displayMonth = candidate;
     });
   }
 
@@ -55,6 +69,10 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
 
   /// 날짜 탭: 해당 날짜 일기가 있으면 상세, 없으면 에디터로 이동.
   Future<void> _onDateTap(DateTime date) async {
+    // 미래 날짜 방어(캘린더 셀이 이미 막지만 이중 안전).
+    final now = DateTime.now();
+    if (date.isAfter(DateTime(now.year, now.month, now.day))) return;
+
     final diary = await ref.read(diaryRepositoryProvider).getByDate(date);
     if (!mounted) return;
 
@@ -89,7 +107,6 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
-          title: const Text('캘린더'),
           actions: [
             // 프로필 진입 버튼 — 별도 ConsumerWidget으로 watch 범위를 한정해
             // 프로필 갱신 시 캘린더 본문 전체가 리빌드되지 않게 한다.
@@ -120,7 +137,8 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
               markedDates: markedDates,
               onDateTap: _onDateTap,
               onPrevMonth: () => _changeMonth(-1),
-              onNextMonth: () => _changeMonth(1),
+              // 이번 달이면 다음 달 chevron 비활성(미래 달 차단).
+              onNextMonth: _atCurrentMonth ? null : () => _changeMonth(1),
             ),
           ),
         ),

@@ -16,8 +16,11 @@ const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일']
 
 /// 일기 목록 화면.
 ///
-/// 커서 기반 무한 스크롤(더미)로 날짜 역순 목록을 보여준다. 표현은
-/// [DiaryListTile], 페이지네이션/상태 관리는 이 래퍼가 담당.
+/// 캘린더와 동일하게 **월 단위**로 보여준다. 상단 ‹ › 헤더(또는 좌우 스와이프)로 월을
+/// 이동하면 해당 월의 일기를 written_date 역순으로 표시한다(하루 1기록이라 페이징 없음).
+///
+/// 데이터는 [monthDiariesProvider]를 watch한다. 작성/수정/삭제 시 해당 프로바이더를
+/// invalidate하면, 탭이 살아 있어도(IndexedStack) **즉시 실시간 갱신**된다.
 class DiaryListPage extends ConsumerStatefulWidget {
   const DiaryListPage({super.key});
 
@@ -26,68 +29,39 @@ class DiaryListPage extends ConsumerStatefulWidget {
 }
 
 class _DiaryListPageState extends ConsumerState<DiaryListPage> {
-  final ScrollController _scroll = ScrollController();
-  final List<Diary> _items = [];
-  int? _cursor;
-  bool _hasNext = true;
-  bool _loading = false;
-  bool _initialLoading = true;
-  Object? _error;
+  /// 현재 표시 중인 달(1일 기준).
+  late DateTime _displayMonth;
 
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_onScroll);
-    _loadMore();
+    final now = DateTime.now();
+    _displayMonth = DateTime(now.year, now.month);
   }
 
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
+  /// 'yyyy-MM' (월 목록 조회 인자).
+  String get _yearMonth =>
+      '${_displayMonth.year.toString().padLeft(4, '0')}-'
+      '${_displayMonth.month.toString().padLeft(2, '0')}';
+
+  /// 이번 달(미래 달 이동 상한). 시간 무시, 연·월만.
+  DateTime get _maxMonth {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month);
   }
 
-  void _onScroll() {
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 240) {
-      _loadMore();
-    }
-  }
+  /// 표시 중인 달이 이번 달이면 true(다음 달 chevron 비활성 판단).
+  bool get _atCurrentMonth =>
+      _displayMonth.year == _maxMonth.year &&
+      _displayMonth.month == _maxMonth.month;
 
-  Future<void> _loadMore() async {
-    if (_loading || !_hasNext) return;
-    setState(() => _loading = true);
-    try {
-      final page = await ref
-          .read(diaryRepositoryProvider)
-          .getList(cursor: _cursor, size: 20);
-      if (!mounted) return;
-      setState(() {
-        _items.addAll(page.items);
-        _cursor = page.nextCursor;
-        _hasNext = page.hasNext;
-        _initialLoading = false;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e;
-        _initialLoading = false;
-        _loading = false;
-      });
-    }
-  }
-
-  /// 당겨서 새로고침 / 상세에서 돌아온 뒤 재로드.
-  Future<void> _refresh() async {
+  void _changeMonth(int delta) {
+    final candidate =
+        DateTime(_displayMonth.year, _displayMonth.month + delta);
+    if (candidate.isAfter(_maxMonth)) return; // 미래 달 금지(스와이프·chevron 공통)
     setState(() {
-      _items.clear();
-      _cursor = null;
-      _hasNext = true;
-      _error = null;
-      _loading = false;
+      _displayMonth = candidate;
     });
-    await _loadMore();
   }
 
   String _dateText(DateTime d) =>
@@ -95,13 +69,14 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final async = ref.watch(monthDiariesProvider(_yearMonth));
+
     return Container(
       decoration: const BoxDecoration(gradient: AppColors.bgGradient),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
-          title: const Text('목록'),
           actions: [
             IconButton(
               tooltip: '로그아웃',
@@ -111,58 +86,132 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
             ),
           ],
         ),
-        body: SafeArea(child: _buildBody()),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // 월 이동 헤더(캘린더와 동일 패턴).
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.sm,
+                  0,
+                ),
+                child: _MonthHeader(
+                  month: _displayMonth,
+                  onPrev: () => _changeMonth(-1),
+                  // 이번 달이면 다음 달 chevron 비활성(미래 달 차단).
+                  onNext: _atCurrentMonth ? null : () => _changeMonth(1),
+                ),
+              ),
+              Expanded(
+                // 좌우 스와이프로도 월 이동(캘린더와 동일 감각).
+                child: GestureDetector(
+                  onHorizontalDragEnd: (details) {
+                    final v = details.primaryVelocity ?? 0;
+                    if (v < 0) {
+                      _changeMonth(1);
+                    } else if (v > 0) {
+                      _changeMonth(-1);
+                    }
+                  },
+                  child: _buildBody(async),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_initialLoading) return const LoadingView();
-    if (_error != null && _items.isEmpty) {
-      return ErrorView(message: '목록을 불러오지 못했어요', onRetry: _refresh);
-    }
-    if (_items.isEmpty) {
-      return const EmptyStateView(
-        icon: Icons.book_outlined,
-        message: '아직 작성한 일기가 없어요',
-      );
-    }
-    return RefreshIndicator(
-      color: AppColors.accent,
-      onRefresh: _refresh,
-      child: ListView.separated(
-        controller: _scroll,
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        itemCount: _items.length + (_hasNext ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
-        itemBuilder: (context, index) {
-          // 마지막 칸: 다음 페이지 로딩 인디케이터
-          if (index >= _items.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: AppColors.accent,
-                  ),
-                ),
-              ),
-            );
-          }
-          final diary = _items[index];
-          return DiaryListTile(
-            dateText: _dateText(diary.writtenDate),
-            preview: diary.content,
-            onTap: () async {
-              await context.push('/diary/${diary.id}');
-              if (mounted) _refresh();
-            },
-          );
-        },
+  Widget _buildBody(AsyncValue<List<Diary>> async) {
+    return async.when(
+      loading: () => const LoadingView(),
+      error: (_, _) => ErrorView(
+        message: '목록을 불러오지 못했어요',
+        onRetry: () => ref.invalidate(monthDiariesProvider(_yearMonth)),
       ),
+      data: (items) {
+        if (items.isEmpty) return const _EmptyMonth();
+        return RefreshIndicator(
+          color: AppColors.accent,
+          onRefresh: () async => ref.invalidate(monthDiariesProvider(_yearMonth)),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.md),
+            itemBuilder: (context, index) {
+              final diary = items[index];
+              return DiaryListTile(
+                dateText: _dateText(diary.writtenDate),
+                preview: diary.content,
+                thumbnailUrl: diary.thumbnailUrl,
+                imageCount: diary.imageCount,
+                onTap: () => context.push('/diary/${diary.id}'),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 빈 상태.
+class _EmptyMonth extends StatelessWidget {
+  const _EmptyMonth();
+
+  @override
+  Widget build(BuildContext context) {
+    return const EmptyStateView(
+      icon: Icons.book_outlined,
+      message: '이 달에 작성한 일기가 없어요',
+    );
+  }
+}
+
+/// 월 이동 헤더: 연/월 텍스트 + 이전·다음 달 chevron. (CalendarMonthView 헤더와 동일 톤.)
+class _MonthHeader extends StatelessWidget {
+  const _MonthHeader({
+    required this.month,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final DateTime month;
+  final VoidCallback onPrev;
+
+  /// null이면 다음 달 버튼 비활성(미래 달 차단).
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '${month.year}년 ${month.month}월',
+            style: textTheme.titleLarge?.copyWith(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: '이전 달',
+          onPressed: onPrev,
+          icon: const Icon(Icons.chevron_left),
+          color: AppColors.ink,
+        ),
+        IconButton(
+          tooltip: '다음 달',
+          onPressed: onNext,
+          icon: const Icon(Icons.chevron_right),
+          color: AppColors.ink,
+        ),
+      ],
     );
   }
 }

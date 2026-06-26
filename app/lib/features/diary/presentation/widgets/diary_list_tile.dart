@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:record/core/config/api_config.dart';
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
 
@@ -57,6 +58,8 @@ class DiaryListTile extends StatelessWidget {
     required this.dateText,
     required this.preview,
     required this.onTap,
+    this.thumbnailUrl,
+    this.imageCount = 0,
   });
 
   /// 상단 날짜 eyebrow 텍스트.
@@ -68,12 +71,18 @@ class DiaryListTile extends StatelessWidget {
   final String preview;
 
   /// 타일 전체 탭 콜백.
-  // TODO: 로직 연결 지점 — go_router 로 일기 상세 화면(diary_detail_page) 푸시
   final VoidCallback onTap;
+
+  /// 대표 이미지 경로(없으면 썸네일 미표시). 상대 경로는 내부에서 절대화한다.
+  final String? thumbnailUrl;
+
+  /// 첨부 이미지 개수(1장 초과면 썸네일에 개수 배지 표시).
+  final int imageCount;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final resolvedThumb = ApiConfig.resolveImageUrl(thumbnailUrl);
 
     return DecoratedBox(
       // 그림자는 클리핑 외부에 있어야 하므로 Material 밖 DecoratedBox 에서 선언
@@ -94,6 +103,11 @@ class DiaryListTile extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // ── 대표 이미지 썸네일(있을 때만) ───────────────
+                if (resolvedThumb != null) ...[
+                  _ListThumbnail(url: resolvedThumb, imageCount: imageCount),
+                  const SizedBox(width: AppSpacing.md),
+                ],
                 // ── 텍스트 영역 ─────────────────────────────────
                 Expanded(
                   child: Column(
@@ -134,6 +148,81 @@ class DiaryListTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 목록 대표 이미지 썸네일
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 56×56 둥근 썸네일. [imageCount]가 2 이상이면 우하단에 개수 배지를 얹는다.
+class _ListThumbnail extends StatelessWidget {
+  const _ListThumbnail({required this.url, required this.imageCount});
+
+  /// 절대 URL(상위에서 resolveImageUrl 적용 후 전달).
+  final String url;
+  final int imageCount;
+
+  static const double _size = 56;
+
+  static const BorderRadius _radius =
+      BorderRadius.all(Radius.circular(AppRadius.sm));
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: _radius,
+            child: Image.network(
+              url,
+              width: _size,
+              height: _size,
+              fit: BoxFit.cover,
+              // 로딩 전/실패 시 hairline 플레이스홀더로 레이아웃 점프 방지.
+              errorBuilder: (context, error, stackTrace) => const ColoredBox(
+                color: AppColors.hairline,
+                child: SizedBox.square(
+                  dimension: _size,
+                  child: Icon(
+                    Icons.image_outlined,
+                    color: AppColors.inkMuted,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 사진이 여러 장이면 개수 배지 표시.
+          if (imageCount > 1)
+            Positioned(
+              right: 3,
+              bottom: 3,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  // AppColors.ink(0xFF232228) 80% 알파 → 0xCC232228
+                  color: Color(0xCC232228),
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  child: Text(
+                    '$imageCount',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppColors.surface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 10,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

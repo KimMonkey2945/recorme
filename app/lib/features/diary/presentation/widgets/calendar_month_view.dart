@@ -250,7 +250,9 @@ class _DateGrid extends StatelessWidget {
         .map((d) => d.day)
         .toSet();
 
-    final DateTime today = DateTime.now();
+    // 시간을 버린 '오늘'(미래 날짜 비활성 비교용).
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
 
     return GridView.builder(
       shrinkWrap: true,
@@ -278,6 +280,8 @@ class _DateGrid extends StatelessWidget {
           isSelected:
               selectedDate != null && _isSameDay(date, selectedDate!),
           isMarked: markedDays.contains(dayNumber),
+          // 오늘 이후(미래)는 작성/조회 대상이 아니므로 비활성.
+          isDisabled: date.isAfter(today),
           weekdayIndex: weekdayIndex,
           onTap: () => onDateTap(date),
         );
@@ -304,6 +308,7 @@ class _DayCell extends StatelessWidget {
     required this.isToday,
     required this.isSelected,
     required this.isMarked,
+    required this.isDisabled,
     required this.weekdayIndex,
     required this.onTap,
   });
@@ -312,6 +317,9 @@ class _DayCell extends StatelessWidget {
   final DateTime date;
   final bool isToday;
   final bool isSelected;
+
+  /// 미래 날짜 여부. true이면 흐리게 표시하고 탭을 막는다(작성/조회 불가).
+  final bool isDisabled;
 
   /// 기록 있는 날 여부.
   /// true이면 숫자 아래 dot을 표시.
@@ -325,6 +333,7 @@ class _DayCell extends StatelessWidget {
 
   /// 날짜 숫자 색상 결정
   Color _dayTextColor() {
+    if (isDisabled) return AppColors.inkMuted; // 미래 날짜 — 흐리게(최우선)
     if (isToday) return AppColors.surface; // 채운 원 위 흰 글자
     if (weekdayIndex == 0) return _kSundayLabelColor;
     if (weekdayIndex == 6) return _kSaturdayLabelColor;
@@ -360,13 +369,15 @@ class _DayCell extends StatelessWidget {
     final String semanticsLabel =
         '${date.month}월 $day일'
         '${isToday ? ', 오늘' : ''}'
-        '${isMarked ? ', 기록 있음' : ''}';
+        '${isMarked ? ', 기록 있음' : ''}'
+        '${isDisabled ? ', 작성 불가' : ''}';
 
     return Semantics(
       label: semanticsLabel,
-      button: true,
+      button: !isDisabled,
       child: InkWell(
-        onTap: onTap,
+        // 미래 날짜는 탭 무효(리플도 없음).
+        onTap: isDisabled ? null : onTap,
         // 셀 전체를 탭 영역으로 — mainAxisExtent 52dp ≥ 48dp 기준 충족
         borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Column(

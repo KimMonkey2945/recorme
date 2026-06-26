@@ -1,91 +1,75 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
+import 'package:record/features/diary/presentation/widgets/diary_image_embed_builder.dart';
 
-/// 일기 작성/수정 화면의 순수 표현 위젯.
+/// 일기 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
 ///
-/// Scaffold·AppBar·배경 그라데이션은 상위 페이지가 담당하며,
-/// 이 위젯은 에디터 콘텐츠 영역(날짜 칩 + 텍스트 입력 + 버튼 바)만 책임진다.
+/// Scaffold·AppBar·배경 그라데이션은 상위 페이지가 담당하며, 이 위젯은 에디터
+/// 콘텐츠 영역(날짜 칩 + 서식 툴바 + 리치 에디터 + 글자수 카운터 + 버튼 바)만 책임진다.
+/// [QuillController] 생성·본문 로드·글자수 제한·이미지 업로드/삽입·저장은 모두 상위
+/// [DiaryEditorPage]가 담당하고, 여기서는 컨트롤러와 콜백만 받아 표시한다.
 ///
-/// **사용 예시 (DiaryEditorPage 내부)**
-/// ```dart
-/// DiaryEditorView(
-///   dateText: '2026년 6월 24일',
-///   saving: state.isSaving,
-///   onSave: (content) => ref.read(diaryNotifier.notifier).save(date, content),
-///   onCancel: context.pop,
-/// )
+/// ## 레이아웃
 /// ```
-class DiaryEditorView extends StatefulWidget {
+/// _DateChip
+/// QuillSimpleToolbar     ← 폰트/크기·굵게/기울임/밑줄·목록 + 사진 삽입(custom)
+/// Expanded(QuillEditor)  ← 본문(인라인 이미지 포함)
+/// _CharCounter           ← 순수 텍스트 기준 글자수(3단계 색상)
+/// _BottomButtonBar       ← 취소 + 저장
+/// ```
+///
+/// ## 알려진 한계 (웹 한글 IME)
+/// flutter_quill 에디터는 Flutter **웹**에서 한글(CJK) IME 조합 입력이 제대로
+/// 동작하지 않는다(영문은 정상). 이는 flutter_quill + Flutter 웹의 알려진 한계로
+/// 앱 설정 수준의 확실한 우회가 없다. **한글 입력은 Android/iOS(모바일)에서 정상**이며
+/// 모바일 기기/에뮬레이터로 검증한다. (웹은 영문·서식·이미지·날짜 흐름 검증용.)
+class DiaryEditorView extends StatelessWidget {
   const DiaryEditorView({
     super.key,
     required this.dateText,
-    this.initialContent,
+    required this.controller,
+    required this.plainLength,
+    this.maxLength = 500,
     required this.saving,
+    required this.canSave,
     required this.onSave,
     required this.onCancel,
+    required this.onPickImage,
   });
 
-  /// 표시용 날짜 문자열 (예: '2026년 6월 24일') — 읽기 전용 칩에 표시됩니다.
+  /// 표시용 날짜 문자열 (예: '2026년 6월 24일').
   final String dateText;
 
-  /// 수정 모드일 때 텍스트 필드를 미리 채울 내용. null이면 신규 작성.
-  final String? initialContent;
+  /// 본문 리치 텍스트 컨트롤러(상위가 생성·소유).
+  final QuillController controller;
 
-  /// 저장 요청이 진행 중이면 true — 저장 버튼을 비활성 + 로딩 인디케이터로 전환합니다.
+  /// 현재 순수 텍스트 길이(상위가 계산해 전달 — 카운터 표시용).
+  final int plainLength;
+
+  /// 본문 최대 글자 수(순수 텍스트 기준 하드 제한). 기본 500자.
+  final int maxLength;
+
+  /// 저장 진행 중이면 true — 저장 버튼을 로딩 상태로 전환.
   final bool saving;
 
-  /// 저장 버튼 탭 시 호출됩니다. 트림된 입력 텍스트를 전달합니다.
-  // TODO: 로직 연결 지점 — 실제 upsert 호출은 상위 페이지/Riverpod notifier에서 처리.
-  final void Function(String content) onSave;
+  /// 저장 가능 여부(내용 있음 + 저장 중 아님).
+  final bool canSave;
 
-  /// 취소 버튼 탭 시 호출됩니다.
-  // TODO: 로직 연결 지점 — 뒤로가기·dirty 감지 등은 상위 페이지에서 처리.
+  /// 저장 버튼 탭 콜백.
+  final VoidCallback onSave;
+
+  /// 취소 버튼 탭 콜백.
   final VoidCallback onCancel;
 
-  @override
-  State<DiaryEditorView> createState() => _DiaryEditorViewState();
-}
+  /// 사진 삽입 버튼 탭 콜백(상위가 picker→업로드→Delta 삽입 처리).
+  final VoidCallback onPickImage;
 
-class _DiaryEditorViewState extends State<DiaryEditorView> {
-  late final TextEditingController _controller;
-
-  /// 저장 버튼 활성/비활성 판단을 위한 입력 비어 있는지 여부.
-  bool _isEmpty = true;
-
-  @override
-  void initState() {
-    super.initState();
-    // 수정 모드인 경우 initialContent로 컨트롤러 초기화.
-    final initial = widget.initialContent ?? '';
-    _controller = TextEditingController(text: initial);
-    _isEmpty = initial.trim().isEmpty;
-    _controller.addListener(_onTextChanged);
-  }
-
-  /// 텍스트 변경 감지 → isEmpty 상태 갱신 → 저장 버튼 활성/비활성 반영.
-  void _onTextChanged() {
-    final empty = _controller.text.trim().isEmpty;
-    if (empty != _isEmpty) {
-      setState(() => _isEmpty = empty);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller
-      ..removeListener(_onTextChanged)
-      ..dispose();
-    super.dispose();
-  }
-
-  /// 저장 가능 여부: 내용이 있고(비어 있지 않고) 저장 중이 아닐 때만 true.
-  bool get _canSave => !_isEmpty && !widget.saving;
-
-  void _handleSave() {
-    if (!_canSave) return;
-    widget.onSave(_controller.text.trim());
-  }
+  /// 카드 반경과 일치하는 상수 BorderRadius.
+  static const BorderRadius _kCardRadius =
+      BorderRadius.all(Radius.circular(AppRadius.card));
 
   @override
   Widget build(BuildContext context) {
@@ -95,22 +79,77 @@ class _DiaryEditorViewState extends State<DiaryEditorView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── 날짜 읽기 전용 칩 ────────────────────────────────────
-          _DateChip(dateText: widget.dateText),
-          const SizedBox(height: AppSpacing.lg),
-          // ── 본문 텍스트 입력 영역 ────────────────────────────────
-          Expanded(
-            child: _DiaryTextField(
-              controller: _controller,
-              enabled: !widget.saving,
+          _DateChip(dateText: dateText),
+          const SizedBox(height: AppSpacing.md),
+
+          // ── 서식 툴바 (사진 삽입 custom 버튼 포함) ─────────────────
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.all(Radius.circular(AppRadius.sm)),
+            ),
+            child: QuillSimpleToolbar(
+              controller: controller,
+              config: QuillSimpleToolbarConfig(
+                // 단일 가로 스크롤 행(여러 줄로 펼치면 작은 화면에서 세로 넘침).
+                multiRowsDisplay: false,
+                showSearchButton: false,
+                showLink: false,
+                showCodeBlock: false,
+                showInlineCode: false,
+                // 사진 삽입: 갤러리 선택 → 업로드 → 커서 위치 임베드(상위 처리).
+                customButtons: [
+                  QuillToolbarCustomButtonOptions(
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    tooltip: '사진 삽입',
+                    onPressed: saving ? null : onPickImage,
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.sm),
+
+          // ── 본문 리치 에디터 ─────────────────────────────────────
+          Expanded(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: _kCardRadius,
+                border: Border.fromBorderSide(
+                  BorderSide(color: AppColors.hairline),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x08232228),
+                    blurRadius: 12,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: QuillEditor.basic(
+                controller: controller,
+                config: const QuillEditorConfig(
+                  placeholder: '오늘 하루를 기록해보세요',
+                  padding: EdgeInsets.all(AppSpacing.xl),
+                  expands: true,
+                  embedBuilders: [DiaryImageEmbedBuilder()],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+
+          // ── 글자수 카운터 (순수 텍스트 기준, 우측 정렬) ─────────────
+          _CharCounter(current: plainLength, max: maxLength),
+          const SizedBox(height: AppSpacing.md),
+
           // ── 하단 버튼 바 ─────────────────────────────────────────
           _BottomButtonBar(
-            saving: widget.saving,
-            canSave: _canSave,
-            onSave: _handleSave,
-            onCancel: widget.onCancel,
+            saving: saving,
+            canSave: canSave,
+            onSave: onSave,
+            onCancel: onCancel,
           ),
         ],
       ),
@@ -123,7 +162,6 @@ class _DiaryEditorViewState extends State<DiaryEditorView> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 선택된 날짜를 표시하는 읽기 전용 Pill 칩.
-/// accentSoft 배경 + 캘린더 아이콘으로 편집 불가 상태임을 시각적으로 드러낸다.
 class _DateChip extends StatelessWidget {
   const _DateChip({required this.dateText});
 
@@ -166,83 +204,43 @@ class _DateChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 본문 멀티라인 텍스트 필드
+// 글자수 카운터
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 일기 본문 입력 영역.
-/// [expands] + [maxLines] null 조합으로 Expanded 안에서 전체 높이를 채운다.
-/// 포커스 시 hairline → accent 컬러로 테두리가 전환된다.
-class _DiaryTextField extends StatelessWidget {
-  const _DiaryTextField({
-    required this.controller,
-    required this.enabled,
-  });
+/// 우측 정렬 글자수 카운터(순수 텍스트 기준). 비율에 따라 3단계 색상.
+///
+/// | 비율 | 색상 | 의미 |
+/// |------|------|------|
+/// | < 80% | inkMuted | 평상시 |
+/// | 80~95% | warning (앰버) | 주의 구간 |
+/// | ≥ 95% | error (레드) | 초과 임박 |
+class _CharCounter extends StatelessWidget {
+  const _CharCounter({required this.current, required this.max});
 
-  final TextEditingController controller;
-  final bool enabled;
+  final int current;
+  final int max;
 
-  /// 카드 반경과 일치하는 상수 BorderRadius — const 생성자에서 사용.
-  static const BorderRadius _kCardRadius =
-      BorderRadius.all(Radius.circular(AppRadius.card));
+  Color _resolveColor() {
+    if (max <= 0) return AppColors.inkMuted;
+    final ratio = current / max;
+    if (ratio >= 0.95) return AppColors.error;
+    if (ratio >= 0.80) return AppColors.warning;
+    return AppColors.inkMuted;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bodyLarge = Theme.of(context).textTheme.bodyLarge;
+    final color = _resolveColor();
+    final baseStyle =
+        Theme.of(context).textTheme.bodySmall ?? const TextStyle(fontSize: 12);
 
-    return DecoratedBox(
-      // TextField 뒤에 그림자 레이어를 추가한다.
-      // DecoratedBox는 자식 크기를 변경하지 않으므로 레이아웃 영향 없음.
-      decoration: const BoxDecoration(
-        borderRadius: _kCardRadius,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x08232228), // AppColors.ink ~3% 투명도
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        maxLines: null,
-        expands: true,
-        textAlignVertical: TextAlignVertical.top,
-        keyboardType: TextInputType.multiline,
-        style: bodyLarge?.copyWith(
-          color: AppColors.ink,
-          height: 1.75, // 넉넉한 행간 — "조용한 일기장" 필기 느낌
-        ),
-        decoration: InputDecoration(
-          hintText: '오늘 하루를 기록해보세요',
-          hintStyle: bodyLarge?.copyWith(
-            color: AppColors.inkMuted,
-            height: 1.75,
-          ),
-          contentPadding: const EdgeInsets.all(AppSpacing.xl),
-          // 기본 테두리 (fallback)
-          border: const OutlineInputBorder(
-            borderRadius: _kCardRadius,
-            borderSide: BorderSide(color: AppColors.hairline),
-          ),
-          // 활성 상태 — hairline 테두리
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: _kCardRadius,
-            borderSide: BorderSide(color: AppColors.hairline),
-          ),
-          // 포커스 상태 — accent 색상, 1.5dp 두께
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: _kCardRadius,
-            borderSide: BorderSide(color: AppColors.accent, width: 1.5),
-          ),
-          // 비활성 상태 (saving 중) — hairline 유지, 시각적 연속성 보장
-          disabledBorder: const OutlineInputBorder(
-            borderRadius: _kCardRadius,
-            borderSide: BorderSide(color: AppColors.hairline),
-          ),
-          filled: true,
-          fillColor: AppColors.surface,
-        ),
+    return Align(
+      alignment: Alignment.centerRight,
+      child: AnimatedDefaultTextStyle(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        style: baseStyle.copyWith(color: color),
+        child: Text('$current / $max'),
       ),
     );
   }
@@ -253,7 +251,6 @@ class _DiaryTextField extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 취소(OutlinedButton) + 저장(FilledButton) 가로 배치.
-/// 저장 버튼이 남은 가로 공간을 모두 차지해 더 돋보이도록 한다.
 class _BottomButtonBar extends StatelessWidget {
   const _BottomButtonBar({
     required this.saving,
@@ -267,10 +264,8 @@ class _BottomButtonBar extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onCancel;
 
-  /// 버튼 고정 높이 — 최소 탭 영역(48dp) 초과 보장.
   static const double _kButtonHeight = 52;
 
-  /// 버튼 공통 모양 — button 반경(14dp), Pill에 가까운 둥근 형태.
   static const OutlinedBorder _kButtonShape = RoundedRectangleBorder(
     borderRadius: BorderRadius.all(Radius.circular(AppRadius.button)),
   );
@@ -279,7 +274,6 @@ class _BottomButtonBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // ── 취소 버튼 ────────────────────────────────────────────
         SizedBox(
           height: _kButtonHeight,
           child: OutlinedButton(
@@ -294,7 +288,6 @@ class _BottomButtonBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.md),
-        // ── 저장 버튼 (나머지 가로 공간 점유) ───────────────────────
         Expanded(
           child: SizedBox(
             height: _kButtonHeight,
@@ -302,11 +295,9 @@ class _BottomButtonBar extends StatelessWidget {
               onPressed: canSave ? onSave : null,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
-                // 비활성(내용 없거나 saving 중): accentSoft로 부드럽게 처리
                 disabledBackgroundColor: AppColors.accentSoft,
                 shape: _kButtonShape,
               ),
-              // saving 중: 텍스트 대신 로딩 인디케이터 표시 (레이아웃 점프 방지)
               child: saving
                   ? const SizedBox.square(
                       dimension: 20,
