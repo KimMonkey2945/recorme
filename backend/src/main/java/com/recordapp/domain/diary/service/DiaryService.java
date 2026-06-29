@@ -2,10 +2,12 @@ package com.recordapp.domain.diary.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.recordapp.domain.diary.DeltaImages;
 import com.recordapp.domain.diary.DiaryConstraints;
 import com.recordapp.domain.diary.dto.DiaryListItem;
 import com.recordapp.domain.diary.dto.DiaryResponse;
 import com.recordapp.domain.diary.dto.DiaryRow;
+import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiarySummaryResponse;
 import com.recordapp.domain.diary.dto.DiaryUpsertCommand;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
@@ -13,13 +15,13 @@ import com.recordapp.domain.diary.dto.ImageUploadResponse;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
 import com.recordapp.domain.diary.mapper.DiaryMapper;
+import com.recordapp.domain.emotion.service.EmotionAnalysisService;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
 import com.recordapp.global.exception.BusinessException;
 import com.recordapp.global.exception.ErrorCode;
 import com.recordapp.infra.storage.StorageService;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,13 +48,17 @@ public class DiaryService {
 	private final DiaryMapper diaryMapper;
 	private final StorageService storageService;
 	private final ObjectMapper objectMapper;
+	private final EmotionAnalysisService emotionAnalysisService;
 
 	public DiaryService(DiaryMapper diaryMapper,
 			StorageService storageService,
-			ObjectMapper objectMapper) {
+			ObjectMapper objectMapper,
+			EmotionAnalysisService emotionAnalysisService) {
 		this.diaryMapper = diaryMapper;
 		this.storageService = storageService;
 		this.objectMapper = objectMapper;
+		// 단방향 의존(DiaryService → EmotionAnalysisService). 분석 서비스는 DiaryService 를 모름(순환참조 회피).
+		this.emotionAnalysisService = emotionAnalysisService;
 	}
 
 	/**
@@ -72,11 +78,23 @@ public class DiaryService {
 		// 같은 날짜 기존 일기(UPDATE 전환 시)의 content 를 미리 확보 — 빠진 이미지 파일 회수용.
 		// 신규 INSERT 면 existing 이 null 이라 oldUrls 는 비어 있다.
 		DiaryRow existing = diaryMapper.findByDateAndUser(userId, req.writtenDate());
+		// 이미 확정(DRAFT 아님)된 일기는 수정 불가 — DB 변경 전에 조기 차단.
+		if (existing != null && !"DRAFT".equals(existing.analysisStatus())) {
+			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
+		}
 		List<String> oldUrls = existing == null ? List.of() : extractImageUrls(existing.content());
 
+		// confirm=true 면 '오늘을 기억하기'(PENDING·분석), 아니면 등록(DRAFT 유지).
 		DiaryUpsertCommand cmd = new DiaryUpsertCommand(
-				userId, req.content(), req.contentText(), req.writtenDate(), req.visibility());
+				userId, req.content(), req.contentText(), req.writtenDate(), req.visibility(),
+				Boolean.TRUE.equals(req.confirm()));
 		diaryMapper.upsert(cmd); // 실행 후 cmd 에 id·inserted 가 채워진다
+
+		// 경합 백스톱: 조회~upsert 사이 타 요청이 같은 날짜를 확정하면 ON CONFLICT WHERE 가드가 0행 →
+		// RETURNING 이 비어 id 가 null 로 남는다. 이 경우 확정 충돌로 보고 차단한다.
+		if (cmd.getId() == null) {
+			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
+		}
 
 		DiaryRow row = diaryMapper.findByIdAndUser(cmd.getId(), userId);
 		if (row == null) {
@@ -86,6 +104,8 @@ public class DiaryService {
 
 		// 본문에서 빠진 이미지 파일만 커밋 후 회수(재참조 파일은 보존).
 		reclaimFilesAfterCommit(removed(oldUrls, newUrls));
+		// 확정(confirm=true)이면 PENDING → 커밋 후 비동기 감정 분석 트리거. DRAFT(등록)면 PENDING 아님 → 스킵.
+		triggerAnalysisIfPending(row);
 		return new DiaryUpsertResult(toResponse(row), cmd.isInserted());
 	}
 
@@ -131,10 +151,15 @@ public class DiaryService {
 		return diaryMapper.findByMonth(userId, yearMonth);
 	}
 
-	/** 일기 스칼라 row 를 단건 응답으로 매핑한다(인라인 이미지는 content 에 임베드되어 별도 조립 불필요). */
+	/**
+	 * 일기 스칼라 row 를 단건 응답으로 매핑한다(인라인 이미지는 content 에 임베드되어 별도 조립 불필요).
+	 * 감정 분석 테마 필드(primaryEmotion~moodEmoji)는 DONE 일 때만 채워지고 그 외엔 NULL 그대로 전달된다.
+	 */
 	private DiaryResponse toResponse(DiaryRow row) {
 		return new DiaryResponse(row.id(), row.shareToken(), row.content(), row.contentText(),
-				row.writtenDate(), row.visibility(), row.analysisStatus());
+				row.writtenDate(), row.visibility(), row.analysisStatus(),
+				row.primaryEmotion(), row.backgroundColor(), row.textColor(), row.accentColor(),
+				row.aiComment(), row.aiTitle(), row.moodEmoji());
 	}
 
 	/**
@@ -153,11 +178,11 @@ public class DiaryService {
 		return PageResponse.of(items, hasNext ? nextCursor : null, hasNext);
 	}
 
-	/** 해당 월 작성일 요약(캘린더 표시용). */
+	/** 해당 월 일자별 요약(캘린더 표시용 — 날짜별 감정색·무드 이모지 포함). */
 	@Transactional(readOnly = true)
 	public DiarySummaryResponse getSummary(Long userId, String yearMonth) {
-		List<String> dates = diaryMapper.findSummaryDates(userId, yearMonth);
-		return new DiarySummaryResponse(yearMonth, dates);
+		List<DiarySummaryDay> days = diaryMapper.findSummaryDays(userId, yearMonth);
+		return new DiarySummaryResponse(yearMonth, days);
 	}
 
 	/**
@@ -178,6 +203,10 @@ public class DiaryService {
 		if (before == null) {
 			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
 		}
+		// 이미 확정(DRAFT 아님)된 일기는 수정 불가 — DB 변경 전에 조기 차단.
+		if (!"DRAFT".equals(before.analysisStatus())) {
+			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
+		}
 		List<String> oldUrls = extractImageUrls(before.content());
 
 		int updated = diaryMapper.updateByIdAndUser(id, userId, req.content(), req.contentText(), req.visibility());
@@ -188,7 +217,11 @@ public class DiaryService {
 
 		// 본문에서 빠진 이미지 파일만 커밋 후 회수.
 		reclaimFilesAfterCommit(removed(oldUrls, newUrls));
-		return toResponse(diaryMapper.findByIdAndUser(id, userId));
+		DiaryRow after = diaryMapper.findByIdAndUser(id, userId);
+		// 수정 가능한 일기는 항상 DRAFT(미분석)이며 update 가 상태를 바꾸지 않으므로 after 는 PENDING 이 아니다 →
+		// triggerAnalysisIfPending 는 스킵된다(확정은 upsert confirm=true 경로에서만 발생). 방어적으로 호출 유지.
+		triggerAnalysisIfPending(after);
+		return toResponse(after);
 	}
 
 	/**
@@ -243,31 +276,30 @@ public class DiaryService {
 	 * <p>파싱 실패/형식 불일치는 빈 목록으로 견고하게 처리한다 — 본문 저장 자체를 막지 않기 위함이다.
 	 */
 	private List<String> extractImageUrls(String deltaJson) {
-		List<String> urls = new ArrayList<>();
-		if (deltaJson == null || deltaJson.isBlank()) {
-			return urls;
+		// 추출 규칙은 공용 유틸(DeltaImages)로 일원화 — 감정 분석용 이미지 준비와 동일 로직을 공유한다.
+		return DeltaImages.extractImageUrls(objectMapper, deltaJson);
+	}
+
+	/**
+	 * analysis_status 가 PENDING 인 일기에 한해 비동기 감정 분석을 커밋 이후에 트리거한다.
+	 * <p>커밋 전에 dispatch 하면 @Async 스레드가 미커밋 행을 PENDING 으로 못 보거나(stale) 롤백된 일기를
+	 * 분석할 수 있으므로, 파일 회수와 동일하게 afterCommit 으로 미룬다. 동기화 비활성 시 즉시 호출 폴백.
+	 */
+	private void triggerAnalysisIfPending(DiaryRow row) {
+		if (row == null || !"PENDING".equals(row.analysisStatus())) {
+			return;
 		}
-		try {
-			JsonNode ops = objectMapper.readTree(deltaJson).path("ops");
-			if (ops.isArray()) {
-				for (JsonNode op : ops) {
-					JsonNode insert = op.path("insert");
-					if (insert.isObject()) {
-						JsonNode image = insert.path("image");
-						if (image.isTextual()) {
-							String url = image.asText();
-							if (!url.isBlank() && !urls.contains(url)) {
-								urls.add(url);
-							}
-						}
-					}
+		long diaryId = row.id();
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					emotionAnalysisService.analyzeAsync(diaryId);
 				}
-			}
-		} catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {
-			// 견고성: 파싱 실패 시 이미지 추출만 생략하고 본문 저장은 진행한다.
-			log.warn("본문 Delta JSON 파싱 실패 — 인라인 이미지 추출을 생략한다.", e);
+			});
+		} else {
+			emotionAnalysisService.analyzeAsync(diaryId);
 		}
-		return urls;
 	}
 
 	/**

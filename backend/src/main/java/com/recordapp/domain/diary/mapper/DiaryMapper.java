@@ -2,6 +2,7 @@ package com.recordapp.domain.diary.mapper;
 
 import com.recordapp.domain.diary.dto.DiaryListItem;
 import com.recordapp.domain.diary.dto.DiaryRow;
+import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiaryUpsertCommand;
 import java.time.LocalDate;
 import java.util.List;
@@ -49,10 +50,11 @@ public interface DiaryMapper {
 	boolean existsOwned(@Param("id") Long id, @Param("userId") Long userId);
 
 	/**
-	 * 해당 월(yearMonth "yyyy-MM")에 활성 일기가 존재하는 날짜 목록("yyyy-MM-dd", DISTINCT, 오름차순).
-	 * 캘린더 표시용.
+	 * 해당 월(yearMonth "yyyy-MM")에 활성 일기가 존재하는 날짜별 요약 목록(written_date 오름차순).
+	 * 캘린더 표시용 — 각 항목은 날짜·분석상태와 감정색·무드 이모지용 필드를 담는다.
+	 * 하루 1기록이라 날짜당 1건이며 한 달 ≤31건 → 페이징 없이 한 번에 반환한다.
 	 */
-	List<String> findSummaryDates(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
+	List<DiarySummaryDay> findSummaryDays(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
 
 	/**
 	 * 내부 PK+사용자 기준 본문/공개범위 수정. 순수 텍스트(content_text)가 바뀐 경우에만

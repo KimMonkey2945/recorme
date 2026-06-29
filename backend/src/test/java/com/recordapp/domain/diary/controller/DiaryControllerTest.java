@@ -1,6 +1,8 @@
 package com.recordapp.domain.diary.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -17,6 +19,7 @@ import com.recordapp.global.security.SecurityConfig;
 import com.recordapp.global.security.SupabaseJwtFilter;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration;
@@ -102,7 +105,8 @@ class DiaryControllerTest {
 		// content 는 Delta JSON, contentText 는 순수 텍스트.
 		DiaryResponse diary = new DiaryResponse(
 				10L, "share-token", "{\"ops\":[{\"insert\":\"오늘 하루\\n\"}]}", "오늘 하루",
-				LocalDate.of(2026, 6, 15), "PRIVATE", "PENDING");
+				LocalDate.of(2026, 6, 15), "PRIVATE", "PENDING",
+				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
 		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
 				.thenReturn(new DiaryUpsertResult(diary, true));
 
@@ -114,5 +118,46 @@ class DiaryControllerTest {
 				.andExpect(jsonPath("$.data.id").value(10))
 				.andExpect(jsonPath("$.data.contentText").value("오늘 하루"))
 				.andExpect(jsonPath("$.data.analysisStatus").value("PENDING"));
+	}
+
+	@Test
+	void save_confirmFlag_boundToRequest() throws Exception {
+		// 바디의 confirm=true 가 SaveDiaryRequest.confirm 으로 역직렬화돼 서비스에 전달되는지 검증.
+		DiaryResponse diary = new DiaryResponse(
+				11L, "share-token", "{\"ops\":[{\"insert\":\"확정\\n\"}]}", "확정",
+				LocalDate.of(2026, 6, 16), "PRIVATE", "PENDING",
+				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
+		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
+				.thenReturn(new DiaryUpsertResult(diary, true));
+
+		mockMvc.perform(post("/diaries")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"content\":\"delta\",\"contentText\":\"확정\",\"writtenDate\":\"2026-06-16\",\"confirm\":true}"))
+				.andExpect(status().isCreated());
+
+		ArgumentCaptor<SaveDiaryRequest> captor = ArgumentCaptor.forClass(SaveDiaryRequest.class);
+		verify(diaryService).upsert(any(), captor.capture());
+		assertThat(captor.getValue().confirm()).as("confirm=true 바인딩").isEqualTo(true);
+	}
+
+	@Test
+	void save_confirmOmitted_boundAsNull() throws Exception {
+		// confirm 미지정 시 null 로 바인딩(서비스에서 등록=DRAFT 로 해석). 컨트롤러는 그대로 전달만 한다.
+		DiaryResponse diary = new DiaryResponse(
+				12L, "share-token", "{\"ops\":[{\"insert\":\"등록\\n\"}]}", "등록",
+				LocalDate.of(2026, 6, 17), "PRIVATE", "DRAFT",
+				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
+		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
+				.thenReturn(new DiaryUpsertResult(diary, true));
+
+		mockMvc.perform(post("/diaries")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"content\":\"delta\",\"contentText\":\"등록\",\"writtenDate\":\"2026-06-17\"}"))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.analysisStatus").value("DRAFT"));
+
+		ArgumentCaptor<SaveDiaryRequest> captor = ArgumentCaptor.forClass(SaveDiaryRequest.class);
+		verify(diaryService).upsert(any(), captor.capture());
+		assertThat(captor.getValue().confirm()).as("confirm 미지정 → null").isNull();
 	}
 }

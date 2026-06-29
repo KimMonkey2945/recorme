@@ -16,18 +16,20 @@ public class DiaryUpsertCommand {
 	private final String contentText;  // 순수 텍스트(길이 제약·미리보기·LLM 입력·재분석 트리거 기준)
 	private final LocalDate writtenDate;
 	private final String visibility; // nullable — SQL 에서 COALESCE(..., 'PRIVATE')
+	private final boolean confirm;   // '오늘을 기억하기'(확정) 여부 — true 면 PENDING, false 면 DRAFT 유지
 
 	// ===== 출력(MyBatis keyProperty 회수 대상) =====
 	private Long id;
 	private boolean inserted;
 
 	public DiaryUpsertCommand(Long userId, String content, String contentText,
-			LocalDate writtenDate, String visibility) {
+			LocalDate writtenDate, String visibility, boolean confirm) {
 		this.userId = userId;
 		this.content = content;
 		this.contentText = contentText;
 		this.writtenDate = writtenDate;
 		this.visibility = visibility;
+		this.confirm = confirm;
 	}
 
 	public Long getUserId() {
@@ -48,6 +50,10 @@ public class DiaryUpsertCommand {
 
 	public String getVisibility() {
 		return visibility;
+	}
+
+	public boolean isConfirm() {
+		return confirm;
 	}
 
 	public Long getId() {

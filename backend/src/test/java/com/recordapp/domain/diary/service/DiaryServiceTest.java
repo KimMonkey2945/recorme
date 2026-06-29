@@ -7,10 +7,12 @@ import com.recordapp.domain.auth.service.UserProvisioningService;
 import com.recordapp.domain.diary.DiaryConstraints;
 import com.recordapp.domain.diary.dto.DiaryListItem;
 import com.recordapp.domain.diary.dto.DiaryResponse;
+import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiarySummaryResponse;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
+import com.recordapp.domain.emotion.mapper.EmotionAnalysisMapper;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
 import com.recordapp.global.exception.BusinessException;
@@ -76,6 +78,9 @@ class DiaryServiceTest {
 	@Autowired
 	StorageProperties storageProperties;
 
+	@Autowired
+	EmotionAnalysisMapper emotionAnalysisMapper;
+
 	// ===== 헬퍼(UserServiceTest 와 동일 패턴) =====
 
 	/** 저장 URL(상대경로 /files/...)을 디스크 실제 경로로 환산. */
@@ -114,6 +119,16 @@ class DiaryServiceTest {
 		}
 		sb.append("{\"insert\":\"").append(text).append("\\n\"}]}");
 		return sb.toString();
+	}
+
+	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 일기는 수정 가능·미분석 상태. */
+	private SaveDiaryRequest register(String content, String text, LocalDate date, String visibility) {
+		return new SaveDiaryRequest(content, text, date, visibility, false);
+	}
+
+	/** '오늘을 기억하기'(확정·PENDING) 저장 요청 — confirm=true. 확정 후에는 수정 불가. */
+	private SaveDiaryRequest confirmReq(String content, String text, LocalDate date, String visibility) {
+		return new SaveDiaryRequest(content, text, date, visibility, true);
 	}
 
 	private JdbcTemplate jdbc() {
@@ -163,7 +178,7 @@ class DiaryServiceTest {
 		List<Long> ids = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			long id = diaryService.upsert(userId,
-					new SaveDiaryRequest(deltaOf("일기 " + i), "일기 " + i, base.plusDays(i), "PRIVATE"))
+					register(deltaOf("일기 " + i), "일기 " + i, base.plusDays(i), "PRIVATE"))
 					.diary().id();
 			ids.add(id);
 		}
@@ -178,7 +193,7 @@ class DiaryServiceTest {
 		LocalDate date = LocalDate.of(2026, 1, 10);
 
 		DiaryUpsertResult result = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("첫 일기"), "첫 일기", date, "PRIVATE"));
+				register(deltaOf("첫 일기"), "첫 일기", date, "PRIVATE"));
 
 		assertThat(result.inserted()).isTrue();
 		assertThat(result.diary().contentText()).isEqualTo("첫 일기");
@@ -196,10 +211,10 @@ class DiaryServiceTest {
 		LocalDate date = LocalDate.of(2026, 2, 5);
 
 		DiaryUpsertResult first = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("원본"), "원본", date, "PRIVATE"));
+				register(deltaOf("원본"), "원본", date, "PRIVATE"));
 		// 같은 사용자+날짜 재작성 → ON CONFLICT 로 UPDATE 전환
 		DiaryUpsertResult second = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("수정본"), "수정본", date, "PRIVATE"));
+				register(deltaOf("수정본"), "수정본", date, "PRIVATE"));
 
 		assertThat(second.inserted()).isFalse();
 		assertThat(second.diary().id()).isEqualTo(first.diary().id()); // 같은 행
@@ -212,15 +227,116 @@ class DiaryServiceTest {
 		LocalDate date = LocalDate.of(2026, 3, 1);
 
 		DiaryUpsertResult first = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("삭제 대상"), "삭제 대상", date, "PRIVATE"));
+				register(deltaOf("삭제 대상"), "삭제 대상", date, "PRIVATE"));
 		diaryService.delete(userId, first.diary().id()); // 소프트 삭제 → 부분 유니크에서 제외
 
 		DiaryUpsertResult again = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("새로 작성"), "새로 작성", date, "PRIVATE"));
+				register(deltaOf("새로 작성"), "새로 작성", date, "PRIVATE"));
 
 		assertThat(again.inserted()).isTrue();
 		assertThat(again.diary().id()).isNotEqualTo(first.diary().id()); // 새 행
 		assertThat(diaryService.getByDate(userId, date).contentText()).isEqualTo("새로 작성");
+	}
+
+	// ===== draft → 확정(오늘을 기억하기) 라이프사이클 =====
+
+	@Test
+	void register_createsDraft() {
+		long userId = newUser();
+		// confirm 없이 등록 → 미확정(DRAFT). 수정 가능·미분석 상태로 출발한다.
+		DiaryUpsertResult result = diaryService.upsert(userId,
+				register(deltaOf("초안 등록"), "초안 등록", LocalDate.of(2026, 10, 1), "PRIVATE"));
+
+		assertThat(result.diary().analysisStatus()).isEqualTo("DRAFT");
+	}
+
+	@Test
+	void confirm_setsPending() {
+		long userId = newUser();
+		// '오늘을 기억하기'(confirm=true) → 확정(PENDING). 커밋 후 비동기 감정 분석 1회 트리거.
+		DiaryUpsertResult result = diaryService.upsert(userId,
+				confirmReq(deltaOf("오늘을 기억"), "오늘을 기억", LocalDate.of(2026, 10, 2), "PRIVATE"));
+
+		assertThat(result.diary().analysisStatus()).isEqualTo("PENDING");
+	}
+
+	@Test
+	void confirmedDiary_reUpsert_throws409() {
+		long userId = newUser();
+		LocalDate date = LocalDate.of(2026, 10, 3);
+		// 먼저 확정(PENDING)한 뒤, 같은 날짜 재 upsert 는 confirm 여부와 무관하게 차단(DIARY_ALREADY_CONFIRMED).
+		diaryService.upsert(userId, confirmReq(deltaOf("확정본"), "확정본", date, "PRIVATE"));
+
+		assertThatThrownBy(() -> diaryService.upsert(userId,
+				register(deltaOf("수정 시도"), "수정 시도", date, "PRIVATE")))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.DIARY_ALREADY_CONFIRMED));
+		// confirm=true 로 다시 시도해도 동일하게 차단(이미 확정된 행은 불변)
+		assertThatThrownBy(() -> diaryService.upsert(userId,
+				confirmReq(deltaOf("재확정 시도"), "재확정 시도", date, "PRIVATE")))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.DIARY_ALREADY_CONFIRMED));
+	}
+
+	@Test
+	void confirmedDiary_update_throws409() {
+		long userId = newUser();
+		LocalDate date = LocalDate.of(2026, 10, 4);
+		long id = diaryService.upsert(userId,
+				confirmReq(deltaOf("확정본"), "확정본", date, "PRIVATE")).diary().id();
+
+		// 확정된 일기는 PUT(update)으로도 수정 불가.
+		assertThatThrownBy(() -> diaryService.update(userId, id,
+				new UpdateDiaryRequest(deltaOf("수정 시도"), "수정 시도", "PRIVATE")))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.DIARY_ALREADY_CONFIRMED));
+	}
+
+	@Test
+	void confirmedDiary_delete_allowed_thenReinsert() {
+		long userId = newUser();
+		LocalDate date = LocalDate.of(2026, 10, 5);
+		long id = diaryService.upsert(userId,
+				confirmReq(deltaOf("확정본"), "확정본", date, "PRIVATE")).diary().id();
+
+		// 확정된 일기도 삭제는 허용(기존 소프트 삭제 동작 유지).
+		diaryService.delete(userId, id);
+		assertThatThrownBy(() -> diaryService.getById(userId, id))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.DIARY_NOT_FOUND));
+
+		// 삭제 후 같은 날짜를 새로 등록하면 다시 DRAFT 로 출발한다(부분 유니크에서 제외).
+		DiaryUpsertResult again = diaryService.upsert(userId,
+				register(deltaOf("다시 작성"), "다시 작성", date, "PRIVATE"));
+		assertThat(again.inserted()).isTrue();
+		assertThat(again.diary().id()).isNotEqualTo(id);
+		assertThat(again.diary().analysisStatus()).isEqualTo("DRAFT");
+	}
+
+	@Test
+	void draftNotPickedByPoller() {
+		long userId = newUser();
+		// DRAFT·PENDING 행을 직접 INSERT 한다(서비스 비동기 트리거·백스톱 폴러와의 경합을 피해 결정적으로 검증).
+		long draftId = insertDiaryWithStatus(userId, "2026-10-06", "DRAFT");
+		long pendingId = insertDiaryWithStatus(userId, "2026-10-07", "PENDING");
+
+		// 충분히 큰 limit 으로 조회해도 DRAFT 는 절대 포함되지 않는다(폴러는 PENDING 만 선점 — 트리거 로직 무변경).
+		List<Long> stale = emotionAnalysisMapper.findStalePendingIds(1000);
+		assertThat(stale).doesNotContain(draftId); // 핵심: DRAFT 미선점
+		assertThat(stale).contains(pendingId);     // 양성 대조: PENDING 은 선점 대상
+	}
+
+	/** diaries 1건을 지정 상태(analysis_status)로 직접 INSERT 후 발급된 id 반환(폴러 선점 검증용). */
+	private long insertDiaryWithStatus(long userId, String writtenDate, String status) {
+		Long id = jdbc().queryForObject(
+				"INSERT INTO diaries (user_id, content, content_text, written_date, analysis_status) "
+						+ "VALUES (?, ?, ?, DATE '" + writtenDate + "', ?) RETURNING id",
+				Long.class, userId, deltaOf("백스톱"), "백스톱", status);
+		return id == null ? -1L : id;
 	}
 
 	// ===== 조회(소유권/부재) =====
@@ -248,7 +364,7 @@ class DiaryServiceTest {
 		long owner = newUser();
 		long stranger = newUser();
 		DiaryUpsertResult diary = diaryService.upsert(owner,
-				new SaveDiaryRequest(deltaOf("내 일기"), "내 일기", LocalDate.of(2026, 4, 1), "PRIVATE"));
+				register(deltaOf("내 일기"), "내 일기", LocalDate.of(2026, 4, 1), "PRIVATE"));
 
 		// 소유권은 userId 로만 식별 → 타인 PK 조회는 부재와 동일하게 차단(IDOR)
 		assertThatThrownBy(() -> diaryService.getById(stranger, diary.diary().id()))
@@ -260,38 +376,38 @@ class DiaryServiceTest {
 	// ===== 수정 =====
 
 	@Test
-	void update_changesContentAndResetsAnalysis() {
+	void update_draftStaysDraft_noAnalysisTransition() {
 		long userId = newUser();
+		// 등록(DRAFT)된 일기는 수정 가능하며, 수정해도 미분석(DRAFT)을 유지한다(더 이상 PENDING 전이 없음).
 		DiaryUpsertResult created = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("분석 전"), "분석 전", LocalDate.of(2026, 5, 2), "PRIVATE"));
+				register(deltaOf("초안"), "초안", LocalDate.of(2026, 5, 2), "PRIVATE"));
 		long id = created.diary().id();
-		// 분석 완료 상태로 만든 뒤 순수 텍스트 수정이 PENDING 으로 되돌리는지 검증
-		jdbc().update("UPDATE diaries SET analysis_status = 'DONE' WHERE id = ?", id);
+		assertThat(created.diary().analysisStatus()).isEqualTo("DRAFT");
 
 		DiaryResponse updated = diaryService.update(userId, id,
 				new UpdateDiaryRequest(deltaOf("내용 변경됨"), "내용 변경됨", "PRIVATE"));
 
 		assertThat(updated.contentText()).isEqualTo("내용 변경됨");
-		assertThat(updated.analysisStatus()).isEqualTo("PENDING"); // 순수 텍스트 변경 → 재분석 트리거
+		assertThat(updated.analysisStatus()).isEqualTo("DRAFT"); // 수정해도 DRAFT 유지(분석 트리거 없음)
 		String db = jdbc().queryForObject(
 				"SELECT analysis_status FROM diaries WHERE id = ?", String.class, id);
-		assertThat(db).isEqualTo("PENDING");
+		assertThat(db).isEqualTo("DRAFT");
 	}
 
 	@Test
-	void update_sameTextDifferentFormatting_keepsAnalysis() {
+	void update_sameTextDifferentFormatting_keepsDraft() {
 		long userId = newUser();
 		DiaryUpsertResult created = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("고정 텍스트"), "고정 텍스트", LocalDate.of(2026, 5, 9), "PRIVATE"));
+				register(deltaOf("고정 텍스트"), "고정 텍스트", LocalDate.of(2026, 5, 9), "PRIVATE"));
 		long id = created.diary().id();
-		jdbc().update("UPDATE diaries SET analysis_status = 'DONE' WHERE id = ?", id);
+		assertThat(created.diary().analysisStatus()).isEqualTo("DRAFT");
 
-		// content(Delta)는 바뀌지만 content_text 는 동일 → 재분석 트리거 없음(DONE 유지)
+		// content(Delta)만 바뀌고 content_text 는 동일 — DRAFT 일기는 어떤 수정이든 DRAFT 를 유지한다.
 		DiaryResponse updated = diaryService.update(userId, id,
 				new UpdateDiaryRequest("{\"ops\":[{\"insert\":{\"image\":\"x\"}}]}", "고정 텍스트", "PRIVATE"));
 
-		// 위 update 는 content_text 동일이라 analysis_status 그대로. (image "x" 는 스토리지 소유 아님 → 회수 no-op)
-		assertThat(updated.analysisStatus()).isEqualTo("DONE");
+		// (image "x" 는 스토리지 소유 아님 → 회수 no-op)
+		assertThat(updated.analysisStatus()).isEqualTo("DRAFT");
 	}
 
 	@Test
@@ -311,7 +427,7 @@ class DiaryServiceTest {
 		long owner = newUser();
 		long stranger = newUser();
 		DiaryUpsertResult diary = diaryService.upsert(owner,
-				new SaveDiaryRequest(deltaOf("내 일기"), "내 일기", LocalDate.of(2026, 6, 1), "PRIVATE"));
+				register(deltaOf("내 일기"), "내 일기", LocalDate.of(2026, 6, 1), "PRIVATE"));
 
 		// 없는 id
 		assertThatThrownBy(() -> diaryService.delete(owner, -1L))
@@ -335,18 +451,25 @@ class DiaryServiceTest {
 		LocalDate other = LocalDate.of(2026, 8, 1); // 다른 달
 		LocalDate removed = LocalDate.of(2026, 7, 28); // 소프트삭제 대상
 
-		diaryService.upsert(userId, new SaveDiaryRequest(deltaOf("a"), "a", d1, "PRIVATE"));
-		diaryService.upsert(userId, new SaveDiaryRequest(deltaOf("b"), "b", d2, "PRIVATE"));
-		diaryService.upsert(userId, new SaveDiaryRequest(deltaOf("c"), "c", other, "PRIVATE"));
+		diaryService.upsert(userId, register(deltaOf("a"), "a", d1, "PRIVATE"));
+		diaryService.upsert(userId, register(deltaOf("b"), "b", d2, "PRIVATE"));
+		diaryService.upsert(userId, register(deltaOf("c"), "c", other, "PRIVATE"));
 		DiaryUpsertResult toRemove = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("d"), "d", removed, "PRIVATE"));
+				register(deltaOf("d"), "d", removed, "PRIVATE"));
 		diaryService.delete(userId, toRemove.diary().id()); // 요약에서 제외돼야 함
 
 		DiarySummaryResponse summary = diaryService.getSummary(userId, "2026-07");
 
 		assertThat(summary.yearMonth()).isEqualTo("2026-07");
 		// 해당 월 활성 날짜만, 오름차순(소프트삭제·타월 제외)
-		assertThat(summary.dates()).containsExactly("2026-07-03", "2026-07-20");
+		assertThat(summary.days()).extracting(DiarySummaryDay::date)
+				.containsExactly("2026-07-03", "2026-07-20");
+		// register(confirm=false)는 DRAFT 라 감정·이모지가 아직 NULL
+		assertThat(summary.days()).allSatisfy(day -> {
+			assertThat(day.analysisStatus()).isEqualTo("DRAFT");
+			assertThat(day.primaryEmotion()).isNull();
+			assertThat(day.moodEmoji()).isNull();
+		});
 	}
 
 	// ===== 인라인 이미지(content 단일 진실원) =====
@@ -357,7 +480,7 @@ class DiaryServiceTest {
 		List<String> urls = List.of(upload(userId), upload(userId), upload(userId));
 		LocalDate date = LocalDate.of(2026, 9, 1);
 		long diaryId = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaWithImages("사진 일기", urls), "사진 일기", date, "PRIVATE"))
+				register(deltaWithImages("사진 일기", urls), "사진 일기", date, "PRIVATE"))
 				.diary().id();
 
 		// content(Delta)에 이미지 URL 이 등장 순서대로 임베드되고, 파일은 디스크에 존재한다
@@ -386,7 +509,7 @@ class DiaryServiceTest {
 
 		// 한도 초과 → 트랜잭션 전체 롤백(일기 미생성)
 		assertThatThrownBy(() -> diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaWithImages("한도", urls), "한도", date, "PRIVATE")))
+				register(deltaWithImages("한도", urls), "한도", date, "PRIVATE")))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.IMAGE_LIMIT_EXCEEDED));
@@ -416,7 +539,7 @@ class DiaryServiceTest {
 		String u1 = upload(userId);
 		String u2 = upload(userId);
 		long diaryId = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaWithImages("두 장", List.of(u1, u2)), "두 장",
+				register(deltaWithImages("두 장", List.of(u1, u2)), "두 장",
 						LocalDate.of(2026, 9, 5), "PRIVATE")).diary().id();
 		Path p1 = resolveStored(u1);
 		Path p2 = resolveStored(u2);
@@ -441,7 +564,7 @@ class DiaryServiceTest {
 		String u1 = upload(userId);
 		String u2 = upload(userId);
 		long diaryId = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaWithImages("동반 삭제", List.of(u1, u2)), "동반 삭제",
+				register(deltaWithImages("동반 삭제", List.of(u1, u2)), "동반 삭제",
 						LocalDate.of(2026, 9, 6), "PRIVATE")).diary().id();
 		List<Path> diskPaths = List.of(resolveStored(u1), resolveStored(u2));
 		diskPaths.forEach(p -> assertThat(Files.exists(p)).isTrue());
@@ -578,7 +701,7 @@ class DiaryServiceTest {
 		// 서비스 직접 호출 시 @Size(컨트롤러 계층) 미적용 → DB CHECK(chk_diaries_content_text_len, 23514)가
 		// MyBatis 예외 변환을 통해 DataAccessException(DataIntegrityViolationException)으로 표출된다.
 		assertThatThrownBy(() -> diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("x"), tooLong, LocalDate.of(2026, 9, 7), "PRIVATE")))
+				register(deltaOf("x"), tooLong, LocalDate.of(2026, 9, 7), "PRIVATE")))
 				.isInstanceOf(DataAccessException.class);
 	}
 }

@@ -32,6 +32,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * diary_images 제거(V5) 검증:
  *  (g) V5 가 diary_images 테이블을 제거(인라인 이미지는 diaries.content Delta 가 단일 진실원)
  *
+ * 감정 분석(V7) 검증:
+ *  (h) emotion_types 시드 6행 존재(각 code 포함)
+ *  (i) diaries 에 분석 컬럼 9개 추가(primary_emotion·emotion_scores·analyzed_at 등)
+ *  (j) fk_diaries_emotion: 미존재 감정 코드로 primary_emotion UPDATE → 외래키 위반(23503)
+ *  (k) chk_diaries_*_color: 잘못된 색 형식 → 체크 위반(23514) / #RRGGBB·#RRGGBBAA 통과
+ *  (l) chk_diaries_done_has_emotion: primary_emotion NULL 인데 DONE → 위반(23514) /
+ *      주감정 채운 뒤 DONE 통과
+ *
+ * draft 라이프사이클(V8) 검증:
+ *  (m) analysis_status 컬럼 기본값이 'DRAFT'(information_schema.columns.column_default)
+ *  (n) chk_diaries_analysis_status: 허용 외 값('XXX') INSERT/UPDATE → 체크 위반(23514) /
+ *      DRAFT·PENDING·DONE·FAILED 는 통과
+ *  (o) DRAFT + primary_emotion NULL 행 정상 INSERT(V7 chk_diaries_done_has_emotion 과 무충돌)
+ *
  * 이미지는 운영 DB(PostgreSQL 18, recorme)와 일치시키기 위해 postgres:18-alpine 사용.
  */
 @Testcontainers
@@ -288,6 +302,195 @@ class FlywayMigrationTest {
 							"SELECT to_regclass('public.diary_images') IS NULL")) {
 				rs.next();
 				assertThat(rs.getBoolean(1)).as("V5 가 diary_images 테이블 제거").isTrue();
+			}
+		}
+	}
+
+	// ===================== 감정 분석(V7) =====================
+
+	/**
+	 * diaries 단일 컬럼 값을 user_id 기준으로 UPDATE 한다(테스트마다 user 1명·일기 1건 전제).
+	 * 잘못된 값으로 호출해 CHECK/FK 위반(SQLState)을 검증하는 데 쓴다.
+	 */
+	private void updateDiaryColumn(Connection c, long userId, String setClause) throws SQLException {
+		try (Statement st = c.createStatement()) {
+			st.executeUpdate("UPDATE diaries SET " + setClause + " WHERE user_id = " + userId);
+		}
+	}
+
+	// (h) emotion_types 시드 6행이 모두 존재하는지 확인(대표 code 일부 포함)
+	@Test
+	void emotionTypes_seededWithSixRows() throws SQLException {
+		try (Connection c = conn()) {
+			// 전체 6행
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery("SELECT count(*) FROM emotion_types")) {
+				rs.next();
+				assertThat(rs.getInt(1)).as("emotion_types 시드 6행").isEqualTo(6);
+			}
+			// 핵심 code 존재(JOY·NEUTRAL) + 라벨 매핑 확인
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT label_ko FROM emotion_types WHERE code = 'JOY'")) {
+				assertThat(rs.next()).as("JOY 코드 존재").isTrue();
+				assertThat(rs.getString(1)).isEqualTo("기쁨");
+			}
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT count(*) FROM emotion_types "
+									+ "WHERE code IN ('JOY','SADNESS','ANGER','CALM','ANXIETY','NEUTRAL')")) {
+				rs.next();
+				assertThat(rs.getInt(1)).as("6종 코드 모두 시드").isEqualTo(6);
+			}
+		}
+	}
+
+	// (i) diaries 에 V7 분석 컬럼 9개가 모두 추가되었는지 information_schema.columns 로 확인
+	@Test
+	void diaries_hasEmotionAnalysisColumns() throws SQLException {
+		try (Connection c = conn()) {
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT count(*) FROM information_schema.columns "
+									+ "WHERE table_name = 'diaries' AND column_name IN ("
+									+ "'primary_emotion','background_color','text_color','accent_color',"
+									+ "'ai_comment','ai_title','mood_emoji','emotion_scores','analyzed_at')")) {
+				rs.next();
+				assertThat(rs.getInt(1)).as("diaries 분석 컬럼 9개 존재").isEqualTo(9);
+			}
+			// emotion_scores 는 JSONB 타입이어야 한다
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT data_type FROM information_schema.columns "
+									+ "WHERE table_name = 'diaries' AND column_name = 'emotion_scores'")) {
+				assertThat(rs.next()).as("emotion_scores 컬럼 존재").isTrue();
+				assertThat(rs.getString(1)).isEqualTo("jsonb");
+			}
+		}
+	}
+
+	// (j) fk_diaries_emotion: 존재하지 않는 감정 코드로 primary_emotion UPDATE → 외래키 위반(23503)
+	@Test
+	void fkDiariesEmotion_rejectsUnknownEmotionCode() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "emo_fk", "emofk@example.com");
+			insertDiary(c, userId, "감정 분석 대상", "2026-06-22");
+
+			// emotion_types 에 없는 코드 → 외래키 위반
+			assertThatThrownBy(() -> updateDiaryColumn(c, userId, "primary_emotion = 'XXX'"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23503"));
+
+			// 시드된 코드(JOY)는 통과해야 한다
+			updateDiaryColumn(c, userId, "primary_emotion = 'JOY'");
+		}
+	}
+
+	// (k) chk_diaries_*_color: 잘못된 색 형식 → 체크 위반(23514), #RRGGBB·#RRGGBBAA 는 통과
+	@Test
+	void colorCheck_rejectsInvalidHexAndAllowsValid() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "cccccccc-cccc-cccc-cccc-cccccccccccc", "emo_color", "emocolor@example.com");
+			insertDiary(c, userId, "색 검증 대상", "2026-06-21");
+
+			// 형식 위반(# 누락·길이 불일치) → check_violation
+			assertThatThrownBy(() -> updateDiaryColumn(c, userId, "background_color = 'not-a-hex'"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
+
+			// #RRGGBB(6자리) 통과
+			updateDiaryColumn(c, userId, "background_color = '#A1B2C3'");
+			// #RRGGBBAA(8자리 알파) 통과 + 다른 색 컬럼도 동일 규칙
+			updateDiaryColumn(c, userId, "text_color = '#A1B2C3FF', accent_color = '#0a0B0c'");
+		}
+	}
+
+	// (l) chk_diaries_done_has_emotion: primary_emotion NULL 인데 DONE → 위반(23514), 채우면 통과
+	@Test
+	void doneStatusCheck_requiresPrimaryEmotion() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "dddddddd-dddd-dddd-dddd-dddddddddddd", "emo_done", "emodone@example.com");
+			insertDiary(c, userId, "상태 정합 검증 대상", "2026-06-20");
+
+			// primary_emotion NULL 상태에서 DONE 전환 → 체크 위반
+			assertThatThrownBy(() -> updateDiaryColumn(c, userId, "analysis_status = 'DONE'"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
+
+			// 주감정을 채운 뒤 DONE 으로 전환하면 통과
+			updateDiaryColumn(c, userId, "primary_emotion = 'CALM', analysis_status = 'DONE'");
+
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT analysis_status FROM diaries WHERE user_id = " + userId)) {
+				rs.next();
+				assertThat(rs.getString(1)).as("주감정 채운 뒤 DONE 적용").isEqualTo("DONE");
+			}
+		}
+	}
+
+	// ===================== draft 라이프사이클(V8) =====================
+
+	// (m) V8: analysis_status 컬럼 기본값이 'DRAFT' 로 전환됐는지 확인(등록 시 미확정 출발)
+	@Test
+	void analysisStatus_defaultIsDraft() throws SQLException {
+		try (Connection c = conn()) {
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT column_default FROM information_schema.columns "
+									+ "WHERE table_name = 'diaries' AND column_name = 'analysis_status'")) {
+				assertThat(rs.next()).as("analysis_status 컬럼 존재").isTrue();
+				// 예: 'DRAFT'::character varying — 리터럴에 DRAFT 포함 확인
+				assertThat(rs.getString(1)).as("기본값 DRAFT").contains("DRAFT");
+			}
+		}
+	}
+
+	// (n) chk_diaries_analysis_status: 허용 외 값은 거부(23514), 4종 상태값은 통과
+	@Test
+	void analysisStatusCheck_rejectsUnknownAndAllowsAllowedSet() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "draft_chk", "draftchk@example.com");
+			insertDiary(c, userId, "상태값 검증 대상", "2026-06-19");
+
+			// 허용 집합 밖('XXX') → 체크 위반
+			assertThatThrownBy(() -> updateDiaryColumn(c, userId, "analysis_status = 'XXX'"))
+					.isInstanceOf(SQLException.class)
+					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
+
+			// DRAFT/PENDING/FAILED 는 통과(주감정 NULL 허용 상태들). DONE 은 별도 CHECK 가 주감정을 요구하므로 (l)에서 검증.
+			updateDiaryColumn(c, userId, "analysis_status = 'DRAFT'");
+			updateDiaryColumn(c, userId, "analysis_status = 'PENDING'");
+			updateDiaryColumn(c, userId, "analysis_status = 'FAILED'");
+
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT analysis_status FROM diaries WHERE user_id = " + userId)) {
+				rs.next();
+				assertThat(rs.getString(1)).isEqualTo("FAILED");
+			}
+		}
+	}
+
+	// (o) DRAFT + primary_emotion NULL 행 정상 INSERT — V7 chk_diaries_done_has_emotion 과 무충돌
+	@Test
+	void draftRow_withNullEmotion_insertsCleanly() throws SQLException {
+		try (Connection c = conn()) {
+			long userId = insertUserAndGetId(
+					c, "ffffffff-ffff-ffff-ffff-ffffffffffff", "draft_null", "draftnull@example.com");
+			// analysis_status 미지정 → 기본값 DRAFT 로 INSERT(primary_emotion 도 NULL). 어떤 CHECK 도 위반하지 않는다.
+			insertDiary(c, userId, "미확정 초안", "2026-06-18");
+
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT analysis_status, primary_emotion FROM diaries WHERE user_id = " + userId)) {
+				assertThat(rs.next()).as("DRAFT 행 INSERT 성공").isTrue();
+				assertThat(rs.getString(1)).as("기본값 DRAFT 적용").isEqualTo("DRAFT");
+				assertThat(rs.getString(2)).as("DRAFT 는 주감정 NULL 허용").isNull();
 			}
 		}
 	}

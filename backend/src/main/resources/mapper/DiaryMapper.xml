@@ -4,7 +4,9 @@
 <mapper namespace="com.recordapp.domain.diary.mapper.DiaryMapper">
 
     <!-- 일기 단건 스칼라 매핑. 인라인 이미지는 content(Quill Delta JSON)에 직접 임베드되므로 별도 조립이 없다.
-         share_token 은 ::text 로 캐스팅해 String 매핑을 안정화(외부 노출 식별자). -->
+         share_token 은 ::text 로 캐스팅해 String 매핑을 안정화(외부 노출 식별자).
+         감정 분석 테마 컬럼(primary_emotion~mood_emoji)은 nullable — DONE 일 때만 채워지고 그 외엔 NULL.
+         ⚠️ constructor 기반 매핑이라 <arg> 순서가 DiaryRow 표준 생성자 인자 순서와 정확히 일치해야 한다. -->
     <resultMap id="diaryRowMap" type="com.recordapp.domain.diary.dto.DiaryRow">
         <constructor>
             <idArg column="id" javaType="java.lang.Long"/>
@@ -14,6 +16,28 @@
             <arg column="written_date" javaType="java.time.LocalDate"/>
             <arg column="visibility" javaType="java.lang.String"/>
             <arg column="analysis_status" javaType="java.lang.String"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="background_color" javaType="java.lang.String"/>
+            <arg column="text_color" javaType="java.lang.String"/>
+            <arg column="accent_color" javaType="java.lang.String"/>
+            <arg column="ai_comment" javaType="java.lang.String"/>
+            <arg column="ai_title" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 캘린더 일자별 요약 매핑(record 생성자 기반). 날짜·분석상태·감정·무드 이모지를 담는다.
+         map-underscore-to-camel-case 는 setter/필드 매핑에만 적용되고 constructor <arg> 엔 auto-apply 되지 않으므로,
+         diaryRowMap 과 동일하게 명시적 constructor resultMap 으로 매핑한다.
+         primary_emotion·mood_emoji 는 nullable(DONE 일 때만 값) — NULL 이면 그대로 null 로 매핑된다.
+         ⚠️ <arg> 순서가 DiarySummaryDay 표준 생성자 인자 순서(date, analysisStatus, primaryEmotion, moodEmoji)와
+            정확히 일치해야 한다. -->
+    <resultMap id="diarySummaryDayMap" type="com.recordapp.domain.diary.dto.DiarySummaryDay">
+        <constructor>
+            <arg column="date" javaType="java.lang.String"/>
+            <arg column="analysis_status" javaType="java.lang.String"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
         </constructor>
     </resultMap>
 
@@ -32,8 +56,12 @@
     </resultMap>
 
     <!-- 하루 1기록 upsert. 부분 유니크(uq_diary_user_day: user_id+written_date WHERE deleted_at IS NULL)
-         충돌 시 UPDATE. 본문이 실제로 바뀐 경우(IS DISTINCT FROM)에만 analysis_status 를 PENDING 으로 재설정.
+         충돌 시 UPDATE. 신규 INSERT 의 analysis_status 는 confirm 이면 'PENDING'(확정·분석), 아니면 'DRAFT'(미확정).
+         DO UPDATE 는 미확정(DRAFT) 행만 수정 가능 — WHERE 가드로 확정 행은 0행 매칭(RETURNING 빔).
+         confirm 이면 DRAFT → 'PENDING' 으로 전이하고, 아니면 DRAFT 를 유지한다.
          RETURNING 다중 컬럼(id, inserted)을 useGeneratedKeys 로 회수한다.
+         ⚠️ ON CONFLICT ... DO UPDATE ... WHERE 가 안 맞으면 Postgres 가 충돌을 소화(유니크 위반 예외 없음)하고
+            RETURNING 이 비어 keyProperty id 가 null 로 남는다 — 확정 행 수정 차단의 의도된 동작(서비스에서 백스톱).
          ⚠️ keyColumn 은 지정하지 않는다: (xmax=0) AS inserted 는 실 컬럼이 아닌 계산식이라
             keyColumn 으로 넘기면 pgJDBC 가 존재하지 않는 컬럼명으로 RETURNING 을 재생성해 실패한다.
             keyColumn 미지정 시 MyBatis 는 RETURN_GENERATED_KEYS 로 실행하고
@@ -42,18 +70,16 @@
             parameterType="com.recordapp.domain.diary.dto.DiaryUpsertCommand"
             useGeneratedKeys="true" keyProperty="id,inserted">
         INSERT INTO diaries (user_id, content, content_text, written_date, visibility, analysis_status)
-        VALUES (#{userId}, #{content}, #{contentText}, #{writtenDate}, COALESCE(#{visibility}, 'PRIVATE'), 'PENDING')
+        VALUES (#{userId}, #{content}, #{contentText}, #{writtenDate}, COALESCE(#{visibility}, 'PRIVATE'),
+                CASE WHEN #{confirm} THEN 'PENDING' ELSE 'DRAFT' END)
         ON CONFLICT (user_id, written_date) WHERE deleted_at IS NULL
         DO UPDATE SET
             content         = EXCLUDED.content,
             content_text    = EXCLUDED.content_text,
             visibility      = EXCLUDED.visibility,
-            analysis_status = CASE
-                                  WHEN diaries.content_text IS DISTINCT FROM EXCLUDED.content_text
-                                  THEN 'PENDING'
-                                  ELSE diaries.analysis_status
-                              END,
+            analysis_status = CASE WHEN #{confirm} THEN 'PENDING' ELSE diaries.analysis_status END,
             updated_at      = now()
+        WHERE diaries.analysis_status = 'DRAFT'
         RETURNING id, (xmax = 0) AS inserted
     </insert>
 
@@ -85,7 +111,8 @@
          LIMIT #{limit}
     </select>
 
-    <!-- 사용자+날짜 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다. -->
+    <!-- 사용자+날짜 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다.
+         감정 분석 테마 컬럼은 앱의 상세 화면 렌더용(by-date 경로도 by-id 와 동일하게 테마를 내려준다). -->
     <select id="findByDateAndUser" resultMap="diaryRowMap">
         SELECT id,
                share_token::text AS share_token,
@@ -93,14 +120,22 @@
                content_text,
                written_date,
                visibility,
-               analysis_status
+               analysis_status,
+               primary_emotion,
+               background_color,
+               text_color,
+               accent_color,
+               ai_comment,
+               ai_title,
+               mood_emoji
           FROM diaries
          WHERE user_id = #{userId}
            AND written_date = #{date}
            AND deleted_at IS NULL
     </select>
 
-    <!-- 내부 PK+사용자 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다. -->
+    <!-- 내부 PK+사용자 활성 일기 단건. 인라인 이미지는 content(Delta)에 임베드되어 있다.
+         감정 분석 테마 컬럼은 앱의 상세 화면 렌더용(by-id 경로). -->
     <select id="findByIdAndUser" resultMap="diaryRowMap">
         SELECT id,
                share_token::text AS share_token,
@@ -108,7 +143,14 @@
                content_text,
                written_date,
                visibility,
-               analysis_status
+               analysis_status,
+               primary_emotion,
+               background_color,
+               text_color,
+               accent_color,
+               ai_comment,
+               ai_title,
+               mood_emoji
           FROM diaries
          WHERE id = #{id}
            AND user_id = #{userId}
@@ -149,32 +191,33 @@
         )
     </select>
 
-    <!-- 해당 월 활성 일기의 작성일 목록(DISTINCT, 오름차순). to_char 로 'yyyy-MM-dd' text. -->
-    <select id="findSummaryDates" resultType="string">
-        SELECT DISTINCT to_char(written_date, 'YYYY-MM-DD') AS d
+    <!-- 해당 월 활성 일기의 일자별 요약(written_date 오름차순). 하루 1기록이라 날짜당 1행.
+         date 는 to_char 로 'yyyy-MM-dd' text. analysis_status 로 표시 상태를 분기하고,
+         primary_emotion·mood_emoji 로 감정색·무드 이모지를 그린다(DONE 외엔 NULL). -->
+    <select id="findSummaryDays" resultMap="diarySummaryDayMap">
+        SELECT to_char(written_date, 'YYYY-MM-DD') AS date,
+               analysis_status                     AS analysis_status,
+               primary_emotion                     AS primary_emotion,
+               mood_emoji                          AS mood_emoji
           FROM diaries
          WHERE user_id = #{userId}
            AND to_char(written_date, 'YYYY-MM') = #{yearMonth}
            AND deleted_at IS NULL
-         ORDER BY d ASC
+         ORDER BY written_date ASC
     </select>
 
-    <!-- 본문/공개범위 수정. 순수 텍스트(content_text)가 바뀐 경우에만 analysis_status 를 PENDING 으로
-         재설정한다(서식·이미지만 바뀌면 재분석 불필요). content 는 항상 갱신(Delta JSON). -->
+    <!-- 본문/공개범위 수정. 미확정(DRAFT) 일기만 수정 가능 — WHERE 가드로 확정 행은 0행(서비스에서 차단).
+         DRAFT 는 미분석 상태이므로 analysis_status 는 건드리지 않고 DRAFT 를 그대로 유지한다. -->
     <update id="updateByIdAndUser">
         UPDATE diaries
            SET content         = #{content},
                content_text    = #{contentText},
                visibility      = #{visibility},
-               analysis_status = CASE
-                                     WHEN content_text IS DISTINCT FROM #{contentText}
-                                     THEN 'PENDING'
-                                     ELSE analysis_status
-                                 END,
                updated_at      = now()
          WHERE id = #{id}
            AND user_id = #{userId}
            AND deleted_at IS NULL
+           AND analysis_status = 'DRAFT'
     </update>
 
     <!-- 소프트 삭제. 활성 행만 대상(이미 삭제된 행은 0). -->

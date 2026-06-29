@@ -106,6 +106,11 @@ class DiaryIntegrationTest {
 		return sb.toString();
 	}
 
+	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 일기는 수정 가능·미분석 상태로 출발한다. */
+	private SaveDiaryRequest register(String content, String text, LocalDate date, String visibility) {
+		return new SaveDiaryRequest(content, text, date, visibility, false);
+	}
+
 	private JdbcTemplate jdbc() {
 		return new JdbcTemplate(dataSource);
 	}
@@ -150,14 +155,14 @@ class DiaryIntegrationTest {
 		// --- (b) 일기 작성(신규) → PK·날짜 두 경로로 조회 ---
 		LocalDate day = LocalDate.of(2026, 1, 10);
 		DiaryUpsertResult created = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("오늘의 기록"), "오늘의 기록", day, "PRIVATE"));
+				register(deltaOf("오늘의 기록"), "오늘의 기록", day, "PRIVATE"));
 		assertThat(created.inserted()).as("최초 작성은 INSERT").isTrue();
 		long diaryId = created.diary().id();
 
 		assertThat(diaryService.getById(userId, diaryId).contentText()).isEqualTo("오늘의 기록");
 		assertThat(diaryService.getByDate(userId, day).id()).isEqualTo(diaryId);
-		// 비동기 감정분석 전이므로 저장 직후 상태는 PENDING
-		assertThat(created.diary().analysisStatus()).isEqualTo("PENDING");
+		// 등록(confirm 없음)이므로 저장 직후 상태는 DRAFT(미확정·미분석). 이후 수정이 가능하다.
+		assertThat(created.diary().analysisStatus()).isEqualTo("DRAFT");
 
 		// --- (c) 본문 수정 반영 ---
 		DiaryResponse updated = diaryService.update(userId, diaryId,
@@ -194,7 +199,7 @@ class DiaryIntegrationTest {
 		LocalDate base = LocalDate.of(2026, 2, 1);
 		for (int i = 0; i < 4; i++) {
 			diaryService.upsert(userId,
-					new SaveDiaryRequest(deltaOf("추가 " + i), "추가 " + i, base.plusDays(i), "PRIVATE"));
+					register(deltaOf("추가 " + i), "추가 " + i, base.plusDays(i), "PRIVATE"));
 		}
 
 		PageResponse<DiaryListItem> first = diaryService.getList(userId, new CursorRequest(null, 2));
@@ -221,7 +226,7 @@ class DiaryIntegrationTest {
 
 		// 소프트삭제이므로 같은 날짜 재작성은 새 INSERT 로 허용된다(부분 유니크에서 제외)
 		DiaryUpsertResult rewritten = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaOf("같은 날 다시 적기"), "같은 날 다시 적기", day, "PRIVATE"));
+				register(deltaOf("같은 날 다시 적기"), "같은 날 다시 적기", day, "PRIVATE"));
 		assertThat(rewritten.inserted()).isTrue();
 		assertThat(rewritten.diary().id()).isNotEqualTo(diaryId);
 		assertThat(diaryService.getByDate(userId, day).contentText()).isEqualTo("같은 날 다시 적기");
@@ -234,7 +239,7 @@ class DiaryIntegrationTest {
 		long owner = newUser();
 		long other = newUser();
 		long diaryId = diaryService.upsert(owner,
-				new SaveDiaryRequest(deltaOf("A의 비밀"), "A의 비밀", LocalDate.of(2026, 3, 1), "PRIVATE"))
+				register(deltaOf("A의 비밀"), "A의 비밀", LocalDate.of(2026, 3, 1), "PRIVATE"))
 				.diary().id();
 
 		// 소유권은 userId 로만 식별 → 타인 PK 접근은 모두 부재와 동일하게 차단(IDOR)
@@ -283,7 +288,7 @@ class DiaryIntegrationTest {
 
 		// 1차로 5장(한도)까지 채운다
 		long diaryId = diaryService.upsert(userId,
-				new SaveDiaryRequest(deltaWithImages("사진 한도", five), "사진 한도", date, "PRIVATE"))
+				register(deltaWithImages("사진 한도", five), "사진 한도", date, "PRIVATE"))
 				.diary().id();
 		assertThat(imageCountInContent(userId, diaryId)).isEqualTo(5);
 

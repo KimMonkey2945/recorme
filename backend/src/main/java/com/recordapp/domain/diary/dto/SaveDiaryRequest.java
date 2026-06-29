@@ -14,10 +14,14 @@ import java.time.LocalDate;
  * <p>{@code content} 는 리치 텍스트(Quill Delta JSON 문자열)로, 인라인 이미지를 포함한다 —
  * JSON 이라 길이 제약(@Size)을 두지 않는다. 길이 제약·미리보기·LLM 입력은 서식/이미지 마크업을 제거한
  * 순수 텍스트 {@code contentText} 가 담당한다(DB CHECK 1~500 과 동일 상수).
+ *
+ * <p>{@code confirm} 은 '오늘을 기억하기'(확정) 여부 — nullable 이며 미지정/false 면 등록(DRAFT,
+ * 수정 가능·미분석), true 면 확정(PENDING → 감정 분석 1회). 확정된 일기는 더 이상 수정할 수 없다.
  */
 public record SaveDiaryRequest(
 		@NotBlank String content,
 		@NotBlank @Size(max = DiaryConstraints.CONTENT_MAX) String contentText,
 		@NotNull LocalDate writtenDate,
-		String visibility) {
+		String visibility,
+		Boolean confirm) {
 }
