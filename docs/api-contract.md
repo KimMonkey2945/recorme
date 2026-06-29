@@ -11,7 +11,7 @@
 { "success": true, "data": { /* ... */ }, "error": null }
 
 // 실패
-{ "success": false, "data": null, "error": { "code": "DIARY_NOT_FOUND", "message": "일기를 찾을 수 없습니다." } }
+{ "success": false, "data": null, "error": { "code": "DIARY_NOT_FOUND", "message": "기록을 찾을 수 없습니다." } }
 ```
 
 - HTTP 상태 코드는 의미에 맞게 사용(200/201/400/401/403/404/409/500). 본문 `error.code`로 세부 사유 구분.
@@ -69,18 +69,18 @@
 
 > 프로필 이미지는 공유 화면에서 비로그인자도 보므로 공개 서빙한다. 파일명이 UUID라 URL 추측·열거가 불가하다. 컨텍스트 경로를 포함한 실제 URL은 `/api/v1/files/...`이며, DB에는 호스트 비종속 상대 경로(`/files/...`)만 저장한다.
 
-### 일기 (diary)
+### 기록 (diary)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 갱신). `confirm=false`→DRAFT 저장, `confirm=true`→확정(PENDING·분석 1회). 확정 일기 재저장 시 409 | ○ |
-| PUT | `/diaries/{id}` | id 기반 기록 수정(**DRAFT만 수정 가능**, 확정 일기는 409 `DIARY_ALREADY_CONFIRMED`) | ○ |
+| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 갱신). `confirm=false`→DRAFT 저장, `confirm=true`→확정(PENDING·분석 1회). 확정 기록 재저장 시 409 | ○ |
+| PUT | `/diaries/{id}` | id 기반 기록 수정(**DRAFT만 수정 가능**, 확정 기록은 409 `DIARY_ALREADY_CONFIRMED`) | ○ |
 | GET | `/diaries/{id}` | 기록 상세(테마/음악/감정 포함) | ○ |
 | GET | `/diaries/me/summary?yearMonth=YYYY-MM` | 월별 기록 존재 요약(캘린더 dot 렌더링용) | ○ |
 | GET | `/diaries/by-date/{date}` | 특정 날짜(YYYY-MM-DD) 내 기록 단건 조회 | ○ |
 | GET | `/diaries/me` | 내 기록 목록(커서 페이징) | ○ |
 | GET | `/diaries/shared/{shareToken}` | 공유 링크로 단건 조회 | 조건부 |
 | DELETE | `/diaries/{id}` | 기록 소프트 삭제(+첨부 사진 행·디스크 파일 즉시 회수) | ○ |
-| POST | `/diaries/{id}/images` | 첨부 사진 업로드(multipart, part명 `files`, 1~N장, 일기당 최대 5장·장당 5MB) | ○ |
+| POST | `/diaries/{id}/images` | 첨부 사진 업로드(multipart, part명 `files`, 1~N장, 기록당 최대 5장·장당 5MB) | ○ |
 | DELETE | `/diaries/{id}/images/{imageId}` | 첨부 사진 1장 삭제(행·디스크 파일 회수) | ○ |
 
 ```jsonc
@@ -106,7 +106,7 @@
 //    (Phase 4에서 emotion/theme/track 필드가 추가될 예정 — analysisStatus=DONE 시 채워짐)
 
 // POST /diaries/{id}/images  요청: multipart/form-data, part명 "files"(여러 장 가능)
-//    응답 data: 갱신된 전체 이미지 목록 [{ id, url }]. 일기당 5장 초과 시 409 IMAGE_LIMIT_EXCEEDED,
+//    응답 data: 갱신된 전체 이미지 목록 [{ id, url }]. 기록당 5장 초과 시 409 IMAGE_LIMIT_EXCEEDED,
 //    비이미지/손상 파일 413·400(INVALID_FILE), 장당 5MB 초과 413(FILE_TOO_LARGE).
 // DELETE /diaries/{id}/images/{imageId}  응답: success=true (행·디스크 파일 회수)
 ```
@@ -132,7 +132,7 @@
 
 > `analysisStatus`가 `PENDING`이면(확정 직후) 클라이언트는 상세를 재조회(폴링)해 분석 결과(테마/음악)를 갱신한다. 상세 화면은 "분석 중(약 1분)"을 표시하고 `DONE`이 되면 자동 갱신한다.
 
-> **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 일기 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(미분석·수정가능)로 저장하고, `confirm=true`는 `PENDING`으로 **확정해 감정 분석을 1회** 수행한다. **`DRAFT` 상태인 일기만 수정 가능**하며, 확정된 일기에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 일기는 409다.
+> **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 기록 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(미분석·수정가능)로 저장하고, `confirm=true`는 `PENDING`으로 **확정해 감정 분석을 1회** 수행한다. **`DRAFT` 상태인 기록만 수정 가능**하며, 확정된 기록에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 기록은 409다.
 
 ### 피드 (feed)
 | 메서드 | 경로 | 설명 | 인증 |

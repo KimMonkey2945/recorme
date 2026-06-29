@@ -119,7 +119,7 @@ public interface DiaryMapper {
       -- 확정 시 PENDING 으로 승격(분석 1회), 미확정 재저장은 DRAFT 유지
       analysis_status = <choose><when test="confirm">'PENDING'</when><otherwise>'DRAFT'</otherwise></choose>,
       updated_at      = now()
-    -- DRAFT(미확정) 행만 갱신 허용 → 확정된 일기는 0건 갱신(서비스가 409로 변환)
+    -- DRAFT(미확정) 행만 갱신 허용 → 확정된 기록은 0건 갱신(서비스가 409로 변환)
     WHERE diaries.analysis_status = 'DRAFT'
     RETURNING id
   </insert>
@@ -215,4 +215,4 @@ public interface LlmClient {
 
 **권장: 비동기 경량.** '등록'(confirm=false)은 `DRAFT`로 저장만 하고 **LLM을 호출하지 않는다**(수정 가능). '오늘을 기억하기'(confirm=true)로 **확정**하면 동기로 `PENDING` 즉시 반환 → `@Async`(전용 스레드풀) 또는 `ApplicationEvent` 리스너가 LLM 호출·테마/음악 매핑·`DONE` 갱신. 클라는 상세 재조회 또는 폴링. 외부 큐(SQS/Kafka)는 초기 불필요(트래픽 증가 시 도입). 분석은 트랜잭션 밖에서 수행하고 결과만 별도 트랜잭션으로 커밋.
 
-- **확정 시 1회 분석**: 감정 분석은 **확정 시점(DRAFT→PENDING) 단 1회**만 수행한다. DRAFT 일기는 미분석 상태로 자유롭게 수정할 수 있지만, **확정된 일기는 수정 불가**(재upsert·`PUT` 모두 `DIARY_ALREADY_CONFIRMED`(409)). 따라서 "수정마다 재분석"하던 정책은 폐기됐고, 매 수정 LLM 호출로 인한 과부하가 제거된다. 확정 일기를 다시 쓰려면 삭제(소프트 삭제) 후 같은 날짜에 새로 작성한다.
+- **확정 시 1회 분석**: 감정 분석은 **확정 시점(DRAFT→PENDING) 단 1회**만 수행한다. DRAFT 기록은 미분석 상태로 자유롭게 수정할 수 있지만, **확정된 기록은 수정 불가**(재upsert·`PUT` 모두 `DIARY_ALREADY_CONFIRMED`(409)). 따라서 "수정마다 재분석"하던 정책은 폐기됐고, 매 수정 LLM 호출로 인한 과부하가 제거된다. 확정 기록을 다시 쓰려면 삭제(소프트 삭제) 후 같은 날짜에 새로 작성한다.
