@@ -15,7 +15,7 @@ import 'widgets/calendar_month_view.dart';
 /// 메인(캘린더) 화면.
 ///
 /// 요약 provider(API)로 작성 날짜에 dot을 표시하고, 날짜 탭 시
-/// 일기 존재 여부에 따라 상세/에디터로 분기한다. (표현은 [CalendarMonthView] 담당.)
+/// 기록 존재 여부에 따라 상세/에디터로 분기한다. (표현은 [CalendarMonthView] 담당.)
 class MainCalendarPage extends ConsumerStatefulWidget {
   const MainCalendarPage({super.key});
 
@@ -68,9 +68,9 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
   /// 표시 월 요약을 다시 불러온다(작성/삭제 후 dot 갱신용).
   void _refreshSummary() => ref.invalidate(monthlySummaryProvider(_yearMonth));
 
-  /// 날짜 탭: 해당 날짜 일기 상태에 따라 상세/에디터로 분기.
+  /// 날짜 탭: 해당 날짜 기록 상태에 따라 상세/에디터로 분기.
   ///
-  /// - 확정 일기(!isDraft): 상세 화면으로 이동.
+  /// - 확정 기록(!isDraft): 상세 화면으로 이동.
   /// - 임시 저장(DRAFT) 또는 없음: 에디터로 이동(DRAFT는 날짜 파라미터로 수정 재진입).
   Future<void> _onDateTap(DateTime date) async {
     // 미래 날짜 방어(캘린더 셀이 이미 막지만 이중 안전).
@@ -81,7 +81,7 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
     if (!mounted) return;
 
     if (diary != null && !diary.isDraft) {
-      // 확정 일기 → 상세 화면
+      // 확정 기록 → 상세 화면
       await context.push('/diary/${diary.id}');
     } else {
       // DRAFT이거나 없으면 에디터로 이동(같은 날짜 DRAFT는 에디터에서 프리필).

@@ -47,7 +47,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * DiaryService 통합 테스트(Testcontainers PostgreSQL 18).
  * upsert(하루 1기록·소프트삭제 후 재작성), 소유권(IDOR) 조회·수정·삭제, 월 요약,
- * 인라인 이미지 한도·본문에서 빠진 파일 회수, 일기 삭제 시 디스크 파일 회수를 검증한다.
+ * 인라인 이미지 한도·본문에서 빠진 파일 회수, 기록 삭제 시 디스크 파일 회수를 검증한다.
  *
  * <p>본문은 리치 텍스트(Quill Delta JSON)이며 인라인 이미지를 직접 임베드한다(content 가 단일 진실원).
  * 이미지는 먼저 {@code uploadImage} 로 업로드한 URL 을 본문 Delta 에 끼워 넣고 upsert/update 시 저장된다.
@@ -121,7 +121,7 @@ class DiaryServiceTest {
 		return sb.toString();
 	}
 
-	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 일기는 수정 가능·미분석 상태. */
+	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 기록은 수정 가능·미분석 상태. */
 	private SaveDiaryRequest register(String content, String text, LocalDate date, String visibility) {
 		return new SaveDiaryRequest(content, text, date, visibility, false);
 	}
@@ -169,9 +169,9 @@ class DiaryServiceTest {
 	}
 
 	/**
-	 * 같은 유저로 일기 count 건 생성(서로 다른 written_date — 하루 1기록 제약 회피).
+	 * 같은 유저로 기록 count 건 생성(서로 다른 written_date — 하루 1기록 제약 회피).
 	 * 작성일은 baseDate 부터 하루씩 늘려, 생성 순서대로 id 가 증가한다(목록은 id DESC 로 역순 반환).
-	 * @return 생성된 일기 id 목록(생성 순서, 즉 오름차순)
+	 * @return 생성된 기록 id 목록(생성 순서, 즉 오름차순)
 	 */
 	private List<Long> createDiaries(long userId, int count) {
 		LocalDate base = LocalDate.of(2026, 1, 1);
@@ -287,7 +287,7 @@ class DiaryServiceTest {
 		long id = diaryService.upsert(userId,
 				confirmReq(deltaOf("확정본"), "확정본", date, "PRIVATE")).diary().id();
 
-		// 확정된 일기는 PUT(update)으로도 수정 불가.
+		// 확정된 기록은 PUT(update)으로도 수정 불가.
 		assertThatThrownBy(() -> diaryService.update(userId, id,
 				new UpdateDiaryRequest(deltaOf("수정 시도"), "수정 시도", "PRIVATE")))
 				.isInstanceOf(BusinessException.class)
@@ -302,7 +302,7 @@ class DiaryServiceTest {
 		long id = diaryService.upsert(userId,
 				confirmReq(deltaOf("확정본"), "확정본", date, "PRIVATE")).diary().id();
 
-		// 확정된 일기도 삭제는 허용(기존 소프트 삭제 동작 유지).
+		// 확정된 기록도 삭제는 허용(기존 소프트 삭제 동작 유지).
 		diaryService.delete(userId, id);
 		assertThatThrownBy(() -> diaryService.getById(userId, id))
 				.isInstanceOf(BusinessException.class)
@@ -378,7 +378,7 @@ class DiaryServiceTest {
 	@Test
 	void update_draftStaysDraft_noAnalysisTransition() {
 		long userId = newUser();
-		// 등록(DRAFT)된 일기는 수정 가능하며, 수정해도 미분석(DRAFT)을 유지한다(더 이상 PENDING 전이 없음).
+		// 등록(DRAFT)된 기록은 수정 가능하며, 수정해도 미분석(DRAFT)을 유지한다(더 이상 PENDING 전이 없음).
 		DiaryUpsertResult created = diaryService.upsert(userId,
 				register(deltaOf("초안"), "초안", LocalDate.of(2026, 5, 2), "PRIVATE"));
 		long id = created.diary().id();
@@ -402,7 +402,7 @@ class DiaryServiceTest {
 		long id = created.diary().id();
 		assertThat(created.diary().analysisStatus()).isEqualTo("DRAFT");
 
-		// content(Delta)만 바뀌고 content_text 는 동일 — DRAFT 일기는 어떤 수정이든 DRAFT 를 유지한다.
+		// content(Delta)만 바뀌고 content_text 는 동일 — DRAFT 기록은 어떤 수정이든 DRAFT 를 유지한다.
 		DiaryResponse updated = diaryService.update(userId, id,
 				new UpdateDiaryRequest("{\"ops\":[{\"insert\":{\"image\":\"x\"}}]}", "고정 텍스트", "PRIVATE"));
 
@@ -507,7 +507,7 @@ class DiaryServiceTest {
 			urls.add(upload(userId));
 		}
 
-		// 한도 초과 → 트랜잭션 전체 롤백(일기 미생성)
+		// 한도 초과 → 트랜잭션 전체 롤백(기록 미생성)
 		assertThatThrownBy(() -> diaryService.upsert(userId,
 				register(deltaWithImages("한도", urls), "한도", date, "PRIVATE")))
 				.isInstanceOf(BusinessException.class)
@@ -556,7 +556,7 @@ class DiaryServiceTest {
 		assertThat(Files.exists(p2)).as("남은 이미지 파일은 보존").isTrue();
 	}
 
-	// ===== 일기 삭제 시 디스크 파일 동반 회수(afterCommit) =====
+	// ===== 기록 삭제 시 디스크 파일 동반 회수(afterCommit) =====
 
 	@Test
 	void delete_diaryAlsoRemovesDiskFiles() {
@@ -574,7 +574,7 @@ class DiaryServiceTest {
 		// (a) content 에 임베드됐던 디스크 파일 전부 회수(고아 0)
 		diskPaths.forEach(p -> assertThat(Files.exists(p))
 				.as("일기 삭제 시 첨부 파일도 회수돼야 함").isFalse());
-		// (b) 일기 본문은 소프트삭제(deleted_at NOT NULL)
+		// (b) 기록 본문은 소프트삭제(deleted_at NOT NULL)
 		Timestamp deletedAt = jdbc().queryForObject(
 				"SELECT deleted_at FROM diaries WHERE id = ?", Timestamp.class, diaryId);
 		assertThat(deletedAt).isNotNull();
@@ -641,7 +641,7 @@ class DiaryServiceTest {
 
 	@Test
 	void getList_empty_returnsEmpty() {
-		long userId = newUser(); // 일기 0건
+		long userId = newUser(); // 기록 0건
 
 		PageResponse<DiaryListItem> page = diaryService.getList(userId, new CursorRequest(null, 20));
 

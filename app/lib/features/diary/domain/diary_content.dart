@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_quill/flutter_quill.dart';
 
-/// 일기 본문(content) 변환 유틸.
+/// 기록 본문(content) 변환 유틸.
 ///
 /// 본문은 서버에 **Quill Delta JSON 문자열**로 저장된다. 다만 다음 두 경우를
 /// 모두 견고하게 처리해야 한다.

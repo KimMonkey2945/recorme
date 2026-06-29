@@ -8,7 +8,7 @@ import '../../../shared/models/cursor_page.dart';
 import '../domain/diary_repository.dart';
 import 'dto/diary_dto.dart';
 
-/// Dio 기반 일기 저장소. 표준 응답 래퍼(`{success, data, error}`)를 언랩한다.
+/// Dio 기반 기록 저장소. 표준 응답 래퍼(`{success, data, error}`)를 언랩한다.
 ///
 /// Dio baseUrl이 `/api/v1`을 포함하므로 경로는 `/diaries...`만 쓴다.
 /// 인증 토큰은 [AuthInterceptor]가 Supabase 세션에서 자동 첨부한다.
@@ -43,7 +43,7 @@ class ApiDiaryRepository implements DiaryRepository {
         (json) => Diary.fromJson(json as Map<String, dynamic>),
       );
     } on DioException catch (e) {
-      // 해당 날짜 일기가 없으면 404(DIARY_NOT_FOUND) → null로 매핑.
+      // 해당 날짜 기록이 없으면 404(DIARY_NOT_FOUND) → null로 매핑.
       if (e.response?.statusCode == 404) return null;
       throw _toFailure(e);
     }
@@ -129,7 +129,7 @@ class ApiDiaryRepository implements DiaryRepository {
         (json) => Diary.fromJson(json as Map<String, dynamic>),
       );
     } on DioException catch (e) {
-      // 이미 확정된 일기를 다시 upsert하면 409 → 스낵바 안내용 Failure로 변환.
+      // 이미 확정된 기록을 다시 upsert하면 409 → 스낵바 안내용 Failure로 변환.
       if (e.response?.statusCode == 409) {
         final body = e.response?.data;
         if (body is Map<String, dynamic>) {

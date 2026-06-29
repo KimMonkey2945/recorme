@@ -22,13 +22,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 일기 본문(Quill Delta)의 인라인 이미지를 LLM 비전 입력({@link LlmImage})으로 준비한다.
+ * 기록 본문(Quill Delta)의 인라인 이미지를 LLM 비전 입력({@link LlmImage})으로 준비한다.
  *
  * <p>URL 추출은 {@link DeltaImages} 공용 유틸로 일원화(파일 회수용 DiaryService 와 동일 로직).
  * 토큰 절약을 위해 긴 변이 {@code imageMaxEdgePx}(기본 512)를 넘으면 JDK 내장 ImageIO 로
  * 비율 유지 축소 후 JPEG 재인코딩한다(새 의존성 없음).
  *
- * <p>견고성: 어떤 단계 실패도 일기 분석을 막지 않는다.
+ * <p>견고성: 어떤 단계 실패도 기록 분석을 막지 않는다.
  * <ul>
  *   <li>스토리지에서 못 읽으면 skip</li>
  *   <li>ImageIO 디코드 불가(WEBP 등 {@code read==null}) → 원본 bytes·원본 mediaType 폴백</li>

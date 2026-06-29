@@ -9,7 +9,7 @@ import 'diary_image_embed_builder.dart';
 /// 분석 예상 소요 시간 안내 문구(상수로 분리해 향후 일괄 수정 용이).
 const String kAnalysisEtaText = '약 1분 내외 소요돼요';
 
-/// 일기 상세 표현 위젯.
+/// 기록 상세 표현 위젯.
 ///
 /// ## 배경 전략
 /// 감정 배경색([backgroundColor])은 이 위젯이 아닌 **호출 측 Container**에서
@@ -23,7 +23,7 @@ const String kAnalysisEtaText = '약 1분 내외 소요돼요';
 /// | DONE    | 없음 | 이모지·코멘트·제목 | 없음 |
 /// | FAILED  | '분석 실패' 배지 | 없음 | 없음 |
 ///
-/// [onEdit]이 null이면 수정 버튼을 숨긴다 — 확정 일기(analysisStatus != 'DRAFT')에서
+/// [onEdit]이 null이면 수정 버튼을 숨긴다 — 확정 기록(analysisStatus != 'DRAFT')에서
 /// 호출 측이 null로 전달한다.
 class DiaryDetailView extends StatefulWidget {
   const DiaryDetailView({
@@ -52,7 +52,7 @@ class DiaryDetailView extends StatefulWidget {
   /// LLM 분석 상태 — 'DRAFT' / 'PENDING' / 'DONE' / 'FAILED'.
   final String analysisStatus;
 
-  /// 수정 버튼 탭 콜백. null이면 수정 버튼을 숨긴다(확정 일기).
+  /// 수정 버튼 탭 콜백. null이면 수정 버튼을 숨긴다(확정 기록).
   final VoidCallback? onEdit;
 
   /// 삭제 버튼 탭 콜백 — 확인 다이얼로그는 호출 페이지가 처리.
@@ -215,7 +215,7 @@ class _DiaryHeader extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 무드 카드 (DONE 일기의 감정 표현 — 이모지·제목·코멘트 묶음)
+// 무드 카드 (DONE 기록의 감정 표현 — 이모지·제목·코멘트 묶음)
 // ──────────────────────────────────────────────────────────────
 
 /// 감정색으로 채운 둥근 카드. 좌측 강조 바 + 큰 이모지 칩 + AI 제목/코멘트.
@@ -464,7 +464,7 @@ class _AnalysisPendingCard extends StatelessWidget {
 
 /// 수정(조건부)·삭제 버튼 배치.
 ///
-/// [onEdit]이 null이면(확정 일기) 수정 버튼을 숨기고 삭제 버튼만 전체 폭으로 표시한다.
+/// [onEdit]이 null이면(확정 기록) 수정 버튼을 숨기고 삭제 버튼만 전체 폭으로 표시한다.
 class _ActionButtons extends StatelessWidget {
   const _ActionButtons({
     this.onEdit,

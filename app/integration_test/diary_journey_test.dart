@@ -1,4 +1,4 @@
-// 일기 기능 E2E(통합) 테스트 — Fake/Stub override 기반.
+// 기록 기능 E2E(통합) 테스트 — Fake/Stub override 기반.
 //
 // ## 목표
 // 실제 앱 위젯 트리(go_router + Riverpod)를 그대로 구동해, 캘린더→에디터 진입,
@@ -12,7 +12,7 @@
 //
 // ## 외부 의존 우회(결정성)
 // - 로그인 가드: authControllerProvider를 항상 authenticated인 Fake로 override.
-// - 일기 저장소: diaryRepositoryProvider를 인메모리 _E2EDiaryRepository로 override.
+// - 기록 저장소: diaryRepositoryProvider를 인메모리 _E2EDiaryRepository로 override.
 // - 프로필 아바타: myProfileProvider를 더미 User로 override(Dio/Supabase 차단).
 
 import 'dart:typed_data';
@@ -45,10 +45,10 @@ class _FakeAuthController extends AuthController {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 인메모리 E2E 일기 저장소
+// 인메모리 E2E 기록 저장소
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 결정적 E2E 전용 일기 저장소.
+/// 결정적 E2E 전용 기록 저장소.
 ///
 /// - 네트워크 지연 없이 즉시 반환.
 /// - upsert 결과는 analysisStatus 'DONE'(상세 PENDING 무한 스피너 방지).
@@ -74,7 +74,7 @@ class _E2EDiaryRepository implements DiaryRepository {
         analysisStatus: d.analysisStatus,
       );
 
-  /// 테스트 시드: 특정 날짜에 Delta 본문 일기를 직접 넣는다.
+  /// 테스트 시드: 특정 날짜에 Delta 본문 기록을 직접 넣는다.
   /// DONE 상태 + 감정 테마/AI 필드까지 채워, 상세 화면의 무드 카드·배경 틴트가
   /// 실제로 렌더링되는 경로를 E2E로 검증할 수 있게 한다.
   void seed(DateTime date, String text) {
@@ -98,7 +98,7 @@ class _E2EDiaryRepository implements DiaryRepository {
 
   @override
   Future<DiarySummary> getMonthlySummary(String yearMonth) async {
-    // 해당 월 일기를 날짜 오름차순으로 DiarySummaryDay 목록으로 변환한다.
+    // 해당 월 기록을 날짜 오름차순으로 DiarySummaryDay 목록으로 변환한다.
     final days = (_diaries.values
           .where((d) => _ym(d.writtenDate) == yearMonth)
           .toList()
@@ -237,7 +237,7 @@ void main() {
       // 캘린더 진입(시드된 날짜에 '기록 있음' dot).
       expect(find.byType(FloatingActionButton), findsOneWidget);
 
-      // ── 목록 탭 → 시드 일기 노출(평문 미리보기) ───────────────────────────
+      // ── 목록 탭 → 시드 기록 노출(평문 미리보기) ───────────────────────────
       await tester.tap(find.text('목록'));
       await tester.pumpAndSettle();
       expect(find.byType(DiaryListTile), findsOneWidget);
@@ -247,10 +247,10 @@ void main() {
       await tester.tap(find.byType(DiaryListTile));
       await tester.pumpAndSettle();
       expect(find.byType(QuillEditor), findsOneWidget);
-      // DONE 일기: 무드 카드의 AI 제목·코멘트가 노출된다(상태 배지는 DONE에서 숨김).
+      // DONE 기록: 무드 카드의 AI 제목·코멘트가 노출된다(상태 배지는 DONE에서 숨김).
       expect(find.text('평온한 하루'), findsOneWidget);
       expect(find.text('오늘도 수고 많았어요'), findsOneWidget);
-      // 확정 일기(isDraft=false)는 수정 불가 → 수정 버튼 없음, 삭제만 노출.
+      // 확정 기록(isDraft=false)은 수정 불가 → 수정 버튼 없음, 삭제만 노출.
       expect(find.widgetWithText(OutlinedButton, '수정'), findsNothing);
       expect(find.text('삭제'), findsOneWidget);
 

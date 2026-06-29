@@ -5,7 +5,7 @@ import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
 import 'package:record/features/diary/presentation/widgets/diary_image_embed_builder.dart';
 
-/// 일기 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
+/// 기록 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
 ///
 /// Scaffold·AppBar·배경 그라데이션은 상위 페이지가 담당하며, 이 위젯은 에디터
 /// 콘텐츠 영역(날짜 칩 + 서식 툴바 + 리치 에디터 + 글자수 카운터 + 버튼 바)만 책임진다.

@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Quill Delta 본문(JSON)에서 인라인 이미지 URL 을 추출하는 공용 유틸.
  *
- * <p>일기 본문(content)이 이미지의 단일 진실 공급원이라 여러 곳에서 같은 추출이 필요하다
+ * <p>기록 본문(content)이 이미지의 단일 진실 공급원이라 여러 곳에서 같은 추출이 필요하다
  * (파일 회수: {@code DiaryService}, 감정 분석용 이미지 준비: {@code DiaryImagePreparer}).
  * 중복을 막기 위해 추출 규칙을 이 한 곳으로 모은다 — 동작은 기존 DiaryService 로직과 동일하다.
  */

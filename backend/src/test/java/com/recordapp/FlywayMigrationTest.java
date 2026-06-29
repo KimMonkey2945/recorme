@@ -99,7 +99,7 @@ class FlywayMigrationTest {
 	}
 
 	/**
-	 * 테스트용 일기 1건 INSERT. content·written_date 만 지정하고 나머지는 DDL 기본값에 맡긴다.
+	 * 테스트용 기록 1건 INSERT. content·written_date 만 지정하고 나머지는 DDL 기본값에 맡긴다.
 	 * written_date 는 'YYYY-MM-DD' 문자열로 전달한다.
 	 */
 	private void insertDiary(Connection c, long userId, String content, String writtenDate)
@@ -235,7 +235,7 @@ class FlywayMigrationTest {
 					c, "88888888-8888-8888-8888-888888888888", "diary_dup", "diarydup@example.com");
 			insertDiary(c, userId, "오늘의 첫 기록", "2026-06-26");
 
-			// 같은 사용자·같은 날짜 활성 일기 재INSERT → 충돌
+			// 같은 사용자·같은 날짜 활성 기록 재INSERT → 충돌
 			assertThatThrownBy(() -> insertDiary(c, userId, "같은 날 두 번째 기록", "2026-06-26"))
 					.isInstanceOf(SQLException.class)
 					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23505"));
@@ -251,7 +251,7 @@ class FlywayMigrationTest {
 			String day = "2026-06-25";
 			insertDiary(c, userId, "삭제될 기록", day);
 
-			// 기존 일기 소프트 삭제
+			// 기존 기록 소프트 삭제
 			try (Statement st = c.createStatement()) {
 				st.executeUpdate(
 						"UPDATE diaries SET deleted_at = now() WHERE user_id = " + userId
@@ -309,7 +309,7 @@ class FlywayMigrationTest {
 	// ===================== 감정 분석(V7) =====================
 
 	/**
-	 * diaries 단일 컬럼 값을 user_id 기준으로 UPDATE 한다(테스트마다 user 1명·일기 1건 전제).
+	 * diaries 단일 컬럼 값을 user_id 기준으로 UPDATE 한다(테스트마다 user 1명·기록 1건 전제).
 	 * 잘못된 값으로 호출해 CHECK/FK 위반(SQLState)을 검증하는 데 쓴다.
 	 */
 	private void updateDiaryColumn(Connection c, long userId, String setClause) throws SQLException {

@@ -15,7 +15,7 @@ import 'widgets/diary_detail_view.dart';
 
 const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
 
-/// 일기 상세 화면.
+/// 기록 상세 화면.
 ///
 /// id로 단건을 조회해 전체 내용을 보여주고, 수정(에디터 이동)·삭제(확인
 /// 다이얼로그 후 소프트 삭제 → 메인 복귀)를 제공한다. 표현은 [DiaryDetailView].
@@ -188,7 +188,7 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
               content: d.content,
               analysisStatus: d.analysisStatus,
               pollingTimedOut: _pollingTimedOut,
-              // 확정 일기(isDraft=false)는 수정 불가 → null 전달로 수정 버튼 숨김.
+              // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
               onEdit: d.isDraft
                   ? () async {
                       await context

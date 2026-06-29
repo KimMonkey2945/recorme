@@ -106,7 +106,7 @@ void main() {
       final summary = await repo.getMonthlySummary(ym);
 
       expect(summary.yearMonth, ym);
-      // days: 해당 월 일기가 포함되어 비어 있지 않아야 함
+      // days: 해당 월 기록이 포함되어 비어 있지 않아야 함
       expect(summary.days, isNotEmpty);
       // 모든 항목 날짜가 해당 연월로 시작하는지 확인
       expect(summary.days.every((d) => d.date.startsWith(ym)), true);

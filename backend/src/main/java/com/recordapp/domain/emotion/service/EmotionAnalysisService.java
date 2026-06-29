@@ -13,7 +13,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 /**
- * 감정 분석 비동기 오케스트레이터. 일기 저장/수정 커밋 후(또는 폴러 백스톱) PENDING 일기를 받아
+ * 감정 분석 비동기 오케스트레이터. 기록 저장/수정 커밋 후(또는 폴러 백스톱) PENDING 기록을 받아
  * 트랜잭션 밖에서 LLM 분석을 수행하고 결과를 조건부 UPDATE 로 반영한다.
  *
  * <p>설계 원칙:
@@ -48,7 +48,7 @@ public class EmotionAnalysisService {
 	}
 
 	/**
-	 * 단일 일기 비동기 감정 분석. 전용 풀(emotionAnalysisExecutor)에서 실행된다.
+	 * 단일 기록 비동기 감정 분석. 전용 풀(emotionAnalysisExecutor)에서 실행된다.
 	 * 다른 빈(DiaryService afterCommit·Poller)에서 호출되므로 프록시가 정상 적용된다(self-invocation 아님).
 	 *
 	 * <p>흐름:

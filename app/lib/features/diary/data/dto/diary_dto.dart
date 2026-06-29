@@ -1,4 +1,4 @@
-/// 일기 단건(상세/목록 공용).
+/// 기록 단건(상세/목록 공용).
 /// (손 작성 불변 클래스 — shared/models/user.dart의 비고 참조)
 ///
 /// 이미지는 본문(content)의 Quill Delta에 인라인 임베드로 포함된다(별도 첨부 테이블 없음).
@@ -73,7 +73,7 @@ class Diary {
   /// AI가 생성한 한 줄 감정 코멘트.
   final String? aiComment;
 
-  /// AI가 생성한 일기 제목.
+  /// AI가 생성한 기록 제목.
   final String? aiTitle;
 
   // ── 편의 getter ──────────────────────────────────────────────

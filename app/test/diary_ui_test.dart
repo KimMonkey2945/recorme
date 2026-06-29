@@ -75,7 +75,7 @@ class _StubRepo implements DiaryRepository {
       '/files/diaries/fake/$filename';
 }
 
-/// 목록 미리보기용(평문 content) 일기.
+/// 목록 미리보기용(평문 content) 기록.
 Diary _listDiary({
   int id = 1,
   String content = '오늘은 평온한 하루였다',
@@ -89,7 +89,7 @@ Diary _listDiary({
       analysisStatus: status,
     );
 
-/// 상세/에디터용(Delta JSON content) 일기.
+/// 상세/에디터용(Delta JSON content) 기록.
 Diary _richDiary({
   int id = 1,
   String text = '오늘은 평온한 하루였다',
@@ -138,7 +138,7 @@ void main() {
             dateText: '2026년 6월 24일 (화)',
             content: contentJsonFromPlain('상세 본문입니다'),
             analysisStatus: 'DONE',
-            // DONE 일기는 수정 불가 → onEdit=null.
+            // DONE 기록은 수정 불가 → onEdit=null.
             onEdit: null,
             onDelete: () => deleted = true,
             moodEmoji: '😊',
@@ -249,7 +249,7 @@ void main() {
         home: Scaffold(
           body: CalendarMonthView(
             month: DateTime(2026, 6),
-            // 6월 10일에 DONE 일기 — 감정색 원 + 이모지 렌더 확인
+            // 6월 10일에 DONE 기록 — 감정색 원 + 이모지 렌더 확인
             dayMap: {
               DateTime(2026, 6, 10): const DiarySummaryDay(
                 date: '2026-06-10',
@@ -313,20 +313,20 @@ void main() {
 
     testWidgets('DiaryDetailPage: DONE 상태 — 읽기전용 에디터 렌더 + 삭제 버튼만 표시',
         (tester) async {
-      // DONE(확정) 일기는 수정 버튼을 숨기고 삭제 버튼만 표시한다.
+      // DONE(확정) 기록은 수정 버튼을 숨기고 삭제 버튼만 표시한다.
       final repo = _StubRepo([_richDiary(id: 7, text: '상세 화면 본문')]);
       await tester.pumpWidget(wrap(const DiaryDetailPage(diaryId: '7'), repo));
       await tester.pumpAndSettle();
 
       expect(find.byType(QuillEditor), findsOneWidget);
-      // 확정 일기는 수정 버튼 없음 — isDraft=false이면 onEdit=null.
+      // 확정 기록은 수정 버튼 없음 — isDraft=false이면 onEdit=null.
       expect(find.text('수정'), findsNothing);
       expect(find.text('삭제'), findsOneWidget);
     });
 
     testWidgets('DiaryDetailPage: DRAFT 상태 — 수정·삭제 버튼 모두 표시',
         (tester) async {
-      // DRAFT(임시 저장) 일기는 수정 버튼도 표시된다.
+      // DRAFT(임시 저장) 기록은 수정 버튼도 표시된다.
       final repo = _StubRepo([_richDiary(id: 8, text: '임시 저장 본문', status: 'DRAFT')]);
       await tester.pumpWidget(wrap(const DiaryDetailPage(diaryId: '8'), repo));
       await tester.pumpAndSettle();
@@ -343,7 +343,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final repo = _StubRepo([]); // 해당 날짜 일기 없음 → 신규 모드
+      final repo = _StubRepo([]); // 해당 날짜 기록 없음 → 신규 모드
       await tester.pumpWidget(
         wrap(const DiaryEditorPage(date: '2026-06-24'), repo),
       );

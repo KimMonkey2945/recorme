@@ -3,7 +3,7 @@ package com.recordapp.domain.diary.dto;
 import java.time.LocalDate;
 
 /**
- * 일기 upsert(INSERT ... ON CONFLICT ... DO UPDATE) 입력/출력 겸용 명령 객체.
+ * 기록 upsert(INSERT ... ON CONFLICT ... DO UPDATE) 입력/출력 겸용 명령 객체.
  * <p>MyBatis 가 RETURNING 다중 컬럼을 useGeneratedKeys 로 회수하기 위해 가변 객체로 둔다.
  * {@link #id}(생성/갱신된 PK)와 {@link #inserted}((xmax=0) — 신규 INSERT 면 true, UPDATE 면 false)는
  * 실행 후 MyBatis 가 keyProperty 로 채운다. (record 는 setter 가 없어 keyProperty 회수가 불가하므로 가변 클래스 사용.)

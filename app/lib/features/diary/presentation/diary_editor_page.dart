@@ -15,9 +15,9 @@ import '../domain/diary_content.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/diary_editor_view.dart';
 
-/// 일기 작성/수정 화면.
+/// 기록 작성/수정 화면.
 ///
-/// 라우트 쿼리 [date](yyyy-MM-dd)로 대상 날짜를 받는다. 해당 날짜에 일기가 있으면
+/// 라우트 쿼리 [date](yyyy-MM-dd)로 대상 날짜를 받는다. 해당 날짜에 기록이 있으면
 /// 수정 모드(기존 Delta 프리필), 없으면 신규 작성. 저장은 upsert(하루 1기록).
 ///
 /// 본문은 [QuillController]로 리치 텍스트(서식·인라인 이미지)를 다룬다. 사진은
@@ -46,10 +46,10 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   bool _saving = false;
   bool _picking = false;
 
-  /// 기존 일기 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
+  /// 기존 기록 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
   bool _prefilled = false;
 
-  /// 확정 일기 진입 시 상세로 리다이렉트를 1회만 트리거하기 위한 가드.
+  /// 확정 기록 진입 시 상세로 리다이렉트를 1회만 트리거하기 위한 가드.
   bool _redirectingToDetail = false;
 
   /// 현재 순수 텍스트 길이(카운터·저장 가능 판단용).
@@ -90,7 +90,7 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
 
   bool get _canSave => _plainLength > 0 && !_saving;
 
-  /// 기존 일기가 처음 도착하면 Delta를 1회 프리필한다.
+  /// 기존 기록이 처음 도착하면 Delta를 1회 프리필한다.
   void _ensurePrefilled(Diary? diary) {
     if (_prefilled) return;
     _prefilled = true;
@@ -276,13 +276,13 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
           child: existing.when(
             loading: () => const LoadingView(),
             // 조회 실패(404 아님 — getByDate가 404는 null로 처리) 시 빈 에디터로 진입하면
-            // 저장 시 upsert가 기존 일기를 덮어쓸 수 있다. 편집을 막고 재시도를 제공한다.
+            // 저장 시 upsert가 기존 기록을 덮어쓸 수 있다. 편집을 막고 재시도를 제공한다.
             error: (_, _) => ErrorView(
               message: '일기를 불러오지 못했어요',
               onRetry: () => ref.invalidate(diaryByDateProvider(_date)),
             ),
             data: (diary) {
-              // 확정 일기(isDraft=false)는 수정 불가 — /editor 직접 URL 접근 방어.
+              // 확정 기록(isDraft=false)은 수정 불가 — /editor 직접 URL 접근 방어.
               // 편집기 대신 안내 후 상세 화면으로 대체 이동한다(저장 시점 에러 회피).
               if (diary != null && !diary.isDraft) {
                 if (!_redirectingToDetail) {

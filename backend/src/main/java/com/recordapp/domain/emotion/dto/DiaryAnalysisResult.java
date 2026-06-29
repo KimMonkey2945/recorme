@@ -4,7 +4,7 @@ import com.recordapp.domain.emotion.Emotion;
 import java.util.Map;
 
 /**
- * 일기 1건의 멀티모달 감정 분석 산출물. LLM 자유 생성(감정·색·코멘트·제목·이모지)을 담아
+ * 기록 1건의 멀티모달 감정 분석 산출물. LLM 자유 생성(감정·색·코멘트·제목·이모지)을 담아
  * 후속(012-D)에서 {@code diaries} 분석 컬럼으로 저장한다.
  *
  * @param primaryEmotion  대표 감정

@@ -373,12 +373,12 @@ class AppTheme {
           height: 1.4,
         ),
 
-        // body 15 / w400 / height 1.5 — 일기 본문·일반 콘텐츠
+        // body 15 / w400 / height 1.5 — 기록 본문·일반 콘텐츠
         bodyLarge: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w400,
           color: AppColors.ink,
-          height: 1.5,          // 넉넉한 행간 — 일기 본문 가독성
+          height: 1.5,          // 넉넉한 행간 — 기록 본문 가독성
           letterSpacing: 0.1,
         ),
         bodyMedium: TextStyle(

@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 일기 API. 컨텍스트 경로(/api/v1) 하위 /diaries.
+ * 기록 API. 컨텍스트 경로(/api/v1) 하위 /diaries.
  * 본인 식별은 인증 principal의 userId로만 수행한다(요청 바디·경로에 사용자 식별자 없음, IDOR 차단).
  * <p>이 컨트롤러만 일부 메서드에서 {@link ResponseEntity}를 사용한다 — upsert 의 신규(201)/갱신(200)을
  * 구분하기 위함이다(기존 컨트롤러는 항상 200 이라 {@link ApiResponse}를 직접 반환).
@@ -48,7 +48,7 @@ public class DiaryController {
 	}
 
 	/**
-	 * POST /diaries — 일기 저장(하루 1기록 upsert).
+	 * POST /diaries — 기록 저장(하루 1기록 upsert).
 	 * 신규 생성이면 201, 같은 날짜 재작성(UPDATE)이면 200 으로 응답한다 —
 	 * 그래서 이 메서드만 {@link ResponseEntity}로 상태코드를 분기한다.
 	 */
@@ -64,7 +64,7 @@ public class DiaryController {
 	}
 
 	/**
-	 * GET /diaries/me — 내 일기 목록.
+	 * GET /diaries/me — 내 기록 목록.
 	 * <ul>
 	 *   <li>{@code yearMonth=yyyy-MM} 지정 시: 해당 월 전체 목록(written_date 역순, 커서 없음). 데이터 {@code List<DiaryListItem>}.
 	 *   <li>미지정 시: 커서 페이징(id DESC). cursor 생략 시 첫 페이지, size 기본 20·최대 50. 데이터 {@code PageResponse<DiaryListItem>}.
@@ -116,7 +116,7 @@ public class DiaryController {
 		return ApiResponse.ok(diaryService.update(principal.userId(), id, request));
 	}
 
-	/** DELETE /diaries/{id} — 일기 소프트 삭제(첨부 사진 회수 포함). */
+	/** DELETE /diaries/{id} — 기록 소프트 삭제(첨부 사진 회수 포함). */
 	@DeleteMapping("/{id}")
 	public ApiResponse<Void> delete(
 			@AuthenticationPrincipal SecurityUser principal,
@@ -127,7 +127,7 @@ public class DiaryController {
 
 	/**
 	 * POST /diaries/images — 인라인 이미지 업로드(multipart, part name="file").
-	 * <p>작성 중 호출되어 어떤 일기에도 종속되지 않는다(diaryId 비종속). 반환 {@code {"url": ...}} 을
+	 * <p>작성 중 호출되어 어떤 기록에도 종속되지 않는다(diaryId 비종속). 반환 {@code {"url": ...}} 을
 	 * 클라이언트가 본문 Delta 에 끼워 넣고, 저장(POST/PUT /diaries) 시 content 에 그대로 임베드된다.
 	 * 정적 경로(/images)라 {@code /{id}}(Long) 와 충돌하지 않는다.
 	 */

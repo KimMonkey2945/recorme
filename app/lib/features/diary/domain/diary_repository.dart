@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import '../../../shared/models/cursor_page.dart';
 import '../data/dto/diary_dto.dart';
 
-/// 일기 데이터 접근 추상화.
+/// 기록 데이터 접근 추상화.
 ///
 /// Phase 2에서는 [FakeDiaryRepository]가 인메모리 더미로 구현하고,
 /// Phase 3에서 동일 인터페이스의 `ApiDiaryRepository`(실제 API)로 교체한다.
@@ -13,7 +13,7 @@ abstract class DiaryRepository {
   /// GET /diaries/me/summary?yearMonth=
   Future<DiarySummary> getMonthlySummary(String yearMonth);
 
-  /// 특정 날짜의 활성 일기. 없으면 null.
+  /// 특정 날짜의 활성 기록. 없으면 null.
   /// GET /diaries/by-date/{date} (404 → null)
   Future<Diary?> getByDate(DateTime date);
 
@@ -25,7 +25,7 @@ abstract class DiaryRepository {
   /// GET /diaries/me?cursor=&size=
   Future<CursorPage<Diary>> getList({int? cursor, int size});
 
-  /// 해당 월([yearMonth] 'yyyy-MM')의 일기 목록(written_date 역순). 하루 1기록이라 페이징 없이 한 번에.
+  /// 해당 월([yearMonth] 'yyyy-MM')의 기록 목록(written_date 역순). 하루 1기록이라 페이징 없이 한 번에.
   /// GET /diaries/me?yearMonth=
   Future<List<Diary>> getMonthList(String yearMonth);
 
@@ -51,7 +51,7 @@ abstract class DiaryRepository {
 
   /// 본문에 삽입할 이미지 1장을 업로드하고 **서버 상대 경로 URL**을 돌려준다.
   ///
-  /// 에디터가 작성 중 호출하며(일기 저장 전), 반환된 경로를 Quill Delta의 image
+  /// 에디터가 작성 중 호출하며(기록 저장 전), 반환된 경로를 Quill Delta의 image
   /// 임베드로 본문에 삽입한다. 저장 시 서버가 Delta를 파싱해 실제 사용 이미지를 확정한다.
   /// POST /diaries/images (part명 "file")
   Future<String> uploadImage(Uint8List bytes, String filename);

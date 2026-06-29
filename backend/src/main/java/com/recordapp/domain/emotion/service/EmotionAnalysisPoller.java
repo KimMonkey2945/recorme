@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 감정 분석 백스톱 폴러. 즉시 경로(일기 커밋 후 @Async 트리거)가 유실되는 경우를 보강한다:
+ * 감정 분석 백스톱 폴러. 즉시 경로(기록 커밋 후 @Async 트리거)가 유실되는 경우를 보강한다:
  * 애플리케이션 재시작 중 큐 유실, afterCommit 콜백 실패, 다중 인스턴스 분산, 키 투입 전 쌓인 PENDING 등.
  *
  * <p>잠금 전략: {@code findStalePendingIds} 가 {@code FOR UPDATE SKIP LOCKED} 로 PENDING 행을 선점하고,
@@ -39,7 +39,7 @@ public class EmotionAnalysisPoller {
 	}
 
 	/**
-	 * 주기적으로 미처리 PENDING 일기를 집어 비동기 분석으로 dispatch 한다.
+	 * 주기적으로 미처리 PENDING 기록을 집어 비동기 분석으로 dispatch 한다.
 	 * fixedDelay 라 이전 실행 종료 후 간격을 둔다(겹치지 않음). 분석 자체는 @Async 라 즉시 반환된다.
 	 */
 	@Scheduled(

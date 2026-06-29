@@ -25,7 +25,7 @@ public interface DiaryMapper {
 	void upsert(DiaryUpsertCommand command);
 
 	/**
-	 * 내 일기 목록(커서 페이징, id DESC). 활성 행만 대상으로 한다.
+	 * 내 기록 목록(커서 페이징, id DESC). 활성 행만 대상으로 한다.
 	 * <p>cursor 가 null 이면 첫 페이지(최신부터), 아니면 id &lt; cursor 인 다음 페이지를 가져온다.
 	 * hasNext 판정을 위해 서비스가 실제 size+1 을 limit 으로 넘긴다.
 	 * 각 항목은 대표 이미지·총 장수를 content(Delta) jsonb 파싱으로 채운다(컬렉션 미포함).
@@ -35,29 +35,29 @@ public interface DiaryMapper {
 			@Param("limit") int limit);
 
 	/**
-	 * 해당 월(yearMonth "yyyy-MM")의 내 일기 목록(written_date DESC, id DESC). 활성 행만 대상.
+	 * 해당 월(yearMonth "yyyy-MM")의 내 기록 목록(written_date DESC, id DESC). 활성 행만 대상.
 	 * 하루 1기록이라 한 달 ≤31건 → 커서 페이징 없이 한 번에 반환한다. 각 항목은 대표 이미지·총 장수만 포함.
 	 */
 	List<DiaryListItem> findByMonth(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
 
-	/** 사용자+날짜로 활성 일기 단건 조회(없으면 null). 인라인 이미지는 content(Delta)에 포함된다. */
+	/** 사용자+날짜로 활성 기록 단건 조회(없으면 null). 인라인 이미지는 content(Delta)에 포함된다. */
 	DiaryRow findByDateAndUser(@Param("userId") Long userId, @Param("date") LocalDate date);
 
-	/** 내부 PK+사용자로 활성 일기 단건 조회(없으면 null). 인라인 이미지는 content(Delta)에 포함된다. */
+	/** 내부 PK+사용자로 활성 기록 단건 조회(없으면 null). 인라인 이미지는 content(Delta)에 포함된다. */
 	DiaryRow findByIdAndUser(@Param("id") Long id, @Param("userId") Long userId);
 
-	/** 해당 일기가 사용자 소유의 활성 일기인지 여부. */
+	/** 해당 기록이 사용자 소유의 활성 기록인지 여부. */
 	boolean existsOwned(@Param("id") Long id, @Param("userId") Long userId);
 
 	/**
-	 * 해당 월(yearMonth "yyyy-MM")에 활성 일기가 존재하는 날짜별 요약 목록(written_date 오름차순).
+	 * 해당 월(yearMonth "yyyy-MM")에 활성 기록이 존재하는 날짜별 요약 목록(written_date 오름차순).
 	 * 캘린더 표시용 — 각 항목은 날짜·분석상태와 감정색·무드 이모지용 필드를 담는다.
 	 * 하루 1기록이라 날짜당 1건이며 한 달 ≤31건 → 페이징 없이 한 번에 반환한다.
 	 */
 	List<DiarySummaryDay> findSummaryDays(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
 
 	/**
-	 * 내부 PK+사용자 기준 본문/공개범위 수정. {@code analysis_status='DRAFT'} 인 일기(미확정)만
+	 * 내부 PK+사용자 기준 본문/공개범위 수정. {@code analysis_status='DRAFT'} 인 기록(미확정)만
 	 * 대상으로 하며 상태는 그대로 DRAFT 로 유지한다(수정만으로 재분석을 트리거하지 않는다).
 	 * 감정 분석 트리거는 확정 경로({@code upsert confirm=true})에서만 발생한다.
 	 *

@@ -4,7 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import '../../../../core/config/api_config.dart';
 import '../../../../core/theme/app_colors.dart';
 
-/// 일기 본문 인라인 이미지 임베드 빌더(Quill `image` 타입).
+/// 기록 본문 인라인 이미지 임베드 빌더(Quill `image` 타입).
 ///
 /// Delta에는 서버 **상대 경로**(`/files/diaries/...`)가 저장되며, 렌더 시
 /// [ApiConfig.resolveImageUrl]로 절대 URL로 변환해 네트워크 이미지로 표시한다.

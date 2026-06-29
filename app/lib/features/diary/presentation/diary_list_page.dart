@@ -14,10 +14,10 @@ import 'widgets/diary_list_tile.dart';
 
 const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
 
-/// 일기 목록 화면.
+/// 기록 목록 화면.
 ///
 /// 캘린더와 동일하게 **월 단위**로 보여준다. 상단 ‹ › 헤더(또는 좌우 스와이프)로 월을
-/// 이동하면 해당 월의 일기를 written_date 역순으로 표시한다(하루 1기록이라 페이징 없음).
+/// 이동하면 해당 월의 기록을 written_date 역순으로 표시한다(하루 1기록이라 페이징 없음).
 ///
 /// 데이터는 [monthDiariesProvider]를 watch한다. 작성/수정/삭제 시 해당 프로바이더를
 /// invalidate하면, 탭이 살아 있어도(IndexedStack) **즉시 실시간 갱신**된다.

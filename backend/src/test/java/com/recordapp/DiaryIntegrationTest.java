@@ -41,7 +41,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * auth·diary 도메인 횡단 통합 시나리오 테스트(Testcontainers PostgreSQL 18).
  *
  * <p>단위 성격의 {@code DiaryServiceTest}/{@code UserServiceTest}가 서비스별 분기를 검증한다면,
- * 본 테스트는 <b>JIT 프로비저닝 → 일기 CRUD → 인라인 이미지 → 커서 페이징 → 삭제·재작성</b>으로
+ * 본 테스트는 <b>JIT 프로비저닝 → 기록 CRUD → 인라인 이미지 → 커서 페이징 → 삭제·재작성</b>으로
  * 이어지는 사용자 여정 전체를 한 흐름으로 묶어, 도메인 간 경계(소유권/IDOR, 프로비저닝 멱등성)가
  * 실제 DB·디스크에서 일관되게 동작하는지를 검증한다. 본문은 리치 텍스트(Quill Delta JSON)이며
  * 인라인 이미지를 직접 임베드한다(content 가 단일 진실원). 이미지는 업로드 URL 을 본문 Delta 에 끼워 넣고 저장한다.
@@ -106,7 +106,7 @@ class DiaryIntegrationTest {
 		return sb.toString();
 	}
 
-	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 일기는 수정 가능·미분석 상태로 출발한다. */
+	/** 등록(미확정·DRAFT) 저장 요청 — confirm=false. 등록된 기록은 수정 가능·미분석 상태로 출발한다. */
 	private SaveDiaryRequest register(String content, String text, LocalDate date, String visibility) {
 		return new SaveDiaryRequest(content, text, date, visibility, false);
 	}
@@ -152,7 +152,7 @@ class DiaryIntegrationTest {
 		long userId = provision(sub, "journey@example.com", Map.of("name", "여정"));
 		assertThat(userRowCount(sub)).as("JIT 가입으로 users 1행 생성").isEqualTo(1);
 
-		// --- (b) 일기 작성(신규) → PK·날짜 두 경로로 조회 ---
+		// --- (b) 기록 작성(신규) → PK·날짜 두 경로로 조회 ---
 		LocalDate day = LocalDate.of(2026, 1, 10);
 		DiaryUpsertResult created = diaryService.upsert(userId,
 				register(deltaOf("오늘의 기록"), "오늘의 기록", day, "PRIVATE"));
@@ -194,7 +194,7 @@ class DiaryIntegrationTest {
 		assertThat(Files.exists(removedPath)).as("제거한 사진 파일 회수").isFalse();
 		assertThat(Files.exists(keptPath)).as("남은 사진 파일 유지").isTrue();
 
-		// --- (f) 여러 날짜 일기 생성 → 커서 페이징(첫/다음 페이지 연속, hasNext) ---
+		// --- (f) 여러 날짜 기록 생성 → 커서 페이징(첫/다음 페이지 연속, hasNext) ---
 		// 기존 1건(day) + 추가 4건 = 총 5건. 작성일을 다르게 하여 하루 1기록 제약 회피.
 		LocalDate base = LocalDate.of(2026, 2, 1);
 		for (int i = 0; i < 4; i++) {
@@ -215,7 +215,7 @@ class DiaryIntegrationTest {
 				.doesNotContainAnyElementsOf(first.items().stream().map(DiaryListItem::id).toList());
 		assertThat(second.hasNext()).as("5건 중 4건 소비 → 1건 남음").isTrue();
 
-		// --- (g) 일기 삭제 → 부재화 + 남은 사진 디스크 회수 + 같은 날짜 재작성 허용 ---
+		// --- (g) 기록 삭제 → 부재화 + 남은 사진 디스크 회수 + 같은 날짜 재작성 허용 ---
 		diaryService.delete(userId, diaryId);
 
 		assertThatThrownBy(() -> diaryService.getById(userId, diaryId))
@@ -232,7 +232,7 @@ class DiaryIntegrationTest {
 		assertThat(diaryService.getByDate(userId, day).contentText()).isEqualTo("같은 날 다시 적기");
 	}
 
-	// ===== 2) 소유권/IDOR: 타인 일기에 대한 모든 접근 차단 =====
+	// ===== 2) 소유권/IDOR: 타인 기록에 대한 모든 접근 차단 =====
 
 	@Test
 	void authz_otherUserCannotAccess() {

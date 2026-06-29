@@ -34,7 +34,7 @@ const double _kChevronSize = 20;
 // 위젯
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 일기 목록 항목 타일.
+/// 기록 목록 항목 타일.
 ///
 /// 흰 surface 카드 위에 날짜 eyebrow + 내용 미리보기(2줄 말줄임) + chevron을
 /// 표시하는 순수 표현(Presentational) 위젯입니다.
@@ -67,7 +67,7 @@ class DiaryListTile extends StatelessWidget {
   /// 예: '6월 24일 (화)'
   final String dateText;
 
-  /// 일기 내용 미리보기.
+  /// 기록 내용 미리보기.
   /// 2줄을 초과하면 말줄임(…)으로 처리합니다.
   final String preview;
 
@@ -136,12 +136,12 @@ class DiaryListTile extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      // 일기 내용 미리보기 — 최대 2줄, 말줄임
+                      // 기록 내용 미리보기 — 최대 2줄, 말줄임
                       Text(
                         preview,
                         style: textTheme.bodyMedium?.copyWith(
                           color: AppColors.ink,
-                          height: 1.55, // 일기 느낌을 살리는 넉넉한 행간
+                          height: 1.55, // 기록 느낌을 살리는 넉넉한 행간
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -244,7 +244,7 @@ class _ListThumbnail extends StatelessWidget {
 // DRAFT '작성 중' 배지
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// DRAFT 일기 타일의 날짜 eyebrow 옆에 표시하는 중립 회색 배지.
+/// DRAFT 기록 타일의 날짜 eyebrow 옆에 표시하는 중립 회색 배지.
 ///
 /// 감정 분석 결과 색(accent)을 사용하지 않고 [AppColors.hairline] 배경 + [AppColors.inkMuted]
 /// 텍스트로 중립적으로 표시해 아직 확정되지 않은 상태임을 나타낸다.

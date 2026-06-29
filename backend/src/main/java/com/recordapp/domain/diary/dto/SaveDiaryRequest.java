@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /**
- * 일기 저장(upsert) 요청. 하루 1기록 정책상 같은 날짜 재작성은 INSERT 가 아닌 UPDATE 로 처리된다.
+ * 기록 저장(upsert) 요청. 하루 1기록 정책상 같은 날짜 재작성은 INSERT 가 아닌 UPDATE 로 처리된다.
  * visibility 는 nullable — 미지정 시 서비스/SQL 기본값 PRIVATE 적용.
  * 소유권은 SecurityContext 의 userId 로만 식별하므로 바디에 사용자 식별자를 두지 않는다(IDOR 차단).
  *
@@ -16,7 +16,7 @@ import java.time.LocalDate;
  * 순수 텍스트 {@code contentText} 가 담당한다(DB CHECK 1~500 과 동일 상수).
  *
  * <p>{@code confirm} 은 '오늘을 기억하기'(확정) 여부 — nullable 이며 미지정/false 면 등록(DRAFT,
- * 수정 가능·미분석), true 면 확정(PENDING → 감정 분석 1회). 확정된 일기는 더 이상 수정할 수 없다.
+ * 수정 가능·미분석), true 면 확정(PENDING → 감정 분석 1회). 확정된 기록은 더 이상 수정할 수 없다.
  */
 public record SaveDiaryRequest(
 		@NotBlank String content,

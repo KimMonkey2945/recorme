@@ -23,7 +23,7 @@ const double _kDayCellBgSize = 34.0;
 
 /// 날짜 셀 하단 이모지·상태 표시 영역 높이 (dp).
 ///
-/// DONE 일기: 이모지(fontSize 12), DRAFT: 배경 링으로 이미 구분됨(빈 공간).
+/// DONE 기록: 이모지(fontSize 12), DRAFT: 배경 링으로 이미 구분됨(빈 공간).
 /// 고정 높이로 셀 크기 일관성을 보장한다.
 const double _kEmotionIndicatorHeight = 16.0;
 
@@ -96,7 +96,7 @@ class CalendarMonthView extends StatelessWidget {
   final DateTime? selectedDate;
 
   /// 날짜 셀 탭 콜백.
-  // TODO: 로직 연결 지점 — 선택 날짜 상태 갱신 및 해당 일기 상세/에디터로 이동
+  // TODO: 로직 연결 지점 — 선택 날짜 상태 갱신 및 해당 기록 상세/에디터로 이동
   final void Function(DateTime date) onDateTap;
 
   /// 이전 달 이동 콜백. null이면 chevron 버튼 비활성.
@@ -326,7 +326,7 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool isSelected;
 
-  /// 해당 날짜의 일기 요약. null이면 기록 없는 날(기본 스타일).
+  /// 해당 날짜의 기록 요약. null이면 기록 없는 날(기본 스타일).
   final DiarySummaryDay? summaryDay;
 
   /// 미래 날짜 여부. true이면 흐리게 표시하고 탭을 막는다(작성/조회 불가).

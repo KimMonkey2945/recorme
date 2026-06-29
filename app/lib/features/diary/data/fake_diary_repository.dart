@@ -6,7 +6,7 @@ import '../domain/diary_content.dart';
 import '../domain/diary_repository.dart';
 import 'dto/diary_dto.dart';
 
-/// 인메모리 더미 일기 저장소(Phase 2 전용).
+/// 인메모리 더미 기록 저장소(Phase 2 전용).
 ///
 /// 실제 백엔드 없이 캘린더 dot·목록 커서 페이징·단건 조회·upsert·소프트 삭제를
 /// 시뮬레이션한다. 모든 메서드는 네트워크 지연을 흉내 내기 위해 약간의 delay를 둔다.
@@ -16,7 +16,7 @@ class FakeDiaryRepository implements DiaryRepository {
     _seed();
   }
 
-  /// 활성 일기 저장소(id → Diary). 소프트 삭제 시 여기서 제거한다.
+  /// 활성 기록 저장소(id → Diary). 소프트 삭제 시 여기서 제거한다.
   final Map<int, Diary> _diaries = {};
 
   /// 다음에 발급할 id. 시드 이후 최댓값+1로 맞춘다.
@@ -27,7 +27,7 @@ class FakeDiaryRepository implements DiaryRepository {
 
   // ── 시드 데이터 ──────────────────────────────────────────────
 
-  /// 최근 약 6주 범위에 듬성듬성 더미 일기를 생성한다.
+  /// 최근 약 6주 범위에 듬성듬성 더미 기록을 생성한다.
   /// 오래된 날짜일수록 작은 id를 받아, id 내림차순 = 날짜 내림차순이 되도록 한다.
   void _seed() {
     final today = DateTime.now();
@@ -117,7 +117,7 @@ class FakeDiaryRepository implements DiaryRepository {
     ),
   ];
 
-  /// 더미 일기 본문 샘플(길이 다양 — 목록 2줄 말줄임 확인용).
+  /// 더미 기록 본문 샘플(길이 다양 — 목록 2줄 말줄임 확인용).
   static const List<String> _sampleContents = [
     '오늘은 날씨가 좋았다. 오후에 가볍게 산책을 했고 마음이 한결 편해졌다. 저녁에는 오랜만에 친구들과 만나 즐거운 시간을 보냈다.',
     '바쁜 하루였다. 할 일이 많아 정신없이 지나갔지만, 하나씩 끝내고 나니 뿌듯한 기분이 들었다.',
@@ -155,7 +155,7 @@ class FakeDiaryRepository implements DiaryRepository {
   @override
   Future<DiarySummary> getMonthlySummary(String yearMonth) async {
     await Future<void>.delayed(_latency);
-    // 해당 월 일기를 날짜 오름차순으로 정렬해 DiarySummaryDay 목록으로 변환한다.
+    // 해당 월 기록을 날짜 오름차순으로 정렬해 DiarySummaryDay 목록으로 변환한다.
     final days = (_diaries.values
           .where((d) => _dateKey(d.writtenDate).startsWith(yearMonth))
           .toList()
@@ -229,10 +229,10 @@ class FakeDiaryRepository implements DiaryRepository {
     await Future<void>.delayed(_latency);
     final key = _dateKey(date);
 
-    // 같은 날짜의 활성 일기가 있으면 UPDATE(같은 id 유지).
+    // 같은 날짜의 활성 기록이 있으면 UPDATE(같은 id 유지).
     for (final entry in _diaries.entries) {
       if (_dateKey(entry.value.writtenDate) == key) {
-        // 이미 확정된 일기를 수정 시도하면 409 시뮬레이션.
+        // 이미 확정된 기록을 수정 시도하면 409 시뮬레이션.
         if (!entry.value.isDraft) {
           throw const Failure(
             'DIARY_ALREADY_CONFIRMED',

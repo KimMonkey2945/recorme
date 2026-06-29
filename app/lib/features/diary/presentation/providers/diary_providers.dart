@@ -5,7 +5,7 @@ import '../../data/api_diary_repository.dart';
 import '../../data/dto/diary_dto.dart';
 import '../../domain/diary_repository.dart';
 
-/// 일기 저장소 주입 지점.
+/// 기록 저장소 주입 지점.
 ///
 /// 실제 API 구현([ApiDiaryRepository])을 주입한다.
 /// 테스트에서는 `ProviderScope(overrides: [...])`로 `FakeDiaryRepository`/Mock을 주입한다.
@@ -19,7 +19,7 @@ final monthlySummaryProvider =
   return ref.watch(diaryRepositoryProvider).getMonthlySummary(yearMonth);
 });
 
-/// 해당 월('yyyy-MM')의 일기 목록(목록 화면용). 하루 1기록이라 한 번에 로드한다.
+/// 해당 월('yyyy-MM')의 기록 목록(목록 화면용). 하루 1기록이라 한 번에 로드한다.
 ///
 /// 목록 화면이 이 프로바이더를 watch하므로, 작성/수정/삭제 후
 /// `ref.invalidate(monthDiariesProvider)`만 호출하면 (탭 복귀 없이) 즉시 갱신된다.

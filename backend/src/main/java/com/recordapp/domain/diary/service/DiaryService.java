@@ -32,12 +32,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 일기 서비스. 소유권은 항상 SecurityContext 의 userId 로만 식별한다(IDOR 차단).
+ * 기록 서비스. 소유권은 항상 SecurityContext 의 userId 로만 식별한다(IDOR 차단).
  * 파일 IO(저장/삭제)는 트랜잭션 밖에서 수행하며, 실패 시 보상 삭제 / 커밋 성공 후 회수 전략을 따른다.
  * (UserService.updateAvatar 와 동일한 인프라 IO 분리 패턴.)
  *
- * <p>일기 본문(content)은 Quill Delta JSON 으로 인라인 이미지를 직접 임베드하며, content 가 이미지의
- * 단일 진실 공급원이다(별도 diary_images 테이블 없음). 본문에서 빠지거나 일기 삭제로 더 이상
+ * <p>기록 본문(content)은 Quill Delta JSON 으로 인라인 이미지를 직접 임베드하며, content 가 이미지의
+ * 단일 진실 공급원이다(별도 diary_images 테이블 없음). 본문에서 빠지거나 기록 삭제로 더 이상
  * 참조되지 않는 이미지 파일은 content 를 파싱해 커밋 후(afterCommit) 디스크에서 회수한다.
  */
 @Service
@@ -75,10 +75,10 @@ public class DiaryService {
 			throw new BusinessException(ErrorCode.IMAGE_LIMIT_EXCEEDED);
 		}
 
-		// 같은 날짜 기존 일기(UPDATE 전환 시)의 content 를 미리 확보 — 빠진 이미지 파일 회수용.
+		// 같은 날짜 기존 기록(UPDATE 전환 시)의 content 를 미리 확보 — 빠진 이미지 파일 회수용.
 		// 신규 INSERT 면 existing 이 null 이라 oldUrls 는 비어 있다.
 		DiaryRow existing = diaryMapper.findByDateAndUser(userId, req.writtenDate());
-		// 이미 확정(DRAFT 아님)된 일기는 수정 불가 — DB 변경 전에 조기 차단.
+		// 이미 확정(DRAFT 아님)된 기록은 수정 불가 — DB 변경 전에 조기 차단.
 		if (existing != null && !"DRAFT".equals(existing.analysisStatus())) {
 			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
 		}
@@ -110,7 +110,7 @@ public class DiaryService {
 	}
 
 	/**
-	 * 인라인 이미지 업로드. 작성 중(일기 미저장) 호출되므로 diaryId 에 비종속이며 파일 IO 만 수행한다(DB 미접근).
+	 * 인라인 이미지 업로드. 작성 중(기록 미저장) 호출되므로 diaryId 에 비종속이며 파일 IO 만 수행한다(DB 미접근).
 	 * 반환 URL 을 클라이언트가 본문 Delta 에 끼워 넣고, 저장(upsert/update) 시 content 에 그대로 임베드된다.
 	 * 매직바이트 검증은 StorageService.store 가 수행한다.
 	 *
@@ -145,14 +145,14 @@ public class DiaryService {
 		return toResponse(row);
 	}
 
-	/** 해당 월(yyyy-MM) 내 일기 목록(written_date 역순). 하루 1기록이라 커서 없이 한 번에 반환. */
+	/** 해당 월(yyyy-MM) 내 기록 목록(written_date 역순). 하루 1기록이라 커서 없이 한 번에 반환. */
 	@Transactional(readOnly = true)
 	public List<DiaryListItem> getMonthList(Long userId, String yearMonth) {
 		return diaryMapper.findByMonth(userId, yearMonth);
 	}
 
 	/**
-	 * 일기 스칼라 row 를 단건 응답으로 매핑한다(인라인 이미지는 content 에 임베드되어 별도 조립 불필요).
+	 * 기록 스칼라 row 를 단건 응답으로 매핑한다(인라인 이미지는 content 에 임베드되어 별도 조립 불필요).
 	 * 감정 분석 테마 필드(primaryEmotion~moodEmoji)는 DONE 일 때만 채워지고 그 외엔 NULL 그대로 전달된다.
 	 */
 	private DiaryResponse toResponse(DiaryRow row) {
@@ -163,7 +163,7 @@ public class DiaryService {
 	}
 
 	/**
-	 * 내 일기 목록(커서 페이징, id DESC 최신순).
+	 * 내 기록 목록(커서 페이징, id DESC 최신순).
 	 * <p>hasNext 판정을 위해 {@code size+1} 건을 조회해, 초과분이 있으면 잘라내고 hasNext=true 로 본다.
 	 * nextCursor 는 잘라낸 items 의 마지막 id(다음 페이지는 {@code id < nextCursor}). 빈 결과면 둘 다 없음.
 	 */
@@ -203,7 +203,7 @@ public class DiaryService {
 		if (before == null) {
 			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
 		}
-		// 이미 확정(DRAFT 아님)된 일기는 수정 불가 — DB 변경 전에 조기 차단.
+		// 이미 확정(DRAFT 아님)된 기록은 수정 불가 — DB 변경 전에 조기 차단.
 		if (!"DRAFT".equals(before.analysisStatus())) {
 			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
 		}
@@ -222,15 +222,15 @@ public class DiaryService {
 			// update 와 재조회 사이 동시 삭제 방어 — null 이면 toResponse 에서 NPE 가 발생하므로 명시적 차단.
 			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
 		}
-		// 수정 가능한 일기는 항상 DRAFT(미분석)이며 update 가 상태를 바꾸지 않으므로 after 는 PENDING 이 아니다 →
+		// 수정 가능한 기록은 항상 DRAFT(미분석)이며 update 가 상태를 바꾸지 않으므로 after 는 PENDING 이 아니다 →
 		// triggerAnalysisIfPending 는 스킵된다(확정은 upsert confirm=true 경로에서만 발생). 방어적으로 호출 유지.
 		triggerAnalysisIfPending(after);
 		return toResponse(after);
 	}
 
 	/**
-	 * 일기 소프트 삭제 + 본문에 임베드된 이미지 파일 회수.
-	 * <p>DB 작업(일기 soft delete)은 트랜잭션으로 원자성을 보장하고, 디스크 파일 회수는 afterCommit
+	 * 기록 소프트 삭제 + 본문에 임베드된 이미지 파일 회수.
+	 * <p>DB 작업(기록 soft delete)은 트랜잭션으로 원자성을 보장하고, 디스크 파일 회수는 afterCommit
 	 * 콜백에서 수행한다 — 커밋이 확정된 뒤에만 파일을 지워 롤백 시 파일이 보존되도록 한다.
 	 * 회수 대상 URL 은 soft delete 전 content(Delta)에서 추출한다(삭제 후엔 조회 불가).
 	 */
@@ -285,8 +285,8 @@ public class DiaryService {
 	}
 
 	/**
-	 * analysis_status 가 PENDING 인 일기에 한해 비동기 감정 분석을 커밋 이후에 트리거한다.
-	 * <p>커밋 전에 dispatch 하면 @Async 스레드가 미커밋 행을 PENDING 으로 못 보거나(stale) 롤백된 일기를
+	 * analysis_status 가 PENDING 인 기록에 한해 비동기 감정 분석을 커밋 이후에 트리거한다.
+	 * <p>커밋 전에 dispatch 하면 @Async 스레드가 미커밋 행을 PENDING 으로 못 보거나(stale) 롤백된 기록을
 	 * 분석할 수 있으므로, 파일 회수와 동일하게 afterCommit 으로 미룬다. 동기화 비활성 시 즉시 호출 폴백.
 	 */
 	private void triggerAnalysisIfPending(DiaryRow row) {
