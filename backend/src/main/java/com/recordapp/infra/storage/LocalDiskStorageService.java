@@ -106,6 +106,45 @@ public class LocalDiskStorageService implements StorageService {
 		}
 	}
 
+	@Override
+	public java.util.Optional<LoadedImage> loadByUrl(String url) {
+		// deleteByUrl과 동일한 소유/루트 검증으로 외부 URL·null·루트 밖을 차단한다.
+		if (url == null || !url.startsWith(urlPath + "/")) {
+			return java.util.Optional.empty();
+		}
+		String relative = url.substring(urlPath.length() + 1); // urlPath + "/" 제거
+		Path target = root.resolve(relative).normalize();
+		if (!target.startsWith(root)) {
+			log.warn("스토리지 루트 밖 읽기 시도 무시: {}", url);
+			return java.util.Optional.empty();
+		}
+		String mediaType = mediaTypeOf(relative);
+		if (mediaType == null || !Files.exists(target)) {
+			return java.util.Optional.empty();
+		}
+		try {
+			byte[] data = Files.readAllBytes(target);
+			return java.util.Optional.of(new LoadedImage(data, mediaType));
+		} catch (IOException e) {
+			log.warn("이미지 읽기 실패(무시): {}", target, e);
+			return java.util.Optional.empty();
+		}
+	}
+
+	/** 확장자로 MIME 도출. 미지원 확장자는 null. */
+	private String mediaTypeOf(String path) {
+		int dot = path.lastIndexOf('.');
+		if (dot < 0) {
+			return null;
+		}
+		return switch (path.substring(dot + 1).toLowerCase()) {
+			case "jpg", "jpeg" -> "image/jpeg";
+			case "png" -> "image/png";
+			case "webp" -> "image/webp";
+			default -> null;
+		};
+	}
+
 	/** 앞부분 12바이트만 읽어 시그니처 판별에 사용. */
 	private byte[] readHeader(MultipartFile file) {
 		try (InputStream in = file.getInputStream()) {

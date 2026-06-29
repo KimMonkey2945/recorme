@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.emotion.mapper.EmotionAnalysisMapper">
+
+    <!-- 분석 대상 스냅샷 매핑(record 생성자 기반). 소유권 없이 PK 로만 접근한다. -->
+    <resultMap id="analysisTargetMap" type="com.recordapp.domain.emotion.dto.AnalysisTarget">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="content_text" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- PENDING 활성 일기만 분석 대상으로 본다. DONE/FAILED·삭제·없음이면 null → 분석 skip. -->
+    <select id="findTarget" resultMap="analysisTargetMap">
+        SELECT id, content, content_text
+          FROM diaries
+         WHERE id = #{id}
+           AND analysis_status = 'PENDING'
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 분석 성공 → DONE 반영(조건부/낙관적). content_text 가 분석 시점과 다르면(수정됨) 0행 → 결과 폐기.
+         emotion_scores 는 JSON 문자열을 jsonb 로 캐스팅. analyzed_at=now(). ⚠️ updated_at 미변경. -->
+    <update id="updateResult">
+        UPDATE diaries
+           SET primary_emotion  = #{primaryEmotion},
+               background_color  = #{backgroundColor},
+               text_color        = #{textColor},
+               accent_color      = #{accentColor},
+               ai_comment        = #{aiComment},
+               ai_title          = #{aiTitle},
+               mood_emoji        = #{moodEmoji},
+               emotion_scores    = CAST(#{emotionScoresJson} AS jsonb),
+               analyzed_at       = now(),
+               analysis_status   = 'DONE'
+         WHERE id = #{id}
+           AND analysis_status = 'PENDING'
+           AND content_text = #{analyzedText}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- 예기치 못한 예외 → FAILED 반영. 중립 팔레트를 채워 CHECK 통과 + 앱 중립 렌더.
+         WHERE 는 updateResult 와 동일(stale 이면 0행). ⚠️ updated_at 미변경. -->
+    <update id="updateFailed">
+        UPDATE diaries
+           SET analysis_status  = 'FAILED',
+               primary_emotion  = 'NEUTRAL',
+               background_color  = '#F7F5F0',
+               text_color        = '#232228',
+               accent_color      = '#6C5CE0',
+               mood_emoji        = '🙂',
+               emotion_scores    = CAST('{"NEUTRAL":1.0}' AS jsonb),
+               analyzed_at       = now()
+         WHERE id = #{id}
+           AND analysis_status = 'PENDING'
+           AND content_text = #{analyzedText}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- 폴러 백스톱: 미처리 PENDING 활성 행을 잠금 선점. SKIP LOCKED 로 동시 폴링 중복 방지.
+         호출자(짧은 @Transactional)가 dispatch 후 커밋하면 잠금 해제 — 실제 LLM 은 잠금 밖에서 수행. -->
+    <select id="findStalePendingIds" resultType="java.lang.Long">
+        SELECT id
+          FROM diaries
+         WHERE analysis_status = 'PENDING'
+           AND deleted_at IS NULL
+         ORDER BY id
+         LIMIT #{limit}
+         FOR UPDATE SKIP LOCKED
+    </select>
+
+</mapper>

@@ -32,6 +32,9 @@ dependencies {
 	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.5'
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// 멀티모달 LLM(Claude) 호출: 공식 Anthropic Java SDK
+	implementation 'com.anthropic:anthropic-java:2.40.0'
+
 	// 스키마 마이그레이션: Flyway (Flyway 10+는 PostgreSQL 모듈이 분리됨)
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'

@@ -38,6 +38,34 @@ record:
   storage:
     root: ${STORAGE_ROOT:./var/storage}
     url-path: /files
+  # ===== 멀티모달 LLM(감정 분석) =====
+  # provider=ollama(기본): 로컬 Ollama 비전 모델로 과금 0. 키 불필요(키 검사 전에 분기).
+  #   Ollama 서버가 떠 있어야 실제 호출 가능(미기동이어도 빈 생성·기동은 됨, 호출 시에만 연결).
+  # provider=gemini|claude 전환 시 LLM_PROVIDER·LLM_API_KEY·LLM_MODEL을 함께 override.
+  #   api-key가 비어 있으면(ollama 외) LlmConfig가 자동으로 Stub를 선택(무키 로컬/CI 동작 보장).
+  #   키는 환경변수(LLM_API_KEY)로만 주입한다(코드·git 평문 금지).
+  # ⚠️ gemini 사용 시 gemini-2.5-flash는 thinking 토큰으로 출력이 잘릴 수 있어 2.0-flash 권장.
+  llm:
+    provider: ${LLM_PROVIDER:ollama}
+    api-key: ${LLM_API_KEY:}
+    base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    model: ${LLM_MODEL:gemma3:4b}
+    ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    ollama-timeout-ms: 300000
+    max-tokens: 400
+    max-images: 3
+    image-max-edge-px: 512
+    mode: ${LLM_MODE:immediate}
+    timeout-ms: 30000
+    max-retries: 2
+  # ===== 감정 분석 백스톱 폴러 =====
+  # 즉시 경로(일기 커밋 후 @Async 트리거) 유실·재시작·다중 인스턴스 보강용.
+  # poll-interval-ms: fixedDelay(이전 실행 종료 후 간격), initial-delay-ms: 기동 후 첫 실행 지연,
+  # batch-size: 1회 폴링당 선점(FOR UPDATE SKIP LOCKED)·dispatch 할 PENDING 최대 건수.
+  analysis:
+    poll-interval-ms: ${ANALYSIS_POLL_INTERVAL_MS:60000}
+    initial-delay-ms: ${ANALYSIS_INITIAL_DELAY_MS:30000}
+    batch-size: ${ANALYSIS_BATCH_SIZE:20}
 
 # ===== Supabase Auth (ES256/JWKS 검증 전용) =====
 # 백엔드는 자체 JWT를 발급하지 않고 Supabase가 ES256로 서명한 access token을 JWKS로 검증만 한다.

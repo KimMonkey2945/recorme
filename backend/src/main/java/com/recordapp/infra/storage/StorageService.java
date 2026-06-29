@@ -29,4 +29,14 @@ public interface StorageService {
 	 * @param url 삭제할 접근 경로(store가 반환했던 상대 경로)
 	 */
 	void deleteByUrl(String url);
+
+	/**
+	 * 이 스토리지가 관리하는 경로의 이미지를 원본 bytes로 읽어온다.
+	 * 외부 URL(http...)·null·루트 밖 경로·미지원 확장자·미존재 파일은 {@code Optional.empty()}.
+	 * 다운스케일은 하지 않는다(원본 그대로 — 다운스케일은 호출자 책임).
+	 *
+	 * @param url 읽을 접근 경로(store가 반환했던 상대 경로)
+	 * @return 이미지 bytes + MIME, 읽을 수 없으면 empty
+	 */
+	java.util.Optional<LoadedImage> loadByUrl(String url);
 }
