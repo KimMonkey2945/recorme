@@ -19,7 +19,7 @@
 |---|---|
 | 모바일(`app/`) | Flutter / Dart 3.10.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in, image_picker, **flutter_quill(리치 텍스트 에디터, Delta JSON) + flutter_localizations** |
 | 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)** |
-| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`) |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -242,8 +242,16 @@
 
 > 아래 항목은 MVP 범위 밖이며, 상세 Task 분해는 추후 진행한다. 비동기 감정 분석은 트랜잭션 밖에서 `@Async`로 수행하고 실패 시 `NEUTRAL` 폴백한다는 아키텍처 원칙을 따른다.
 
+- **Task 011-3: 일기 draft→확정 라이프사이클 (감정 분석 선행 작업)** ✅ - 구현 완료(백엔드 Testcontainers Docker 대기)
+  - 구현 기능: F003/F006 확장 (Task 012/013 감정 분석·테마의 **선행 작업** — 확정 시점이 분석 트리거가 됨)
+  - **상태 모델 확장**: `analysis_status`(VARCHAR(20)) 값 집합을 `DRAFT`(미확정·수정가능·미분석) → `PENDING`(확정·분석대기) → `DONE`/`FAILED`로 확장. 기본값 `'PENDING'` → **`'DRAFT'`**. 신규 마이그레이션 `V8__diary_draft_lifecycle.sql`(`SET DEFAULT 'DRAFT'` + `CHECK (analysis_status IN ('DRAFT','PENDING','DONE','FAILED'))`, 기존 데이터 백필 없음)
+  - **2단계 저장**: `POST /diaries`에 `confirm`(boolean, 기본 false) 추가 — `false`→DRAFT 저장(수정 가능·AI 미호출), `true`('오늘을 기억하기')→확정(PENDING·감정분석 1회). 확정 일기는 재upsert·`PUT` 모두 409 `DIARY_ALREADY_CONFIRMED`(불변성). 삭제는 허용(소프트 삭제 → 같은 날짜 재작성)
+  - **정책 변경**: 기존 "내용 수정 시 재분석" 폐기 → "확정 시 1회 분석". 매 수정 LLM 호출 과부하 제거. upsert SQL에 `WHERE analysis_status='DRAFT'` 불변성 가드
+  - **앱**: 에디터 [취소][등록][오늘을 기억하기] 버튼, 확정 전 확인 다이얼로그, 확정 직후 상세에서 "분석 중(약 1분)" 표시 + 폴링 자동 갱신. 캘린더/목록에서 DRAFT는 에디터로·확정은 상세로 분기
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — DRAFT 저장(미분석)·확정(PENDING) 분기, 확정 일기 재upsert/PUT 409, DRAFT 수정 정상, 소프트 삭제 후 재작성, V8 CHECK 제약 동작 / 앱 `flutter test`·`integration_test` — 2버튼 분기·확정 다이얼로그·분석중 폴링
+
 - **Task 012: 감정 분석 (LLM) 개요**
-  - 일기 저장 시 `analysis_status=PENDING` 즉시 반환 → `@Async`로 외부 LLM 분석 후 `DONE` 갱신, 실패 시 `NEUTRAL` 폴백, 내용 수정 시 재분석
+  - 일기 **확정 시(DRAFT→PENDING)** `@Async`로 외부 LLM 분석 후 `DONE` 갱신, 실패 시 `NEUTRAL` 폴백. **확정 시 1회만 분석**(확정 후 수정 불가 — Task 011-3 라이프사이클 전제). 재분석이 필요하면 삭제 후 재작성·재확정
   - 확장 포인트 인터페이스 격리: `EmotionAnalyzer` / `LlmClient`(provider 교체 가능)
 
 - **Task 013: 감정 기반 테마 개요**

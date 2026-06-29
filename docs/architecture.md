@@ -35,7 +35,7 @@
 | 인증 | **Supabase Auth(이메일 + 소셜: 카카오·구글) → 백엔드 Supabase JWT 검증** | 자체 소셜 검증·JWT 발급/회전 구현 부담 제거(Supabase 위임). 이메일·소셜 모두 동일 토큰이라 백엔드 분기 없음. 트레이드오프: Auth만 Supabase 종속(데이터는 무관). 애플은 추후 확장 |
 | 데이터 저장소 | **별도 PostgreSQL(Supabase 미사용)** | 인증만 Supabase, 데이터는 별도 PG로 분리해 DB 통제권 확보·종속을 Auth로 한정. 대가: 배포 DB 운영(백업·리전·패치) 직접 부담. 인증↔데이터는 `users.supabase_uid` 컬럼 매핑으로 연결(FK·RLS·트리거 미사용) |
 | 음악 소스 | **미정 → 인터페이스 추상화** | 자체 음원/외부 API 어느 쪽도 흡수 |
-| 하루 기록 수 | **하루 1개 + 수정 가능** | "오늘의 일기" 컨셉, 재작성은 UPDATE |
+| 하루 기록 수 | **하루 1개 + draft→확정 라이프사이클** | "오늘의 일기" 컨셉, 재작성은 UPDATE. DRAFT(미확정)만 수정 가능, '오늘을 기억하기'로 확정 후 수정 불가(삭제는 허용 → 재작성). 감정 분석은 확정 시 1회 |
 | 소셜 상호작용 | **공감(리액션)만** | 댓글의 알림/신고/모더레이션 복잡도 회피 |
 | 패키지 베이스 | `com.recordapp` | Java `record` 키워드 혼동 회피 |
 
@@ -87,7 +87,7 @@ record/
 
 - 인증 경로: 앱이 **Supabase SDK로 이메일/소셜 로그인**(이메일 `signUp`(닉네임→`user_metadata`)·`signInWithPassword` 확인 메일 필수 / 구글 `signInWithIdToken` / 카카오 `signInWithOAuth`) → Supabase 세션(access JWT + refresh, SDK가 저장·자동 갱신). 앱은 백엔드 호출 시 `Authorization: Bearer <Supabase access token>` 첨부 → 백엔드 `SupabaseJwtFilter`가 JWKS(ES256 비대칭 공개키)로 서명/만료/aud 검증 후 `sub`(uuid)로 `users` JIT 프로비저닝. 자체 JWT 발급·refresh 회전 없음.
 - 동기 경로: 앱 요청 → Controller → Service → Mapper → DB → 표준 응답.
-- 비동기 경로: 일기 저장/수정 → `PENDING` 즉시 응답 → `@Async`로 LLM 감정 분석 → 테마/음악 매핑 → `DONE` 갱신.
+- 비동기 경로: 일기 '등록' → `DRAFT`(미분석·수정가능) 저장 → '오늘을 기억하기'로 **확정** → `PENDING` 즉시 응답 → `@Async`로 LLM 감정 분석(확정 시 1회) → 테마/음악 매핑 → `DONE` 갱신. 확정 일기는 수정 불가(재upsert·PUT 모두 409), 삭제만 허용.
 
 ## 6. 주요 트레이드오프
 

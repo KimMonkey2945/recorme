@@ -129,7 +129,7 @@ CREATE TABLE diaries (
     content         TEXT NOT NULL,
     written_date    DATE NOT NULL,                              -- 기록 대상 날짜
     visibility      VARCHAR(20) NOT NULL DEFAULT 'PRIVATE',     -- PRIVATE/FRIENDS/PUBLIC (enum 검증은 앱·백엔드)
-    analysis_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',     -- PENDING/DONE/FAILED (enum 검증은 앱·백엔드)
+    analysis_status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',       -- DRAFT/PENDING/DONE/FAILED (enum 검증은 앱·백엔드·CHECK). DRAFT=미확정(수정가능·미분석), PENDING=확정·분석대기
     theme_id        BIGINT REFERENCES themes(id),               -- [Phase 4] 적용 테마 스냅샷 (V2 미포함)
     track_id        BIGINT REFERENCES tracks(id),               -- [Phase 4] 적용 음악 스냅샷 (V2 미포함)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -205,7 +205,7 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
 
 - **DB는 별도 PostgreSQL(Supabase 미사용)**: 앱 데이터는 Supabase와 무관한 별도 PostgreSQL에 저장한다(로컬: Docker, 배포: 관리형/자체호스팅). Supabase는 **Auth 전용**이며, 인증↔데이터는 `users.supabase_uid` 컬럼 매핑으로만 연결한다(`auth.users` FK·RLS·트리거 미사용 — 물리적으로 다른 DB).
 - **Supabase Auth 매핑**: 소셜 로그인·세션(access/refresh)은 Supabase Auth가 관리하고, 백엔드는 `users.supabase_uid`(= Supabase `auth.users.id`, JWT `sub`)로 1:1 매핑한다. 별도 `social_accounts`/`refresh_tokens` 테이블을 두지 않으며, 최초 인증 요청 시 `users` 행을 자동 생성(JIT 프로비저닝)한다. `users.uuid`(외부 공유 노출용)와 `supabase_uid`(인증 매핑용)는 용도가 다른 별개 식별자다.
-- **하루 1기록 + 수정**: `uq_diary_user_day` 부분 유니크 인덱스로 사용자·날짜당 1행 강제. 동일 날짜 재작성은 신규 INSERT가 아닌 **UPDATE**로 처리하고, 내용 변경 시 감정 분석을 재실행해 `theme_id`/`track_id`를 갱신한다.
+- **하루 1기록 + draft→확정 라이프사이클**: `uq_diary_user_day` 부분 유니크 인덱스로 사용자·날짜당 1행 강제. 동일 날짜 재작성은 신규 INSERT가 아닌 **UPDATE**로 처리한다. `analysis_status`가 `DRAFT`인 일기만 수정 가능하며, '오늘을 기억하기'로 **확정(`PENDING`)하면 감정 분석을 1회 수행**한다. **확정 후에는 수정 불가**(재upsert·PUT 모두 409 `DIARY_ALREADY_CONFIRMED`)이며, **삭제는 허용**한다(소프트 삭제 → 같은 날짜 재작성 가능). 매 수정마다 LLM을 호출하던 과부하를 피하기 위해 분석을 확정 시점 1회로 한정한다.
 - **테마/음악 스냅샷**: `diaries.theme_id`·`track_id`를 결과로 저장해, 추후 프리셋(themes/tracks)이 바뀌어도 과거 기록의 분위기는 보존된다.
 - **음악 소스 추상화**: `tracks.source_type` + `source_ref` + `metadata(JSONB)`로 자체 음원·외부 API(Spotify/YouTube) 어느 쪽이든 동일 테이블로 수용.
 - **공감만**: `diary_reactions`에 `uq_reaction_once`로 1인 1회 공감. 댓글 테이블은 의도적으로 생략(모더레이션 복잡도 회피).
@@ -217,6 +217,7 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
   - `V1__init.sql` — `users` (인증·프로필. 본 단계)
   - `V2__add_diaries.sql` — `diaries` (Task 008, 일기 CRUD). MVP 스코프상 `theme_id`/`track_id`·공개 피드 인덱스 제외, `chk_diaries_content_len`(1~500) 포함.
   - `V3__add_diary_images.sql` — `diary_images` (Task 008, 사진 첨부 1:N)
+  - `V8__diary_draft_lifecycle.sql` — `diaries.analysis_status` 기본값을 `'PENDING'` → **`'DRAFT'`**로 변경하고 `CHECK (analysis_status IN ('DRAFT','PENDING','DONE','FAILED'))` 제약 추가(일기 draft→확정 라이프사이클). 기존 데이터 백필 없음.
   - 이후 감정/테마/음악/사회 도메인은 구현 시점에 `Vn__*.sql`로 추가(예: `diaries.theme_id`/`track_id`는 Phase 4에서 `ALTER TABLE ADD COLUMN`). 마스터 데이터(`emotion_types`, 초기 `themes`/`tracks`)는 별도 `Vn__seed_*.sql`로 분리.
 - **로컬 개발**: 네이티브 PostgreSQL 18(`recorme` DB/롤)에 빈 DB만 준비하면 `./gradlew bootRun` 시 Flyway가 자동 적용. DBeaver는 조회용. 도커는 배포 시점(Task 016)에 사용.
 - 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 신규 버전 마이그레이션으로만(기배포된 Vn은 수정 금지 — 미배포 단계에서만 V1 직접 재작성 허용).

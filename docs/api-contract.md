@@ -72,8 +72,8 @@
 ### 일기 (diary)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 내용 갱신) | ○ |
-| PUT | `/diaries/{id}` | id 기반 기록 수정(내용 변경 시 감정 재분석) | ○ |
+| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 갱신). `confirm=false`→DRAFT 저장, `confirm=true`→확정(PENDING·분석 1회). 확정 일기 재저장 시 409 | ○ |
+| PUT | `/diaries/{id}` | id 기반 기록 수정(**DRAFT만 수정 가능**, 확정 일기는 409 `DIARY_ALREADY_CONFIRMED`) | ○ |
 | GET | `/diaries/{id}` | 기록 상세(테마/음악/감정 포함) | ○ |
 | GET | `/diaries/me/summary?yearMonth=YYYY-MM` | 월별 기록 존재 요약(캘린더 dot 렌더링용) | ○ |
 | GET | `/diaries/by-date/{date}` | 특정 날짜(YYYY-MM-DD) 내 기록 단건 조회 | ○ |
@@ -85,14 +85,20 @@
 
 ```jsonc
 // POST /diaries  요청 (날짜 키 기반 upsert)
-{ "content": "오늘은...", "writtenDate": "2026-06-15", "visibility": "FRIENDS" }
+// confirm: 생략/false → '등록'(DRAFT 저장, 수정 가능·미분석) / true → '오늘을 기억하기'(확정·감정분석 1회)
+{ "content": "오늘은...", "writtenDate": "2026-06-15", "visibility": "FRIENDS", "confirm": false }
 // 응답 data (분석 전) — 신규 생성은 201 Created, 기존 갱신은 200 OK
 // content는 1~500자(앱 maxLength·백엔드 @Size(500)·DB CHECK 동일 상수). 초과 시 400 VALIDATION_ERROR.
+// 이미 확정된(DRAFT 아닌) 날짜에 재저장 시 409 DIARY_ALREADY_CONFIRMED (삭제 후 재작성만 허용).
 // ⚠️ MVP: theme/track/emotion 필드는 Phase 4. 현재 DiaryResponse는 images 포함, theme/track 미포함.
+// 등록(confirm=false) 응답: analysisStatus="DRAFT"
+{ "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
+  "visibility": "FRIENDS", "analysisStatus": "DRAFT", "images": [] }
+// 확정(confirm=true) 응답: analysisStatus="PENDING" → 이후 분석 완료 시 DONE
 { "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
   "visibility": "FRIENDS", "analysisStatus": "PENDING", "images": [] }
 
-// GET /diaries/{id}  응답 data (MVP)
+// GET /diaries/{id}  응답 data (MVP) — analysisStatus: DRAFT/PENDING/DONE/FAILED
 { "id": 10, "shareToken": "...", "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
   "analysisStatus": "PENDING",
   "images": [ { "id": 1, "url": "/files/diaries/2026/06/{uuid}.jpg" },
@@ -124,9 +130,9 @@
 
 > **캘린더 진입 흐름**: 메인(캘린더) 화면은 `GET /diaries/me/summary`로 점(dot)을 그린다. 사용자가 날짜를 탭하면 `GET /diaries/by-date/{date}`로 단건을 조회해, **있으면 상세 화면, 404면 신규 작성 화면**으로 분기한다. 두 엔드포인트 모두 `(user_id, written_date)` 인덱스로 처리되어 `/diaries/me` 전체 페이징보다 효율적이다.
 
-> `analysisStatus`가 `PENDING`이면 클라이언트는 상세를 재조회(폴링)해 테마/음악을 갱신한다.
+> `analysisStatus`가 `PENDING`이면(확정 직후) 클라이언트는 상세를 재조회(폴링)해 분석 결과(테마/음악)를 갱신한다. 상세 화면은 "분석 중(약 1분)"을 표시하고 `DONE`이 되면 자동 갱신한다.
 
-> **하루 1기록 upsert 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 일기 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. 내용이 실제로 바뀐 경우에만 `analysis_status`를 `PENDING`으로 되돌려 감정 재분석을 재실행한다. `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로로 유지된다(동작·재분석 규칙 동일).
+> **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 일기 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(미분석·수정가능)로 저장하고, `confirm=true`는 `PENDING`으로 **확정해 감정 분석을 1회** 수행한다. **`DRAFT` 상태인 일기만 수정 가능**하며, 확정된 일기에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 일기는 409다.
 
 ### 피드 (feed)
 | 메서드 | 경로 | 설명 | 인증 |
