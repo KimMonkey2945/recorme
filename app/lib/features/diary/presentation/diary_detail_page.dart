@@ -1,12 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/diary_theme.dart';
 import '../../../shared/widgets/app_snackbar.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
+import '../data/dto/diary_dto.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/diary_detail_view.dart';
 
@@ -16,10 +19,46 @@ const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일']
 ///
 /// id로 단건을 조회해 전체 내용을 보여주고, 수정(에디터 이동)·삭제(확인
 /// 다이얼로그 후 소프트 삭제 → 메인 복귀)를 제공한다. 표현은 [DiaryDetailView].
-class DiaryDetailPage extends ConsumerWidget {
+///
+/// ## 배경색 동적 전환
+/// analysisStatus == 'DONE'이면 [DiaryTheme.fromEmotion]으로 감정별 큐레이트 팔레트를
+/// 적용한다. LLM이 내려주는 backgroundColor는 신뢰도가 낮으므로 [primaryEmotion]
+/// 코드 기반 팔레트를 우선 사용한다. DONE이 아니면 순수 화이트로 유지.
+///
+/// ## PENDING 자동 갱신
+/// analysisStatus가 'PENDING'이면 3초마다 [diaryByIdProvider]를 invalidate해
+/// 서버에서 최신 상태를 재조회한다. DONE/FAILED가 되면 타이머를 중단한다.
+/// 안전 상한은 누적 60회(약 3분). 초과 시 타이머를 멈추고 안내 메시지를 표시한다.
+class DiaryDetailPage extends ConsumerStatefulWidget {
   const DiaryDetailPage({super.key, required this.diaryId});
 
   final String diaryId;
+
+  @override
+  ConsumerState<DiaryDetailPage> createState() => _DiaryDetailPageState();
+}
+
+class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
+  /// 분석 중 자동 갱신 타이머.
+  Timer? _pollingTimer;
+
+  /// 누적 폴링 횟수. 상한(60회 × 3초 = 3분) 도달 시 타이머 중단.
+  int _pollCount = 0;
+
+  /// 폴링 1회 간격.
+  static const Duration _pollInterval = Duration(seconds: 3);
+
+  /// 폴링 최대 횟수(3분 상한).
+  static const int _maxPollCount = 60;
+
+  /// 폴링 상한 초과 여부. true이면 DiaryDetailView에서 "잠시 후 확인" 안내 표시.
+  bool _pollingTimedOut = false;
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
 
   String _dateText(DateTime d) =>
       '${d.year}년 ${d.month}월 ${d.day}일 (${_weekdays[d.weekday - 1]})';
@@ -29,43 +68,38 @@ class DiaryDetailPage extends ConsumerWidget {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final id = int.tryParse(diaryId) ?? -1;
-    final async = ref.watch(diaryByIdProvider(id));
+  // ── 폴링 제어 ─────────────────────────────────────────────────
 
-    return Container(
-      decoration: const BoxDecoration(gradient: AppColors.bgGradient),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          title: const Text('일기'),
-        ),
-        body: SafeArea(
-          child: async.when(
-            loading: () => const LoadingView(),
-            error: (_, _) => ErrorView(
-              message: '일기를 불러오지 못했어요',
-              onRetry: () => ref.invalidate(diaryByIdProvider(id)),
-            ),
-            data: (diary) => DiaryDetailView(
-              dateText: _dateText(diary.writtenDate),
-              content: diary.content,
-              analysisStatus: diary.analysisStatus,
-              onEdit: () async {
-                await context.push('/editor?date=${_dateParam(diary.writtenDate)}');
-                ref.invalidate(diaryByIdProvider(id));
-              },
-              onDelete: () => _handleDelete(context, ref, id),
-            ),
-          ),
-        ),
-      ),
-    );
+  /// PENDING 상태이면 폴링을 시작한다. 이미 실행 중이면 무시(멱등).
+  void _startPolling(int id) {
+    if (_pollingTimer != null) return;
+    _pollCount = 0;
+    _pollingTimer = Timer.periodic(_pollInterval, (_) {
+      if (!mounted) {
+        _pollingTimer?.cancel();
+        _pollingTimer = null;
+        return;
+      }
+      _pollCount++;
+      if (_pollCount >= _maxPollCount) {
+        _pollingTimer?.cancel();
+        _pollingTimer = null;
+        setState(() => _pollingTimedOut = true);
+        return;
+      }
+      ref.invalidate(diaryByIdProvider(id));
+    });
   }
 
-  Future<void> _handleDelete(BuildContext context, WidgetRef ref, int id) async {
+  /// 폴링 타이머를 중단한다. 이미 없으면 무시.
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  // ── 삭제 처리 ─────────────────────────────────────────────────
+
+  Future<void> _handleDelete(BuildContext context, int id) async {
     final confirmed = await showConfirmDialog(
       context,
       title: '일기 삭제',
@@ -75,16 +109,101 @@ class DiaryDetailPage extends ConsumerWidget {
     );
     if (!confirmed) return;
     try {
+      _stopPolling();
       await ref.read(diaryRepositoryProvider).delete(id);
       ref.invalidate(monthlySummaryProvider);
       ref.invalidate(monthDiariesProvider);
       ref.invalidate(diaryByDateProvider);
       if (!context.mounted) return;
       showAppSnackBar(context, '삭제했어요');
-      context.go('/'); // 메인(캘린더) 복귀
+      context.go('/');
     } catch (_) {
       if (!context.mounted) return;
       showAppSnackBar(context, '삭제에 실패했어요', isError: true);
     }
+  }
+
+  // ── 빌드 ──────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final id = int.tryParse(widget.diaryId) ?? -1;
+
+    // 상태 변화를 감지해 폴링을 제어한다.
+    ref.listen<AsyncValue<Diary>>(
+      diaryByIdProvider(id),
+      (_, next) {
+        final status = next.asData?.value.analysisStatus;
+        if (status == 'PENDING') {
+          _startPolling(id);
+        } else if (status != null) {
+          _stopPolling();
+        }
+      },
+    );
+
+    final async = ref.watch(diaryByIdProvider(id));
+
+    // 초기 캐시 히트(PENDING) 처리 — ref.listen은 변화가 있을 때만 호출됨.
+    if (async.asData?.value.analysisStatus == 'PENDING') {
+      _startPolling(id);
+    }
+
+    // 감정 팔레트 — primaryEmotion 기반 큐레이트 색상.
+    // LLM backgroundColor는 신뢰도 낮음 → DiaryTheme 팔레트 우선.
+    // DONE(hasTheme=true)일 때만 팔레트 적용, 아니면 null → 흰색 기본.
+    final diary = async.asData?.value;
+    final palette =
+        (diary?.hasTheme == true) ? DiaryTheme.fromEmotion(diary!.primaryEmotion) : null;
+    // 페이지 배경은 항상 흰색 — 감정색은 무드 카드(moodCardColor)가 담당.
+    const bgColor = Colors.white;
+
+    return AnimatedContainer(
+      // 분석 완료 직후 배경색을 부드럽게 전환(PENDING → DONE 시 자연스러운 색 전이).
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+      color: bgColor,
+      child: Scaffold(
+        // Scaffold 자체 배경은 투명 — AnimatedContainer 색이 보이도록.
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          // 타이틀 없음 — 날짜·AI 제목이 본문 헤더에서 담당.
+          backgroundColor: Colors.transparent,
+        ),
+        body: SafeArea(
+          child: async.when(
+            loading: () => const LoadingView(),
+            error: (_, _) => ErrorView(
+              message: '일기를 불러오지 못했어요',
+              onRetry: () => ref.invalidate(diaryByIdProvider(id)),
+            ),
+            data: (d) => DiaryDetailView(
+              dateText: _dateText(d.writtenDate),
+              content: d.content,
+              analysisStatus: d.analysisStatus,
+              pollingTimedOut: _pollingTimedOut,
+              // 확정 일기(isDraft=false)는 수정 불가 → null 전달로 수정 버튼 숨김.
+              onEdit: d.isDraft
+                  ? () async {
+                      await context
+                          .push('/editor?date=${_dateParam(d.writtenDate)}');
+                      ref.invalidate(diaryByIdProvider(id));
+                    }
+                  : null,
+              onDelete: () => _handleDelete(context, id),
+              // 팔레트 색상 전달 — DONE 아니면 null이므로 DiaryDetailView 기본값 사용.
+              // moodCardColor는 무드 카드 채움색(감정 배경색). 페이지 배경엔 쓰지 않음.
+              moodCardColor: palette?.backgroundColor,
+              textColor: palette?.textColor,
+              accentColor: palette?.accentColor,
+              // 이모지·코멘트·제목은 API 값 그대로 사용 (LLM이 잘 생성함).
+              moodEmoji: d.moodEmoji,
+              aiComment: d.aiComment,
+              aiTitle: d.aiTitle,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

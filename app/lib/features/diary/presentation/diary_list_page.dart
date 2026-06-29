@@ -67,6 +67,12 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
   String _dateText(DateTime d) =>
       '${d.month}월 ${d.day}일 (${_weekdays[d.weekday - 1]})';
 
+  /// 날짜를 에디터 라우트 쿼리 형식('yyyy-MM-dd')으로 변환한다.
+  String _dateParam(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(monthDiariesProvider(_yearMonth));
@@ -148,7 +154,12 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
                 preview: diary.content,
                 thumbnailUrl: diary.thumbnailUrl,
                 imageCount: diary.imageCount,
-                onTap: () => context.push('/diary/${diary.id}'),
+                isDraft: diary.isDraft,
+                // DRAFT: 에디터로 이동(날짜 기반 수정 재진입), 확정: 상세로 이동.
+                onTap: diary.isDraft
+                    ? () => context
+                        .push('/editor?date=${_dateParam(diary.writtenDate)}')
+                    : () => context.push('/diary/${diary.id}'),
               );
             },
           ),

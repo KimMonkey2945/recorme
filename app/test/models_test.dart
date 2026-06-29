@@ -8,7 +8,17 @@ void main() {
     test('성공 응답을 data 변환기로 파싱한다', () {
       final json = {
         'success': true,
-        'data': {'yearMonth': '2026-06', 'dates': <String>['2026-06-01']},
+        'data': {
+          'yearMonth': '2026-06',
+          'days': [
+            {
+              'date': '2026-06-01',
+              'analysisStatus': 'DONE',
+              'primaryEmotion': 'JOY',
+              'moodEmoji': '😊',
+            }
+          ],
+        },
         'error': null,
       };
 
@@ -20,7 +30,12 @@ void main() {
       expect(res.success, isTrue);
       expect(res.error, isNull);
       expect(res.data!.yearMonth, '2026-06');
-      expect(res.data!.dates, ['2026-06-01']);
+      // days 파싱 검증: 날짜·상태·감정 코드 확인
+      expect(res.data!.days.length, 1);
+      expect(res.data!.days.first.date, '2026-06-01');
+      expect(res.data!.days.first.isDone, isTrue);
+      expect(res.data!.days.first.primaryEmotion, 'JOY');
+      expect(res.data!.days.first.moodEmoji, '😊');
     });
 
     test('실패 응답의 error를 파싱한다', () {

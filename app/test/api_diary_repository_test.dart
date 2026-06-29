@@ -113,7 +113,20 @@ void main() {
           200,
           _ok({
             'yearMonth': '2026-06',
-            'dates': ['2026-06-01', '2026-06-10'],
+            'days': [
+              {
+                'date': '2026-06-01',
+                'analysisStatus': 'DONE',
+                'primaryEmotion': 'JOY',
+                'moodEmoji': '😊',
+              },
+              {
+                'date': '2026-06-10',
+                'analysisStatus': 'DRAFT',
+                'primaryEmotion': null,
+                'moodEmoji': null,
+              },
+            ],
           }),
         ),
       );
@@ -121,7 +134,14 @@ void main() {
 
       final summary = await repo.getMonthlySummary('2026-06');
       expect(summary.yearMonth, '2026-06');
-      expect(summary.dates, ['2026-06-01', '2026-06-10']);
+      // days 파싱: 2개 항목, 날짜·상태 검증
+      expect(summary.days.length, 2);
+      expect(summary.days[0].date, '2026-06-01');
+      expect(summary.days[0].isDone, isTrue);
+      expect(summary.days[0].primaryEmotion, 'JOY');
+      expect(summary.days[1].date, '2026-06-10');
+      expect(summary.days[1].isDraft, isTrue);
+      expect(summary.days[1].moodEmoji, isNull);
       // 쿼리 파라미터로 yearMonth가 실리는지 확인.
       expect(adapter.lastOptions!.queryParameters['yearMonth'], '2026-06');
     });

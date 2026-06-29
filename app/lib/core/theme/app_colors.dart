@@ -11,16 +11,19 @@ class AppColors {
   // 배경 / 서피스
   // ──────────────────────────────────────────
 
-  /// 앱 배경 — 따뜻한 페이퍼 화이트 (#F7F5F0)
-  static const Color canvas = Color(0xFFF7F5F0);
+  /// 앱 배경 — 순수 화이트 (#FFFFFF).
+  /// 감정 배경색(따뜻한 톤)이 대비되어 보이도록 중립 흰 캔버스로 설정.
+  /// 캘린더·로그인 등 주요 화면은 [bgGradient]를 별도 사용한다.
+  static const Color canvas = Color(0xFFFFFFFF);
 
   /// 카드·시트 배경 — 순수 화이트 (#FFFFFF)
   static const Color surface = Color(0xFFFFFFFF);
 
-  /// 화사한 웜 배경 그라데이션 (Foodu 톤 참고) — 상단 피치 → 하단 라이트.
-  /// 로그인·캘린더 등 주요 화면의 공용 배경.
-  static const Color bgGradientTop = Color(0xFFFFE9D6);
-  static const Color bgGradientBottom = Color(0xFFFFFBF6);
+  /// 기본 배경 그라데이션 — 흰색.
+  /// 로그인·캘린더 등 주요 화면의 공용 배경. 감정 무드 카드가 색을 담당하도록
+  /// 기본 캔버스는 순수 화이트로 통일한다(상·하단 동일 흰색 = 단색 흰 배경).
+  static const Color bgGradientTop = Color(0xFFFFFFFF);
+  static const Color bgGradientBottom = Color(0xFFFFFFFF);
   static const LinearGradient bgGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,

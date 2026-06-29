@@ -60,6 +60,7 @@ class DiaryListTile extends StatelessWidget {
     required this.onTap,
     this.thumbnailUrl,
     this.imageCount = 0,
+    this.isDraft = false,
   });
 
   /// 상단 날짜 eyebrow 텍스트.
@@ -78,6 +79,9 @@ class DiaryListTile extends StatelessWidget {
 
   /// 첨부 이미지 개수(1장 초과면 썸네일에 개수 배지 표시).
   final int imageCount;
+
+  /// 임시 저장(DRAFT) 여부. true이면 날짜 옆에 '작성 중' 배지를 표시한다.
+  final bool isDraft;
 
   @override
   Widget build(BuildContext context) {
@@ -114,14 +118,22 @@ class DiaryListTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 날짜 eyebrow — accent 색, semibold
-                      Text(
-                        dateText,
-                        style: textTheme.labelMedium?.copyWith(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.2,
-                        ),
+                      // 날짜 eyebrow + DRAFT '작성 중' 배지(감정색 사용 안 함).
+                      Row(
+                        children: [
+                          Text(
+                            dateText,
+                            style: textTheme.labelMedium?.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          if (isDraft) ...[
+                            const SizedBox(width: AppSpacing.xs),
+                            _DraftBadge(textTheme: textTheme),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       // 일기 내용 미리보기 — 최대 2줄, 말줄임
@@ -223,6 +235,41 @@ class _ListThumbnail extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAFT '작성 중' 배지
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// DRAFT 일기 타일의 날짜 eyebrow 옆에 표시하는 중립 회색 배지.
+///
+/// 감정 분석 결과 색(accent)을 사용하지 않고 [AppColors.hairline] 배경 + [AppColors.inkMuted]
+/// 텍스트로 중립적으로 표시해 아직 확정되지 않은 상태임을 나타낸다.
+class _DraftBadge extends StatelessWidget {
+  const _DraftBadge({required this.textTheme});
+
+  final TextTheme textTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.hairline,
+        borderRadius: BorderRadius.all(Radius.circular(AppRadius.chip)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Text(
+          '작성 중',
+          style: textTheme.labelSmall?.copyWith(
+            color: AppColors.inkMuted,
+            fontWeight: FontWeight.w500,
+            fontSize: 10,
+          ),
+        ),
       ),
     );
   }

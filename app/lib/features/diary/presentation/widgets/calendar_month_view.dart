@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
+import 'package:record/core/theme/diary_theme.dart';
+import 'package:record/features/diary/data/dto/diary_dto.dart';
 
 // ─────────────────────────────────────────────────────────────
 // 파일 내부 상수
@@ -19,16 +21,15 @@ const Color _kSaturdayLabelColor = Color(0xFF9B8FD4);
 /// 날짜 배경 원/사각형 크기 (dp)
 const double _kDayCellBgSize = 34.0;
 
-/// 감정 dot 직경 (dp).
+/// 날짜 셀 하단 이모지·상태 표시 영역 높이 (dp).
 ///
-/// 이 dot은 이 앱의 시그니처 시각 요소.
-/// 현재는 accent 단색이지만, Phase 4 감정 분석 이후
-/// emotionColor 파라미터로 주입되어 각 날짜의 감정 색을 표현한다.
-const double _kEmotionDotSize = 6.0;
+/// DONE 일기: 이모지(fontSize 12), DRAFT: 배경 링으로 이미 구분됨(빈 공간).
+/// 고정 높이로 셀 크기 일관성을 보장한다.
+const double _kEmotionIndicatorHeight = 16.0;
 
 /// 날짜 셀 고정 높이 (dp).
-/// 34(원) + 3(갭) + 6(dot) + 상하 여백 = 52
-const double _kDayCellHeight = 52.0;
+/// 34(원) + 2(갭) + 16(이모지 영역) + 상하 여백 = 56
+const double _kDayCellHeight = 56.0;
 
 // ─────────────────────────────────────────────────────────────
 // 날짜 계산 유틸 (순수 계산 — 비즈니스 로직 아님)
@@ -58,11 +59,15 @@ int _firstWeekdayOffset(DateTime month) =>
 /// 순수 프레젠테이션 위젯 — 상태·비즈니스 로직 없음.
 /// 데이터는 생성자 파라미터, 동작은 콜백으로만 노출.
 ///
+/// [dayMap]에 날짜가 있으면:
+/// - DONE + primaryEmotion: [DiaryTheme.fromEmotion] 파스텔 배경 원 + 이모지 표시
+/// - DRAFT: 옅은 회색 테두리 원("작성 중" 암시)
+///
 /// ### MainCalendarPage에서 사용 예
 /// ```dart
 /// CalendarMonthView(
 ///   month: DateTime(2026, 6),
-///   markedDates: {DateTime(2026, 6, 3), DateTime(2026, 6, 10)},
+///   dayMap: {DateTime(2026, 6, 3): DiarySummaryDay(...)},
 ///   selectedDate: _selectedDate,
 ///   onDateTap: (date) { /* 상태 갱신 + 라우팅 */ },
 ///   onPrevMonth: () { /* 표시 월 감소 */ },
@@ -73,7 +78,7 @@ class CalendarMonthView extends StatelessWidget {
   const CalendarMonthView({
     super.key,
     required this.month,
-    required this.markedDates,
+    required this.dayMap,
     this.selectedDate,
     required this.onDateTap,
     this.onPrevMonth,
@@ -83,9 +88,9 @@ class CalendarMonthView extends StatelessWidget {
   /// 표시할 달(1일 기준). 연·월만 의미를 가진다.
   final DateTime month;
 
-  /// 기록이 있는 날짜 집합 (연·월·일 기준, 시간 무시).
-  /// 포함된 날짜의 셀 아래에 accent dot이 표시된다.
-  final Set<DateTime> markedDates;
+  /// 날짜(시간=0으로 정규화) → 감정 요약 맵.
+  /// 포함된 날짜는 상태에 따라 감정색 원·이모지 또는 회색 링으로 구분된다.
+  final Map<DateTime, DiarySummaryDay> dayMap;
 
   /// 현재 선택된 날짜. null이면 선택 표시 없음.
   final DateTime? selectedDate;
@@ -121,7 +126,7 @@ class CalendarMonthView extends StatelessWidget {
         // 날짜 셀 그리드
         _DateGrid(
           month: month,
-          markedDates: markedDates,
+          dayMap: dayMap,
           selectedDate: selectedDate,
           onDateTap: onDateTap,
         ),
@@ -227,13 +232,16 @@ class _WeekdayRow extends StatelessWidget {
 class _DateGrid extends StatelessWidget {
   const _DateGrid({
     required this.month,
-    required this.markedDates,
+    required this.dayMap,
     required this.onDateTap,
     this.selectedDate,
   });
 
   final DateTime month;
-  final Set<DateTime> markedDates;
+
+  /// 날짜(시간=0 정규화) → 감정 요약 맵.
+  final Map<DateTime, DiarySummaryDay> dayMap;
+
   final DateTime? selectedDate;
   final void Function(DateTime date) onDateTap;
 
@@ -243,12 +251,6 @@ class _DateGrid extends StatelessWidget {
     final int daysCount = _daysInMonth(month);
     // 6주(42칸) 상한 — 어떤 달도 오버플로우 없음
     final int totalCells = ((offset + daysCount) / 7).ceil() * 7;
-
-    // 이 달에 기록 있는 '일' 번호 집합 — build 중 O(1) 조회
-    final Set<int> markedDays = markedDates
-        .where((d) => d.year == month.year && d.month == month.month)
-        .map((d) => d.day)
-        .toSet();
 
     // 시간을 버린 '오늘'(미래 날짜 비활성 비교용).
     final DateTime now = DateTime.now();
@@ -273,13 +275,17 @@ class _DateGrid extends StatelessWidget {
         final DateTime date = DateTime(month.year, month.month, dayNumber);
         final int weekdayIndex = index % 7; // 0=일, 6=토
 
+        // 해당 날짜의 감정 요약(없으면 null — 기록 없는 날).
+        // 키는 생성자에서 DateTime(y, m, d)로 정규화되어 있으므로 직접 조회 가능.
+        final DiarySummaryDay? summaryDay = dayMap[date];
+
         return _DayCell(
           day: dayNumber,
           date: date,
           isToday: _isSameDay(date, today),
           isSelected:
               selectedDate != null && _isSameDay(date, selectedDate!),
-          isMarked: markedDays.contains(dayNumber),
+          summaryDay: summaryDay,
           // 오늘 이후(미래)는 작성/조회 대상이 아니므로 비활성.
           isDisabled: date.isAfter(today),
           weekdayIndex: weekdayIndex,
@@ -296,18 +302,20 @@ class _DateGrid extends StatelessWidget {
 
 /// 캘린더 날짜 셀.
 ///
-/// 시각 상태:
-/// - **오늘**: accent 채운 원 + 흰 글자
-/// - **선택됨**: accentSoft 둥근 사각형 배경
-/// - **기록 있음**: 숫자 아래 accent dot 표시
-/// - 오늘 + 선택: 오늘 스타일 우선 (원이 이미 명확히 구분됨)
+/// 시각 상태 (우선순위 순):
+/// - **오늘**: accent 채운 원 + 흰 글자 (최우선)
+/// - **DONE + primaryEmotion**: [DiaryTheme.fromEmotion] 파스텔 배경 원
+///   + 아래에 moodEmoji(fontSize 12)
+/// - **DRAFT**: 옅은 회색 테두리 원 — "작성 중" 상태 암시
+/// - **선택됨(오늘·DONE 아닌 경우)**: accentSoft 둥근 사각형
+/// - **오늘 + DONE**: 오늘 스타일 우선, 이모지는 아래에 계속 표시
 class _DayCell extends StatelessWidget {
   const _DayCell({
     required this.day,
     required this.date,
     required this.isToday,
     required this.isSelected,
-    required this.isMarked,
+    this.summaryDay,
     required this.isDisabled,
     required this.weekdayIndex,
     required this.onTap,
@@ -318,13 +326,11 @@ class _DayCell extends StatelessWidget {
   final bool isToday;
   final bool isSelected;
 
+  /// 해당 날짜의 일기 요약. null이면 기록 없는 날(기본 스타일).
+  final DiarySummaryDay? summaryDay;
+
   /// 미래 날짜 여부. true이면 흐리게 표시하고 탭을 막는다(작성/조회 불가).
   final bool isDisabled;
-
-  /// 기록 있는 날 여부.
-  /// true이면 숫자 아래 dot을 표시.
-  /// [dot = 앱 시그니처 요소 — Phase 4에서 감정 색으로 교체 예정]
-  final bool isMarked;
 
   /// 그리드 내 요일 위치 (0=일, 6=토) — 텍스트 색 결정에 사용
   final int weekdayIndex;
@@ -334,30 +340,69 @@ class _DayCell extends StatelessWidget {
   /// 날짜 숫자 색상 결정
   Color _dayTextColor() {
     if (isDisabled) return AppColors.inkMuted; // 미래 날짜 — 흐리게(최우선)
-    if (isToday) return AppColors.surface; // 채운 원 위 흰 글자
+    if (isToday) return AppColors.surface;     // 채운 원 위 흰 글자
     if (weekdayIndex == 0) return _kSundayLabelColor;
     if (weekdayIndex == 6) return _kSaturdayLabelColor;
     return AppColors.ink;
   }
 
-  /// 날짜 배경 데코레이션 결정
-  ///
-  /// - today: accent 채운 원
-  /// - selected(오늘 제외): accentSoft 둥근 사각형
-  /// - 그 외: null
+  /// 날짜 배경 데코레이션 결정 (우선순위: 오늘 > DONE > DRAFT > 선택)
   BoxDecoration? _buildBgDecoration() {
+    // 오늘 — accent 채운 원(모든 상태 위에 덮어씀)
     if (isToday) {
       return const BoxDecoration(
         color: AppColors.accent,
         shape: BoxShape.circle,
       );
     }
+    // DONE → 감정 팔레트 파스텔 배경 원.
+    // primaryEmotion이 null이면 [DiaryTheme.neutral] 폴백(연 웜그레이).
+    if (summaryDay != null && summaryDay!.isDone) {
+      return BoxDecoration(
+        color: DiaryTheme.fromEmotion(summaryDay!.primaryEmotion).backgroundColor,
+        shape: BoxShape.circle,
+      );
+    }
+    // DRAFT → 옅은 회색 테두리 원("작성 중" 상태 암시, 이모지·감정색 없음)
+    if (summaryDay != null && summaryDay!.isDraft) {
+      return BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: AppColors.inkMuted.withAlpha(153), // 60% 투명도
+          width: 1.5,
+        ),
+      );
+    }
+    // 선택됨(오늘·감정색 아닌 경우)
     if (isSelected) {
       return BoxDecoration(
         color: AppColors.accentSoft,
         borderRadius: BorderRadius.circular(AppRadius.sm),
       );
     }
+    return null;
+  }
+
+  /// 날짜 숫자 아래 감정 표시 영역 위젯.
+  ///
+  /// - DONE + moodEmoji 있음: 이모지 텍스트(fontSize 12)
+  /// - DONE + moodEmoji 없음: null(빈 공간 유지)
+  /// - DRAFT: null(배경 링으로 이미 구분됨)
+  /// - 기록 없음: null
+  Widget? _buildEmotionIndicator() {
+    if (summaryDay == null) return null;
+    // DONE + 이모지 → 이모지 표시
+    if (summaryDay!.isDone && summaryDay!.moodEmoji != null) {
+      return Text(
+        summaryDay!.moodEmoji!,
+        style: const TextStyle(
+          fontSize: 12,
+          height: 1.0, // 수직 정렬 보정
+        ),
+        textAlign: TextAlign.center,
+      );
+    }
+    // DRAFT·기타 → 배경 링만으로 상태 표시(하단 공간은 비어 있음)
     return null;
   }
 
@@ -369,7 +414,9 @@ class _DayCell extends StatelessWidget {
     final String semanticsLabel =
         '${date.month}월 $day일'
         '${isToday ? ', 오늘' : ''}'
-        '${isMarked ? ', 기록 있음' : ''}'
+        '${summaryDay?.isDone == true ? ', 기록 있음'
+            '${summaryDay!.moodEmoji != null ? ' ${summaryDay!.moodEmoji}' : ''}' : ''}'
+        '${summaryDay?.isDraft == true ? ', 임시 저장' : ''}'
         '${isDisabled ? ', 작성 불가' : ''}';
 
     return Semantics(
@@ -378,12 +425,12 @@ class _DayCell extends StatelessWidget {
       child: InkWell(
         // 미래 날짜는 탭 무효(리플도 없음).
         onTap: isDisabled ? null : onTap,
-        // 셀 전체를 탭 영역으로 — mainAxisExtent 52dp ≥ 48dp 기준 충족
+        // 셀 전체를 탭 영역으로 — mainAxisExtent 56dp ≥ 48dp 기준 충족
         borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── 날짜 숫자 + 배경(원/사각형) ──
+            // ── 날짜 숫자 + 배경(원/링/사각형) ──
             Container(
               width: _kDayCellBgSize,
               height: _kDayCellBgSize,
@@ -399,24 +446,12 @@ class _DayCell extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 3),
-            // ── 감정 dot ──
-            // 현재: accent 단색 dot.
-            // Phase 4 TODO: 로직 연결 지점 —
-            //   Map<DateTime, Color>? emotionColors 파라미터를 CalendarMonthView에 추가하고
-            //   여기서 해당 날짜의 감정 색을 dot에 적용한다.
+            const SizedBox(height: 2),
+            // ── 감정 이모지 영역 ──
+            // 고정 높이로 기록 없는 날과 셀 크기를 동일하게 유지한다.
             SizedBox(
-              height: _kEmotionDotSize,
-              child: isMarked
-                  ? Container(
-                      width: _kEmotionDotSize,
-                      height: _kEmotionDotSize,
-                      decoration: const BoxDecoration(
-                        color: AppColors.accent,
-                        shape: BoxShape.circle,
-                      ),
-                    )
-                  : null,
+              height: _kEmotionIndicatorHeight,
+              child: _buildEmotionIndicator(),
             ),
           ],
         ),

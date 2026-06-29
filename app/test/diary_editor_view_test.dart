@@ -3,6 +3,9 @@
 // 본문은 flutter_quill로 렌더되고, 글자수 제한·이미지 삽입·저장 로직은 상위
 // 페이지(DiaryEditorPage)가 담당한다. 이 위젯은 컨트롤러/콜백을 받아 표시만 하므로,
 // 여기서는 표시(툴바·에디터·카운터)와 콜백 배선만 검증한다.
+//
+// 변경 이력:
+// - '등록'/'오늘을 기억하기' 버튼 분리에 따라 onSave → onRegister/onRemember로 수정.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -17,7 +20,8 @@ Future<void> _pump(
   int plainLength = 0,
   bool canSave = false,
   bool saving = false,
-  VoidCallback? onSave,
+  VoidCallback? onRegister,
+  VoidCallback? onRemember,
   VoidCallback? onPickImage,
 }) async {
   // 단일 행 툴바가 가로로 잘리지 않도록 넓은 화면으로 펌프(이미지 버튼이 화면 안에 들어옴).
@@ -36,7 +40,8 @@ Future<void> _pump(
         plainLength: plainLength,
         saving: saving,
         canSave: canSave,
-        onSave: onSave ?? () {},
+        onRegister: onRegister ?? () {},
+        onRemember: onRemember ?? () {},
         onCancel: () {},
         onPickImage: onPickImage ?? () {},
       ),
@@ -67,25 +72,52 @@ void main() {
       expect(find.text('123 / 500'), findsOneWidget);
     });
 
-    testWidgets('canSave=false면 저장 비활성, true면 활성 + onSave 호출', (tester) async {
+    testWidgets('canSave=false면 기억하기 버튼 비활성, true면 활성 + onRemember 호출',
+        (tester) async {
       final controller = QuillController.basic();
       addTearDown(controller.dispose);
-      var saved = false;
+      var remembered = false;
 
+      // 비활성: 내용 없음.
       await _pump(tester, controller: controller, canSave: false);
-      final saveBtn = find.widgetWithText(FilledButton, '저장');
-      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNull);
+      final rememberBtn = find.widgetWithText(FilledButton, '오늘을 기억하기');
+      expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNull);
 
+      // 활성: 내용 있음 → 탭 시 onRemember.
       await _pump(
         tester,
         controller: controller,
         plainLength: 5,
         canSave: true,
-        onSave: () => saved = true,
+        onRemember: () => remembered = true,
       );
-      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNotNull);
-      await tester.tap(saveBtn);
-      expect(saved, true);
+      expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNotNull);
+      await tester.tap(rememberBtn);
+      expect(remembered, true);
+    });
+
+    testWidgets('canSave=false면 등록 버튼 비활성, true면 활성 + onRegister 호출',
+        (tester) async {
+      final controller = QuillController.basic();
+      addTearDown(controller.dispose);
+      var registered = false;
+
+      // 비활성: 내용 없음.
+      await _pump(tester, controller: controller, canSave: false);
+      final registerBtn = find.widgetWithText(OutlinedButton, '등록');
+      expect(tester.widget<OutlinedButton>(registerBtn).onPressed, isNull);
+
+      // 활성: 내용 있음 → 탭 시 onRegister.
+      await _pump(
+        tester,
+        controller: controller,
+        plainLength: 5,
+        canSave: true,
+        onRegister: () => registered = true,
+      );
+      expect(tester.widget<OutlinedButton>(registerBtn).onPressed, isNotNull);
+      await tester.tap(registerBtn);
+      expect(registered, true);
     });
 
     testWidgets('사진 삽입 버튼 탭 시 onPickImage 호출', (tester) async {

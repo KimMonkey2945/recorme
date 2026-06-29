@@ -35,7 +35,8 @@ class DiaryEditorView extends StatelessWidget {
     this.maxLength = 500,
     required this.saving,
     required this.canSave,
-    required this.onSave,
+    required this.onRegister,
+    required this.onRemember,
     required this.onCancel,
     required this.onPickImage,
   });
@@ -52,14 +53,17 @@ class DiaryEditorView extends StatelessWidget {
   /// 본문 최대 글자 수(순수 텍스트 기준 하드 제한). 기본 500자.
   final int maxLength;
 
-  /// 저장 진행 중이면 true — 저장 버튼을 로딩 상태로 전환.
+  /// 저장 진행 중이면 true — 버튼을 로딩 상태로 전환.
   final bool saving;
 
   /// 저장 가능 여부(내용 있음 + 저장 중 아님).
   final bool canSave;
 
-  /// 저장 버튼 탭 콜백.
-  final VoidCallback onSave;
+  /// '등록' 버튼 탭 콜백 — confirm:false로 임시 저장(DRAFT).
+  final VoidCallback onRegister;
+
+  /// '오늘을 기억하기' 버튼 탭 콜백 — 확인 다이얼로그 후 confirm:true로 확정.
+  final VoidCallback onRemember;
 
   /// 취소 버튼 탭 콜백.
   final VoidCallback onCancel;
@@ -148,7 +152,8 @@ class DiaryEditorView extends StatelessWidget {
           _BottomButtonBar(
             saving: saving,
             canSave: canSave,
-            onSave: onSave,
+            onRegister: onRegister,
+            onRemember: onRemember,
             onCancel: onCancel,
           ),
         ],
@@ -247,21 +252,32 @@ class _CharCounter extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 하단 버튼 바 (취소 + 저장)
+// 하단 버튼 바 (취소 + 등록 + 오늘을 기억하기)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 취소(OutlinedButton) + 저장(FilledButton) 가로 배치.
+/// 취소(OutlinedButton) + 등록(OutlinedButton·보조) + 오늘을 기억하기(FilledButton·주) 배치.
+///
+/// 좁은 화면에서도 세 버튼이 한 줄에 수평 배치되도록 각 버튼의 수평 패딩을 최소화하고,
+/// 취소는 고정 너비, 등록과 기억하기는 1:1 Expanded로 남은 공간을 균등 분배한다.
 class _BottomButtonBar extends StatelessWidget {
   const _BottomButtonBar({
     required this.saving,
     required this.canSave,
-    required this.onSave,
+    required this.onRegister,
+    required this.onRemember,
     required this.onCancel,
   });
 
   final bool saving;
   final bool canSave;
-  final VoidCallback onSave;
+
+  /// '등록' 버튼 탭 콜백.
+  final VoidCallback onRegister;
+
+  /// '오늘을 기억하기' 버튼 탭 콜백.
+  final VoidCallback onRemember;
+
+  /// '취소' 버튼 탭 콜백.
   final VoidCallback onCancel;
 
   static const double _kButtonHeight = 52;
@@ -272,8 +288,18 @@ class _BottomButtonBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 저장 진행 중 로딩 인디케이터(기억하기 버튼 내부).
+    const Widget loadingIndicator = SizedBox.square(
+      dimension: 20,
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        valueColor: AlwaysStoppedAnimation<Color>(AppColors.surface),
+      ),
+    );
+
     return Row(
       children: [
+        // ── 취소 버튼 (고정 너비) ────────────────────────────
         SizedBox(
           height: _kButtonHeight,
           child: OutlinedButton(
@@ -282,32 +308,50 @@ class _BottomButtonBar extends StatelessWidget {
               foregroundColor: AppColors.inkMuted,
               side: const BorderSide(color: AppColors.hairline),
               shape: _kButtonShape,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             ),
             child: const Text('취소'),
           ),
         ),
-        const SizedBox(width: AppSpacing.md),
+        const SizedBox(width: AppSpacing.sm),
+
+        // ── 등록 버튼 (보조, Expanded 1/2) ──────────────────
+        Expanded(
+          child: SizedBox(
+            height: _kButtonHeight,
+            child: OutlinedButton(
+              onPressed: canSave ? onRegister : null,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: const BorderSide(color: AppColors.accent),
+                disabledForegroundColor: AppColors.accentSoft,
+                shape: _kButtonShape,
+                padding: EdgeInsets.zero,
+              ),
+              child: const Text('등록'),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+
+        // ── 오늘을 기억하기 버튼 (주, Expanded 1/2) ──────────
         Expanded(
           child: SizedBox(
             height: _kButtonHeight,
             child: FilledButton(
-              onPressed: canSave ? onSave : null,
+              onPressed: canSave ? onRemember : null,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 disabledBackgroundColor: AppColors.accentSoft,
                 shape: _kButtonShape,
+                padding: EdgeInsets.zero,
               ),
               child: saving
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(AppColors.surface),
-                      ),
-                    )
-                  : const Text('저장'),
+                  ? loadingIndicator
+                  : const Text(
+                      '오늘을 기억하기',
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ),
           ),
         ),

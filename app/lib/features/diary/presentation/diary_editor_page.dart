@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/app_snackbar.dart';
+import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
 import '../data/dto/diary_dto.dart';
@@ -178,34 +180,87 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     }
   }
 
-  Future<void> _onSave() async {
+  /// provider 캐시 전체를 무효화한다(저장·확정 후 공통 처리).
+  void _invalidateAll() {
+    ref.invalidate(monthlySummaryProvider);
+    ref.invalidate(monthDiariesProvider);
+    ref.invalidate(diaryByDateProvider);
+    ref.invalidate(diaryByIdProvider);
+  }
+
+  /// 409(DIARY_ALREADY_CONFIRMED) 포함 저장 오류를 스낵바로 안내한다.
+  void _handleSaveError(Object e) {
+    if (!mounted) return;
+    if (e is Failure && e.code == 'DIARY_ALREADY_CONFIRMED') {
+      showAppSnackBar(context, '이미 기억한 일기는 수정할 수 없어요', isError: true);
+    } else {
+      showAppSnackBar(context, '저장에 실패했어요', isError: true);
+    }
+    setState(() => _saving = false);
+  }
+
+  /// '등록' 탭 — confirm:false로 임시 저장(DRAFT). 저장 후 이전 화면으로 복귀.
+  Future<void> _onRegister() async {
     final plain = plainTextOf(_controller.document);
     if (plain.isEmpty) return;
     setState(() => _saving = true);
     try {
       final repo = ref.read(diaryRepositoryProvider);
       final content = contentJsonFromDocument(_controller.document);
+      // 임시 저장: confirm 생략(기본값 false) → analysisStatus: DRAFT
       await repo.upsert(date: _date, content: content, contentText: plain);
 
-      // 캘린더 dot·월 목록·날짜/단건 캐시 갱신(목록 탭 실시간 반영).
-      ref.invalidate(monthlySummaryProvider);
-      ref.invalidate(monthDiariesProvider);
-      ref.invalidate(diaryByDateProvider);
-      ref.invalidate(diaryByIdProvider);
+      // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
+      _invalidateAll();
       if (!mounted) return;
       showAppSnackBar(context, '저장했어요');
       context.pop();
-    } catch (_) {
+    } catch (e) {
+      _handleSaveError(e);
+    }
+  }
+
+  /// '오늘을 기억하기' 탭 — 확인 다이얼로그 후 confirm:true로 확정.
+  /// 확정 후에는 상세 화면으로 이동해 AI 분석 폴링을 노출한다.
+  Future<void> _onRemember() async {
+    final plain = plainTextOf(_controller.document);
+    if (plain.isEmpty) return;
+
+    // 수정 불가 안내 포함 확인 다이얼로그.
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '오늘을 기억하기',
+      message: '기억하면 더 이상 수정할 수 없어요. 진행할까요?',
+      confirmLabel: '기억하기',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final repo = ref.read(diaryRepositoryProvider);
+      final content = contentJsonFromDocument(_controller.document);
+      // 확정: confirm=true → analysisStatus: PENDING(AI 분석 대기)
+      final diary = await repo.upsert(
+        date: _date,
+        content: content,
+        contentText: plain,
+        confirm: true,
+      );
+
+      // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
+      _invalidateAll();
       if (!mounted) return;
-      showAppSnackBar(context, '저장에 실패했어요', isError: true);
-      setState(() => _saving = false);
+      // 상세 화면으로 이동(분석 폴링 카드 표시).
+      // TODO: 로직 연결 지점 — pushReplacement로 에디터 스택 제거 후 상세 진입.
+      context.pushReplacement('/diary/${diary.id}');
+    } catch (e) {
+      _handleSaveError(e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final existing = ref.watch(diaryByDateProvider(_date));
-    final isEdit = existing.asData?.value != null;
 
     return Container(
       decoration: const BoxDecoration(gradient: AppColors.bgGradient),
@@ -213,7 +268,6 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
-          title: Text(isEdit ? '일기 수정' : '일기 쓰기'),
         ),
         body: SafeArea(
           child: existing.when(
@@ -241,7 +295,8 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         maxLength: _maxLength,
         saving: _saving,
         canSave: _canSave,
-        onSave: _onSave,
+        onRegister: _onRegister,
+        onRemember: _onRemember,
         onCancel: () => context.pop(),
         onPickImage: _onPickImage,
       );

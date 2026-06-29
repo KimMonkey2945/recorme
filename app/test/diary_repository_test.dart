@@ -31,25 +31,34 @@ void main() {
 
     test('upsert: 같은 날짜는 UPDATE(같은 id, 내용 변경)', () async {
       final repo = FakeDiaryRepository();
-      final today = DateTime.now();
-      final before = await repo.getByDate(today);
-      expect(before, isNotNull, reason: '시드에 오늘 일기가 있어야 한다');
+      // 시드 데이터는 DONE(수정 불가)이므로 비어 있는 미래 날짜를 사용한다.
+      // 먼저 DRAFT로 INSERT한 뒤 같은 날짜로 UPDATE해 id 보존을 확인한다.
+      final testDate = DateTime(2030, 1, 1);
+      expect(await repo.getByDate(testDate), isNull);
 
+      final created = await repo.upsert(
+        date: testDate,
+        content: '초기 내용',
+        contentText: '초기 내용',
+      );
+      expect(created.analysisStatus, 'DRAFT');
+
+      // 같은 날짜로 다시 upsert → UPDATE(id 유지, 내용 교체).
       final updated = await repo.upsert(
-        date: today,
+        date: testDate,
         content: '수정된 내용',
         contentText: '수정된 내용',
       );
-      expect(updated.id, before!.id, reason: 'INSERT가 아닌 UPDATE라 id 유지');
+      expect(updated.id, created.id, reason: 'INSERT가 아닌 UPDATE라 id 유지');
       expect(updated.content, '수정된 내용');
 
-      final after = await repo.getByDate(today);
+      final after = await repo.getByDate(testDate);
       expect(after!.content, '수정된 내용');
     });
 
     test('upsert: 없는 날짜는 새 id로 INSERT', () async {
       final repo = FakeDiaryRepository();
-      final newDate = DateTime(2030, 1, 1);
+      final newDate = DateTime(2030, 2, 1);
       expect(await repo.getByDate(newDate), isNull);
 
       final created = await repo.upsert(
@@ -58,7 +67,8 @@ void main() {
         contentText: '새 일기',
       );
       expect(created.content, '새 일기');
-      expect(created.analysisStatus, 'PENDING');
+      // confirm=false(기본값)이면 DRAFT로 임시 저장된다.
+      expect(created.analysisStatus, 'DRAFT');
 
       final fetched = await repo.getByDate(newDate);
       expect(fetched, isNotNull);
@@ -96,8 +106,10 @@ void main() {
       final summary = await repo.getMonthlySummary(ym);
 
       expect(summary.yearMonth, ym);
-      expect(summary.dates, isNotEmpty);
-      expect(summary.dates.every((d) => d.startsWith(ym)), true);
+      // days: 해당 월 일기가 포함되어 비어 있지 않아야 함
+      expect(summary.days, isNotEmpty);
+      // 모든 항목 날짜가 해당 연월로 시작하는지 확인
+      expect(summary.days.every((d) => d.date.startsWith(ym)), true);
     });
   });
 }

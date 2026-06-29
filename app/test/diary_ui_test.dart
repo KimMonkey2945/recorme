@@ -43,7 +43,7 @@ class _StubRepo implements DiaryRepository {
 
   @override
   Future<DiarySummary> getMonthlySummary(String yearMonth) async =>
-      DiarySummary(yearMonth: yearMonth, dates: const []);
+      DiarySummary(yearMonth: yearMonth, days: const []);
 
   @override
   Future<Diary?> getByDate(DateTime date) async => _byDate(date);
@@ -63,6 +63,7 @@ class _StubRepo implements DiaryRepository {
     required DateTime date,
     required String content,
     required String contentText,
+    bool confirm = false,
   }) async =>
       items.first;
 
@@ -124,9 +125,10 @@ void main() {
       expect(tapped, true);
     });
 
-    testWidgets('DiaryDetailView: 읽기전용 에디터·배지 렌더 + 수정/삭제 콜백',
+    testWidgets('DiaryDetailView(DONE): 읽기전용 에디터 렌더 + 삭제만 콜백',
         (tester) async {
-      var edited = false;
+      // DONE 상태에서는 수정 버튼이 없고(onEdit=null), 배지도 없다.
+      // 대신 날짜 헤더에 이모지·코멘트가 표시된다.
       var deleted = false;
       await tester.pumpWidget(MaterialApp(
         localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
@@ -136,8 +138,12 @@ void main() {
             dateText: '2026년 6월 24일 (화)',
             content: contentJsonFromPlain('상세 본문입니다'),
             analysisStatus: 'DONE',
-            onEdit: () => edited = true,
+            // DONE 일기는 수정 불가 → onEdit=null.
+            onEdit: null,
             onDelete: () => deleted = true,
+            moodEmoji: '😊',
+            aiComment: '햇살 같은 하루',
+            aiTitle: '빛나는 오후',
           ),
         ),
       ));
@@ -145,19 +151,55 @@ void main() {
 
       // 본문은 QuillEditor로 렌더(일반 Text 아님).
       expect(find.byType(QuillEditor), findsOneWidget);
-      expect(find.text('분석 완료'), findsOneWidget);
+      // DONE 상태에서는 배지 없음(이모지·코멘트가 헤더에 표시).
+      expect(find.text('분석 완료'), findsNothing);
+      expect(find.text('임시 저장'), findsNothing);
+      // 헤더 이모지·코멘트 확인.
+      expect(find.text('😊'), findsOneWidget);
+      expect(find.text('햇살 같은 하루'), findsOneWidget);
+      // 수정 버튼 없음, 삭제 버튼만 있음.
+      expect(find.text('수정'), findsNothing);
+      expect(find.text('삭제'), findsOneWidget);
 
+      await tester.tap(find.text('삭제'));
+      expect(deleted, true);
+    });
+
+    testWidgets('DiaryDetailView(DRAFT): 임시 저장 배지 + 수정/삭제 콜백',
+        (tester) async {
+      // DRAFT 상태에서는 수정 버튼과 '임시 저장' 배지가 함께 표시된다.
+      var edited = false;
+      var deleted = false;
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+        supportedLocales: FlutterQuillLocalizations.supportedLocales,
+        home: Scaffold(
+          body: DiaryDetailView(
+            dateText: '2026년 6월 24일 (화)',
+            content: contentJsonFromPlain('임시 저장 본문'),
+            analysisStatus: 'DRAFT',
+            onEdit: () => edited = true,
+            onDelete: () => deleted = true,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.byType(QuillEditor), findsOneWidget);
+      // DRAFT 배지 표시.
+      expect(find.text('임시 저장'), findsOneWidget);
+      // 수정·삭제 버튼 모두 표시.
       await tester.tap(find.text('수정'));
       await tester.tap(find.text('삭제'));
       expect(edited, true);
       expect(deleted, true);
     });
 
-    testWidgets('DiaryEditorView: canSave에 따라 저장 버튼 활성/비활성 + onSave',
+    testWidgets('DiaryEditorView: canSave에 따라 기억하기/등록 버튼 활성·비활성 + 콜백',
         (tester) async {
       final controller = QuillController.basic();
       addTearDown(controller.dispose);
-      var saved = false;
+      var remembered = false;
 
       // 단일 행 툴바가 가로로 잘리지 않도록 넓은 화면으로.
       tester.view.physicalSize = const Size(1400, 1800);
@@ -176,27 +218,28 @@ void main() {
                 plainLength: canSave ? 5 : 0,
                 saving: false,
                 canSave: canSave,
-                onSave: () => saved = true,
+                onRegister: () {},
+                onRemember: () => remembered = true,
                 onCancel: () {},
                 onPickImage: () {},
               ),
             ),
           );
 
-      // 비활성: 내용 없음.
+      // 비활성: 내용 없음 → '오늘을 기억하기' FilledButton 비활성.
       await tester.pumpWidget(build(false));
       await tester.pumpAndSettle();
       expect(find.byType(QuillEditor), findsOneWidget);
-      final saveBtn = find.widgetWithText(FilledButton, '저장');
-      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNull);
+      final rememberBtn = find.widgetWithText(FilledButton, '오늘을 기억하기');
+      expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNull);
       expect(find.text('0 / 500'), findsOneWidget);
 
-      // 활성: 내용 있음 → 탭 시 onSave.
+      // 활성: 내용 있음 → 탭 시 onRemember.
       await tester.pumpWidget(build(true));
       await tester.pumpAndSettle();
-      expect(tester.widget<FilledButton>(saveBtn).onPressed, isNotNull);
-      await tester.tap(saveBtn);
-      expect(saved, true);
+      expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNotNull);
+      await tester.tap(rememberBtn);
+      expect(remembered, true);
       expect(find.text('5 / 500'), findsOneWidget);
     });
 
@@ -206,7 +249,15 @@ void main() {
         home: Scaffold(
           body: CalendarMonthView(
             month: DateTime(2026, 6),
-            markedDates: {DateTime(2026, 6, 10)},
+            // 6월 10일에 DONE 일기 — 감정색 원 + 이모지 렌더 확인
+            dayMap: {
+              DateTime(2026, 6, 10): const DiarySummaryDay(
+                date: '2026-06-10',
+                analysisStatus: 'DONE',
+                primaryEmotion: 'JOY',
+                moodEmoji: '😊',
+              ),
+            },
             onDateTap: (d) => tappedDate = d,
           ),
         ),
@@ -225,7 +276,7 @@ void main() {
         home: Scaffold(
           body: CalendarMonthView(
             month: DateTime(2999, 1),
-            markedDates: const {},
+            dayMap: const {},
             onDateTap: (d) => tappedDate = d,
           ),
         ),
@@ -260,9 +311,24 @@ void main() {
       expect(find.text('두 번째 일기'), findsOneWidget);
     });
 
-    testWidgets('DiaryDetailPage: 주입된 단건을 읽기전용 에디터로 렌더', (tester) async {
+    testWidgets('DiaryDetailPage: DONE 상태 — 읽기전용 에디터 렌더 + 삭제 버튼만 표시',
+        (tester) async {
+      // DONE(확정) 일기는 수정 버튼을 숨기고 삭제 버튼만 표시한다.
       final repo = _StubRepo([_richDiary(id: 7, text: '상세 화면 본문')]);
       await tester.pumpWidget(wrap(const DiaryDetailPage(diaryId: '7'), repo));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(QuillEditor), findsOneWidget);
+      // 확정 일기는 수정 버튼 없음 — isDraft=false이면 onEdit=null.
+      expect(find.text('수정'), findsNothing);
+      expect(find.text('삭제'), findsOneWidget);
+    });
+
+    testWidgets('DiaryDetailPage: DRAFT 상태 — 수정·삭제 버튼 모두 표시',
+        (tester) async {
+      // DRAFT(임시 저장) 일기는 수정 버튼도 표시된다.
+      final repo = _StubRepo([_richDiary(id: 8, text: '임시 저장 본문', status: 'DRAFT')]);
+      await tester.pumpWidget(wrap(const DiaryDetailPage(diaryId: '8'), repo));
       await tester.pumpAndSettle();
 
       expect(find.byType(QuillEditor), findsOneWidget);
@@ -284,7 +350,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DiaryEditorView), findsOneWidget);
-      expect(find.text('일기 쓰기'), findsOneWidget); // AppBar 타이틀(신규)
+      // '등록'(보조)·'오늘을 기억하기'(주) 두 버튼 모두 렌더됨.
+      expect(find.text('등록'), findsOneWidget);
+      expect(find.text('오늘을 기억하기'), findsOneWidget);
       expect(find.text('0 / 500'), findsOneWidget); // 초기 글자수 카운터
     });
   });

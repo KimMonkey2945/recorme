@@ -34,11 +34,15 @@ abstract class DiaryRepository {
   /// [content]는 Quill Delta JSON 문자열(인라인 이미지 포함), [contentText]는
   /// 서식·이미지를 제거한 순수 텍스트(글자수 제한·LLM 입력용)다. 본문에 박힌
   /// 이미지 정합(diary_images 동기화·고아 파일 회수)은 서버가 content를 파싱해 처리한다.
+  ///
+  /// [confirm]이 false(기본값)이면 임시 저장(DRAFT, 분석 없음), true이면 확정하여
+  /// AI 감정 분석을 요청한다(PENDING → 비동기 분석 → DONE). 확정 후에는 수정 불가.
   /// POST /diaries
   Future<Diary> upsert({
     required DateTime date,
     required String content,
     required String contentText,
+    bool confirm = false,
   });
 
   /// 소프트 삭제. 삭제 후 같은 날짜 재작성이 허용된다.

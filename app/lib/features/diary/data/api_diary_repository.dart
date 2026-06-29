@@ -110,15 +110,18 @@ class ApiDiaryRepository implements DiaryRepository {
     required DateTime date,
     required String content,
     required String contentText,
+    bool confirm = false,
   }) async {
     try {
       // 신규 201 / 갱신 200 모두 success=true라 동일하게 처리한다.
+      // confirm=false → DRAFT(분석 없음), confirm=true → PENDING(AI 분석 요청).
       final res = await _dio.post(
         '/diaries',
         data: {
           'content': content,
           'contentText': contentText,
           'writtenDate': _yyyyMMdd(date),
+          'confirm': confirm,
         },
       );
       return _unwrap(
@@ -126,6 +129,23 @@ class ApiDiaryRepository implements DiaryRepository {
         (json) => Diary.fromJson(json as Map<String, dynamic>),
       );
     } on DioException catch (e) {
+      // 이미 확정된 일기를 다시 upsert하면 409 → 스낵바 안내용 Failure로 변환.
+      if (e.response?.statusCode == 409) {
+        final body = e.response?.data;
+        if (body is Map<String, dynamic>) {
+          final error = body['error'];
+          if (error is Map<String, dynamic>) {
+            throw Failure(
+              error['code'] as String? ?? 'DIARY_ALREADY_CONFIRMED',
+              error['message'] as String? ?? '이미 기억한 일기는 수정할 수 없어요.',
+            );
+          }
+        }
+        throw const Failure(
+          'DIARY_ALREADY_CONFIRMED',
+          '이미 기억한 일기는 수정할 수 없어요.',
+        );
+      }
       throw _toFailure(e);
     }
   }

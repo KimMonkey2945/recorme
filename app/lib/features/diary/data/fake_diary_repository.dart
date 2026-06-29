@@ -42,6 +42,8 @@ class FakeDiaryRepository implements DiaryRepository {
       final date = base.subtract(Duration(days: offset));
       final id = _nextId++;
       final text = _sampleContents[id % _sampleContents.length];
+      // 감정 테마 더미 데이터 — id별로 다른 감정을 순환해 상세 화면 배경 전환을 테스트한다.
+      final theme = _sampleThemes[id % _sampleThemes.length];
       _diaries[id] = Diary(
         id: id,
         // 신버전 본문은 Delta JSON 문자열로 저장된다(시드도 동일하게 래핑).
@@ -51,9 +53,69 @@ class FakeDiaryRepository implements DiaryRepository {
         visibility: 'PRIVATE',
         analysisStatus: 'DONE',
         shareToken: 'seed-token-$id',
+        primaryEmotion: theme.primaryEmotion,
+        backgroundColor: theme.backgroundColor,
+        textColor: theme.textColor,
+        accentColor: theme.accentColor,
+        moodEmoji: theme.moodEmoji,
+        aiComment: theme.aiComment,
+        aiTitle: theme.aiTitle,
       );
     }
   }
+
+  /// 감정별 더미 테마 데이터 레코드.
+  ///
+  /// primaryEmotion은 [DiaryTheme]의 팔레트 키와 일치해야 배경색이 올바르게 적용된다.
+  /// backgroundColor/textColor/accentColor는 DTO 필드 완전성을 위해 유지하되,
+  /// 렌더는 [DiaryTheme.fromEmotion]이 팔레트를 결정론적으로 덮어쓴다.
+  static const List<_EmotionTheme> _sampleThemes = [
+    _EmotionTheme(
+      primaryEmotion: 'JOY',       // DiaryTheme.joy → #FFF3D6(연노랑)
+      backgroundColor: '#FFF3D6',
+      textColor: '#3A2E12',
+      accentColor: '#F5A623',
+      moodEmoji: '😊',
+      aiComment: '햇살처럼 따뜻했던 하루',
+      aiTitle: '빛나는 오후의 산책',
+    ),
+    _EmotionTheme(
+      primaryEmotion: 'CALM',      // DiaryTheme.calm → #E2F1E8(연초록)
+      backgroundColor: '#E2F1E8',
+      textColor: '#1C2B22',
+      accentColor: '#4CA06A',
+      moodEmoji: '😌',
+      aiComment: '잔잔하게 흘러간 날',
+      aiTitle: '고요한 일상의 리듬',
+    ),
+    _EmotionTheme(
+      primaryEmotion: 'SADNESS',   // DiaryTheme.sadness → #E3EDF7(연파랑)
+      backgroundColor: '#E3EDF7',
+      textColor: '#1F2A37',
+      accentColor: '#4A77B5',
+      moodEmoji: '😔',
+      aiComment: '마음 한켠이 조금 무거웠어요',
+      aiTitle: '비 오는 날 창가에서',
+    ),
+    _EmotionTheme(
+      primaryEmotion: 'ANGER',     // DiaryTheme.anger → #FBE3DE(연코랄)
+      backgroundColor: '#FBE3DE',
+      textColor: '#3A1A14',
+      accentColor: '#D64531',
+      moodEmoji: '😤',
+      aiComment: '속에서 뭔가 끓어오른 하루',
+      aiTitle: '참았지만 역시 힘들었던',
+    ),
+    _EmotionTheme(
+      primaryEmotion: 'ANXIETY',   // DiaryTheme.anxiety → #ECE6F6(연보라)
+      backgroundColor: '#ECE6F6',
+      textColor: '#25203A',
+      accentColor: '#7A5AC2',
+      moodEmoji: '😟',
+      aiComment: '마음이 조금 뒤숭숭했어요',
+      aiTitle: '불안했지만 버텨낸 하루',
+    ),
+  ];
 
   /// 더미 일기 본문 샘플(길이 다양 — 목록 2줄 말줄임 확인용).
   static const List<String> _sampleContents = [
@@ -93,12 +155,20 @@ class FakeDiaryRepository implements DiaryRepository {
   @override
   Future<DiarySummary> getMonthlySummary(String yearMonth) async {
     await Future<void>.delayed(_latency);
-    final dates = _diaries.values
-        .where((d) => _dateKey(d.writtenDate).startsWith(yearMonth))
-        .map((d) => _dateKey(d.writtenDate))
-        .toList()
-      ..sort();
-    return DiarySummary(yearMonth: yearMonth, dates: dates);
+    // 해당 월 일기를 날짜 오름차순으로 정렬해 DiarySummaryDay 목록으로 변환한다.
+    final days = (_diaries.values
+          .where((d) => _dateKey(d.writtenDate).startsWith(yearMonth))
+          .toList()
+        ..sort((a, b) =>
+            _dateKey(a.writtenDate).compareTo(_dateKey(b.writtenDate))))
+        .map((d) => DiarySummaryDay(
+              date: _dateKey(d.writtenDate),
+              analysisStatus: d.analysisStatus,
+              primaryEmotion: d.primaryEmotion,
+              moodEmoji: d.moodEmoji,
+            ))
+        .toList();
+    return DiarySummary(yearMonth: yearMonth, days: days);
   }
 
   @override
@@ -154,6 +224,7 @@ class FakeDiaryRepository implements DiaryRepository {
     required DateTime date,
     required String content,
     required String contentText,
+    bool confirm = false,
   }) async {
     await Future<void>.delayed(_latency);
     final key = _dateKey(date);
@@ -161,13 +232,21 @@ class FakeDiaryRepository implements DiaryRepository {
     // 같은 날짜의 활성 일기가 있으면 UPDATE(같은 id 유지).
     for (final entry in _diaries.entries) {
       if (_dateKey(entry.value.writtenDate) == key) {
+        // 이미 확정된 일기를 수정 시도하면 409 시뮬레이션.
+        if (!entry.value.isDraft) {
+          throw const Failure(
+            'DIARY_ALREADY_CONFIRMED',
+            '이미 기억한 일기는 수정할 수 없어요.',
+          );
+        }
         final updated = Diary(
           id: entry.key,
           content: content,
           contentText: contentText,
           writtenDate: entry.value.writtenDate,
           visibility: entry.value.visibility,
-          analysisStatus: 'PENDING', // 내용 변경 → 재분석 대기(더미)
+          // confirm=true → 확정(PENDING, 분석 요청), false → 임시 저장(DRAFT)
+          analysisStatus: confirm ? 'PENDING' : 'DRAFT',
           shareToken: entry.value.shareToken,
         );
         _diaries[entry.key] = updated;
@@ -183,7 +262,8 @@ class FakeDiaryRepository implements DiaryRepository {
       contentText: contentText,
       writtenDate: DateTime(date.year, date.month, date.day),
       visibility: 'PRIVATE',
-      analysisStatus: 'PENDING',
+      // confirm=true → PENDING, false → DRAFT
+      analysisStatus: confirm ? 'PENDING' : 'DRAFT',
       shareToken: 'token-$id',
     );
     _diaries[id] = created;
@@ -203,4 +283,27 @@ class FakeDiaryRepository implements DiaryRepository {
     await Future<void>.delayed(_latency);
     return '/files/diaries/fake/${_nextId++}_$filename';
   }
+}
+
+// ── 헬퍼 ────────────────────────────────────────────────────────
+
+/// 더미 감정 테마 값 묶음(시드 데이터 전용 레코드).
+final class _EmotionTheme {
+  const _EmotionTheme({
+    required this.primaryEmotion,
+    required this.backgroundColor,
+    required this.textColor,
+    required this.accentColor,
+    required this.moodEmoji,
+    required this.aiComment,
+    required this.aiTitle,
+  });
+
+  final String primaryEmotion;
+  final String backgroundColor;
+  final String textColor;
+  final String accentColor;
+  final String moodEmoji;
+  final String aiComment;
+  final String aiTitle;
 }

@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../profile/presentation/providers/profile_providers.dart';
+import '../data/dto/diary_dto.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/calendar_month_view.dart';
 
@@ -67,7 +68,10 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
   /// 표시 월 요약을 다시 불러온다(작성/삭제 후 dot 갱신용).
   void _refreshSummary() => ref.invalidate(monthlySummaryProvider(_yearMonth));
 
-  /// 날짜 탭: 해당 날짜 일기가 있으면 상세, 없으면 에디터로 이동.
+  /// 날짜 탭: 해당 날짜 일기 상태에 따라 상세/에디터로 분기.
+  ///
+  /// - 확정 일기(!isDraft): 상세 화면으로 이동.
+  /// - 임시 저장(DRAFT) 또는 없음: 에디터로 이동(DRAFT는 날짜 파라미터로 수정 재진입).
   Future<void> _onDateTap(DateTime date) async {
     // 미래 날짜 방어(캘린더 셀이 이미 막지만 이중 안전).
     final now = DateTime.now();
@@ -76,9 +80,11 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
     final diary = await ref.read(diaryRepositoryProvider).getByDate(date);
     if (!mounted) return;
 
-    if (diary != null) {
+    if (diary != null && !diary.isDraft) {
+      // 확정 일기 → 상세 화면
       await context.push('/diary/${diary.id}');
     } else {
+      // DRAFT이거나 없으면 에디터로 이동(같은 날짜 DRAFT는 에디터에서 프리필).
       await context.push('/editor?date=${_dateParam(date)}');
     }
     // 작성/수정/삭제 결과를 캘린더 dot에 반영.
@@ -95,10 +101,13 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
   @override
   Widget build(BuildContext context) {
     final summary = ref.watch(monthlySummaryProvider(_yearMonth));
-    // dot 표시용 날짜 집합(데이터 도착 전에는 빈 집합 — 캘린더/월 이동은 항상 동작).
-    final markedDates =
-        summary.asData?.value.dates.map(DateTime.parse).toSet() ??
-            <DateTime>{};
+    // summary.days를 DateTime 정규화 키(시간=0) → DiarySummaryDay 맵으로 변환한다.
+    // 데이터 도착 전 또는 오류 시 빈 맵 — 캘린더 렌더·월 이동은 항상 동작.
+    final dayMap = <DateTime, DiarySummaryDay>{};
+    for (final day in summary.asData?.value.days ?? <DiarySummaryDay>[]) {
+      final d = DateTime.parse(day.date);
+      dayMap[DateTime(d.year, d.month, d.day)] = day;
+    }
 
     // 로그인과 동일한 화사한 웜 그라데이션 배경 (앱바 뒤까지 채우기 위해 Container로 감쌈)
     return Container(
@@ -134,7 +143,7 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
             },
             child: CalendarMonthView(
               month: _displayMonth,
-              markedDates: markedDates,
+              dayMap: dayMap,
               onDateTap: _onDateTap,
               onPrevMonth: () => _changeMonth(-1),
               // 이번 달이면 다음 달 chevron 비활성(미래 달 차단).
@@ -145,7 +154,6 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _onWriteToday,
-        tooltip: '오늘 일기 쓰기',
         child: const Icon(Icons.edit),
       ),
       ),

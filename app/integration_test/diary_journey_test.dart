@@ -89,12 +89,19 @@ class _E2EDiaryRepository implements DiaryRepository {
 
   @override
   Future<DiarySummary> getMonthlySummary(String yearMonth) async {
-    final dates = _diaries.values
-        .where((d) => _ym(d.writtenDate) == yearMonth)
-        .map((d) => _ymd(d.writtenDate))
-        .toList()
-      ..sort();
-    return DiarySummary(yearMonth: yearMonth, dates: dates);
+    // 해당 월 일기를 날짜 오름차순으로 DiarySummaryDay 목록으로 변환한다.
+    final days = (_diaries.values
+          .where((d) => _ym(d.writtenDate) == yearMonth)
+          .toList()
+        ..sort((a, b) => _ymd(a.writtenDate).compareTo(_ymd(b.writtenDate))))
+        .map((d) => DiarySummaryDay(
+              date: _ymd(d.writtenDate),
+              analysisStatus: d.analysisStatus,
+              primaryEmotion: d.primaryEmotion,
+              moodEmoji: d.moodEmoji,
+            ))
+        .toList();
+    return DiarySummary(yearMonth: yearMonth, days: days);
   }
 
   @override
@@ -140,6 +147,7 @@ class _E2EDiaryRepository implements DiaryRepository {
     required DateTime date,
     required String content,
     required String contentText,
+    bool confirm = false,
   }) async {
     final key = _ymd(date);
     for (final entry in _diaries.entries) {
@@ -150,6 +158,7 @@ class _E2EDiaryRepository implements DiaryRepository {
           contentText: contentText,
           writtenDate: entry.value.writtenDate,
           visibility: entry.value.visibility,
+          // E2E 테스트는 즉시 DONE으로 반환(PENDING 무한 스피너 방지).
           analysisStatus: 'DONE',
         );
         _diaries[entry.key] = updated;
