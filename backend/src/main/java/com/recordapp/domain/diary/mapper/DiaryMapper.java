@@ -57,10 +57,11 @@ public interface DiaryMapper {
 	List<DiarySummaryDay> findSummaryDays(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
 
 	/**
-	 * 내부 PK+사용자 기준 본문/공개범위 수정. 순수 텍스트(content_text)가 바뀐 경우에만
-	 * analysis_status 를 PENDING 으로 되돌린다(서식·이미지만 바뀌면 재분석 불필요).
+	 * 내부 PK+사용자 기준 본문/공개범위 수정. {@code analysis_status='DRAFT'} 인 일기(미확정)만
+	 * 대상으로 하며 상태는 그대로 DRAFT 로 유지한다(수정만으로 재분석을 트리거하지 않는다).
+	 * 감정 분석 트리거는 확정 경로({@code upsert confirm=true})에서만 발생한다.
 	 *
-	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/삭제됨)
+	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/삭제됨/이미 확정됨)
 	 */
 	int updateByIdAndUser(@Param("id") Long id,
 			@Param("userId") Long userId,

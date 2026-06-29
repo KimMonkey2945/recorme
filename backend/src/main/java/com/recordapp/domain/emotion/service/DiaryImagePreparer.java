@@ -108,7 +108,9 @@ public class DiaryImagePreparer {
 						RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 				g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				g.drawImage(image.getScaledInstance(nw, nh, Image.SCALE_SMOOTH), 0, 0, null);
+				// Graphics2D 가 직접 동기 스케일링하도록 한다(설정한 BILINEAR 힌트가 실제 적용됨).
+				// getScaledInstance(SCALE_SMOOTH)+null observer 는 비동기 축소 미완료 시 부분 렌더링 위험이 있어 회피.
+				g.drawImage(image, 0, 0, nw, nh, null);
 			} finally {
 				g.dispose();
 			}

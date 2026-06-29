@@ -218,6 +218,10 @@ public class DiaryService {
 		// 본문에서 빠진 이미지 파일만 커밋 후 회수.
 		reclaimFilesAfterCommit(removed(oldUrls, newUrls));
 		DiaryRow after = diaryMapper.findByIdAndUser(id, userId);
+		if (after == null) {
+			// update 와 재조회 사이 동시 삭제 방어 — null 이면 toResponse 에서 NPE 가 발생하므로 명시적 차단.
+			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
+		}
 		// 수정 가능한 일기는 항상 DRAFT(미분석)이며 update 가 상태를 바꾸지 않으므로 after 는 PENDING 이 아니다 →
 		// triggerAnalysisIfPending 는 스킵된다(확정은 upsert confirm=true 경로에서만 발생). 방어적으로 호출 유지.
 		triggerAnalysisIfPending(after);

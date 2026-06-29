@@ -12,7 +12,7 @@ import java.util.Map;
  * @param backgroundColor 배경색 #RRGGBB
  * @param textColor       본문 글자색 #RRGGBB(최종 가독성 보정은 앱이 담당)
  * @param accentColor     강조색 #RRGGBB
- * @param aiComment       AI 한 줄 코멘트(한국어, ≤40자)
+ * @param aiComment       AI 공감 코멘트(한국어 한두 문장, ≤120자로 잘림)
  * @param aiTitle         AI 생성 제목(한국어, ≤20자)
  * @param moodEmoji       분위기 이모지 1개
  */

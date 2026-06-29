@@ -83,12 +83,33 @@ public class GeminiLlmClient implements LlmClient {
 			inlineData.put("data", Base64.getEncoder().encodeToString(image.data()));
 		}
 
-		// 구조화 출력: JSON MIME만 강제(responseSchema 변환은 하지 않음 — 시스템 프롬프트로 충분).
+		// 구조화 출력: JSON MIME + (스키마가 있으면) responseSchema 로 출력 형식을 강제한다.
 		ObjectNode genConfig = body.putObject("generationConfig");
 		genConfig.put("responseMimeType", "application/json");
 		genConfig.put("maxOutputTokens", maxTokens);
+		if (request.jsonSchema() != null) {
+			JsonNode schema = objectMapper.valueToTree(request.jsonSchema());
+			stripUnsupportedSchemaKeys(schema);
+			genConfig.set("responseSchema", schema);
+		}
 
 		return body;
+	}
+
+	/**
+	 * Gemini {@code responseSchema}(OpenAPI 부분집합)가 지원하지 않는 JSON Schema 키를 재귀 제거한다.
+	 * {@code additionalProperties}/{@code $schema} 등이 포함되면 400(INVALID_ARGUMENT)으로 거부되므로,
+	 * 전달 전 정리한다. {@code type}(소문자)·{@code enum}·{@code pattern}·{@code minimum}/{@code maximum}·
+	 * {@code maxLength}·{@code required}·{@code properties}·{@code items} 등은 그대로 지원되어 보존된다.
+	 */
+	static void stripUnsupportedSchemaKeys(JsonNode node) {
+		if (node instanceof ObjectNode obj) {
+			obj.remove("additionalProperties");
+			obj.remove("$schema");
+			obj.fields().forEachRemaining(e -> stripUnsupportedSchemaKeys(e.getValue()));
+		} else if (node instanceof ArrayNode arr) {
+			arr.forEach(GeminiLlmClient::stripUnsupportedSchemaKeys);
+		}
 	}
 
 	/** candidates[0].content.parts[0].text 추출 + usageMetadata 토큰 매핑. 비면 예외(상위 폴백 흡수). */
