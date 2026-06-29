@@ -49,6 +49,9 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   /// 기존 일기 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
   bool _prefilled = false;
 
+  /// 확정 일기 진입 시 상세로 리다이렉트를 1회만 트리거하기 위한 가드.
+  bool _redirectingToDetail = false;
+
   /// 현재 순수 텍스트 길이(카운터·저장 가능 판단용).
   int _plainLength = 0;
 
@@ -279,6 +282,19 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
               onRetry: () => ref.invalidate(diaryByDateProvider(_date)),
             ),
             data: (diary) {
+              // 확정 일기(isDraft=false)는 수정 불가 — /editor 직접 URL 접근 방어.
+              // 편집기 대신 안내 후 상세 화면으로 대체 이동한다(저장 시점 에러 회피).
+              if (diary != null && !diary.isDraft) {
+                if (!_redirectingToDetail) {
+                  _redirectingToDetail = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    showAppSnackBar(context, '이미 확정된 일기는 수정할 수 없어요');
+                    context.pushReplacement('/diary/${diary.id}');
+                  });
+                }
+                return const LoadingView();
+              }
               _ensurePrefilled(diary);
               return _editorView();
             },

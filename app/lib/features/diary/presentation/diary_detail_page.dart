@@ -144,9 +144,12 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
 
     final async = ref.watch(diaryByIdProvider(id));
 
-    // 초기 캐시 히트(PENDING) 처리 — ref.listen은 변화가 있을 때만 호출됨.
+    // 초기 캐시 히트(PENDING) 처리 — ref.listen은 변화가 있을 때만 호출되므로
+    // 첫 빌드에서 이미 PENDING이면 프레임 종료 후 폴링을 시작한다(build는 부수효과 없이 유지).
     if (async.asData?.value.analysisStatus == 'PENDING') {
-      _startPolling(id);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startPolling(id);
+      });
     }
 
     // 감정 팔레트 — primaryEmotion 기반 큐레이트 색상.
@@ -155,8 +158,11 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     final diary = async.asData?.value;
     final palette =
         (diary?.hasTheme == true) ? DiaryTheme.fromEmotion(diary!.primaryEmotion) : null;
-    // 페이지 배경은 항상 흰색 — 감정색은 무드 카드(moodCardColor)가 담당.
-    const bgColor = Colors.white;
+    // 페이지 배경: DONE이면 감정색의 옅은 틴트(흰색과 블렌드)를 깔아 분위기를 전한다.
+    // 무드 카드는 감정 원색(palette.backgroundColor)이라, 틴트로 낮춰야 카드가 묻히지 않고 대비가 유지된다.
+    final bgColor = palette == null
+        ? Colors.white
+        : Color.alphaBlend(palette.backgroundColor.withValues(alpha: 0.45), Colors.white);
 
     return AnimatedContainer(
       // 분석 완료 직후 배경색을 부드럽게 전환(PENDING → DONE 시 자연스러운 색 전이).

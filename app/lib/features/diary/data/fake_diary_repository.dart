@@ -37,8 +37,8 @@ class FakeDiaryRepository implements DiaryRepository {
     // 큰 값(과거)부터 순회해야 과거가 작은 id를 받는다.
     const dayOffsets = [38, 35, 31, 28, 24, 21, 19, 16, 14, 11, 9, 7, 5, 3, 1, 0];
 
-    for (final offset in dayOffsets.reversed.toList().reversed) {
-      // 위 표현은 그대로 dayOffsets 순서를 유지(가독성용). 큰 값부터 들어 있다.
+    // dayOffsets는 이미 큰 값(과거)부터 정렬돼 있어, 순서대로 순회하면 과거가 작은 id를 받는다.
+    for (final offset in dayOffsets) {
       final date = base.subtract(Duration(days: offset));
       final id = _nextId++;
       final text = _sampleContents[id % _sampleContents.length];

@@ -75,6 +75,8 @@ class _E2EDiaryRepository implements DiaryRepository {
       );
 
   /// 테스트 시드: 특정 날짜에 Delta 본문 일기를 직접 넣는다.
+  /// DONE 상태 + 감정 테마/AI 필드까지 채워, 상세 화면의 무드 카드·배경 틴트가
+  /// 실제로 렌더링되는 경로를 E2E로 검증할 수 있게 한다.
   void seed(DateTime date, String text) {
     final id = _nextId++;
     _diaries[id] = Diary(
@@ -84,6 +86,13 @@ class _E2EDiaryRepository implements DiaryRepository {
       writtenDate: DateTime(date.year, date.month, date.day),
       visibility: 'PRIVATE',
       analysisStatus: 'DONE',
+      primaryEmotion: 'JOY',
+      backgroundColor: '#FFF3D6',
+      textColor: '#3A2E12',
+      accentColor: '#F5A623',
+      moodEmoji: '😊',
+      aiTitle: '평온한 하루',
+      aiComment: '오늘도 수고 많았어요',
     );
   }
 
@@ -234,12 +243,15 @@ void main() {
       expect(find.byType(DiaryListTile), findsOneWidget);
       expect(find.text('시드 일기 본문'), findsOneWidget);
 
-      // ── 항목 탭 → 상세(읽기전용 에디터 + 분석완료 배지) ────────────────────
+      // ── 항목 탭 → 상세(읽기전용 에디터 + DONE 무드 카드) ──────────────────
       await tester.tap(find.byType(DiaryListTile));
       await tester.pumpAndSettle();
       expect(find.byType(QuillEditor), findsOneWidget);
-      expect(find.text('분석 완료'), findsOneWidget);
-      expect(find.text('수정'), findsOneWidget);
+      // DONE 일기: 무드 카드의 AI 제목·코멘트가 노출된다(상태 배지는 DONE에서 숨김).
+      expect(find.text('평온한 하루'), findsOneWidget);
+      expect(find.text('오늘도 수고 많았어요'), findsOneWidget);
+      // 확정 일기(isDraft=false)는 수정 불가 → 수정 버튼 없음, 삭제만 노출.
+      expect(find.widgetWithText(OutlinedButton, '수정'), findsNothing);
       expect(find.text('삭제'), findsOneWidget);
 
       // ── 삭제(확인 다이얼로그) → 메인 복귀 ────────────────────────────────

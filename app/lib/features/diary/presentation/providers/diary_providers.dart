@@ -15,7 +15,7 @@ final diaryRepositoryProvider = Provider<DiaryRepository>(
 
 /// 월별 작성 요약(캘린더 dot용). 인자는 'yyyy-MM' 형식의 연월.
 final monthlySummaryProvider =
-    FutureProvider.family<DiarySummary, String>((ref, yearMonth) {
+    FutureProvider.autoDispose.family<DiarySummary, String>((ref, yearMonth) {
   return ref.watch(diaryRepositoryProvider).getMonthlySummary(yearMonth);
 });
 
@@ -29,12 +29,12 @@ final monthDiariesProvider =
 });
 
 /// id 기반 단건 조회(상세 화면용).
-final diaryByIdProvider = FutureProvider.family<Diary, int>((ref, id) {
+final diaryByIdProvider = FutureProvider.autoDispose.family<Diary, int>((ref, id) {
   return ref.watch(diaryRepositoryProvider).getById(id);
 });
 
 /// 날짜 기반 단건 조회(에디터 수정 모드 프리필용). 없으면 null.
 final diaryByDateProvider =
-    FutureProvider.family<Diary?, DateTime>((ref, date) {
+    FutureProvider.autoDispose.family<Diary?, DateTime>((ref, date) {
   return ref.watch(diaryRepositoryProvider).getByDate(date);
 });
