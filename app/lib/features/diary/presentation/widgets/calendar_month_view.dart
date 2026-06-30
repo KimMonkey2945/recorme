@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
-import 'package:record/core/theme/diary_theme.dart';
 import 'package:record/features/diary/data/dto/diary_dto.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -12,24 +11,27 @@ import 'package:record/features/diary/data/dto/diary_dto.dart';
 /// 요일 레이블 (일요일 시작)
 const List<String> _kWeekdays = ['일', '월', '화', '수', '목', '금', '토'];
 
-/// 일요일 레이블 색상 — 과하지 않은 웜레드
-const Color _kSundayLabelColor = Color(0xFFCB6D6D);
+/// 일요일 레이블 색상 — AppColors.error(적색)
+const Color _kSundayLabelColor = AppColors.error;
 
-/// 토요일 레이블 색상 — 뮤트 퍼플(accent 계열 유지)
-const Color _kSaturdayLabelColor = Color(0xFF9B8FD4);
+/// 토요일 레이블 색상 — AppColors.primary(블루)
+const Color _kSaturdayLabelColor = AppColors.primary;
 
-/// 날짜 배경 원/사각형 크기 (dp)
-const double _kDayCellBgSize = 34.0;
+/// 날짜 배경 원 크기 (dp)
+const double _kDayCellBgSize = 36.0;
 
 /// 날짜 셀 하단 이모지·상태 표시 영역 높이 (dp).
 ///
 /// DONE 기록: 이모지(fontSize 12), DRAFT: 배경 링으로 이미 구분됨(빈 공간).
 /// 고정 높이로 셀 크기 일관성을 보장한다.
-const double _kEmotionIndicatorHeight = 16.0;
+const double _kEmotionIndicatorHeight = 18.0;
 
-/// 날짜 셀 고정 높이 (dp).
-/// 34(원) + 2(갭) + 16(이모지 영역) + 상하 여백 = 56
-const double _kDayCellHeight = 56.0;
+/// 날짜 셀 최소 높이 (dp) — 콘텐츠(원+갭+이모지 영역)를 담는 하한.
+/// 실제 행 높이는 [_DateGrid]에서 가용 세로 공간에 맞춰 이 값~[_kDayCellMaxHeight]로 정해진다.
+const double _kDayCellHeight = 60.0;
+
+/// 날짜 셀 최대 높이 (dp) — 매우 긴 화면에서 과도하게 늘어지지 않도록 상한.
+const double _kDayCellMaxHeight = 100.0;
 
 // ─────────────────────────────────────────────────────────────
 // 날짜 계산 유틸 (순수 계산 — 비즈니스 로직 아님)
@@ -60,8 +62,9 @@ int _firstWeekdayOffset(DateTime month) =>
 /// 데이터는 생성자 파라미터, 동작은 콜백으로만 노출.
 ///
 /// [dayMap]에 날짜가 있으면:
-/// - DONE + primaryEmotion: [DiaryTheme.fromEmotion] 파스텔 배경 원 + 이모지 표시
-/// - DRAFT: 옅은 회색 테두리 원("작성 중" 암시)
+/// - DONE: hairline 링 원 + 아래에 accent 5px 점
+/// - DRAFT: hairline 링 원 + 아래에 inkMuted 5px 점
+/// - 오늘: primary 채운 원(항상 최우선)
 ///
 /// ### MainCalendarPage에서 사용 예
 /// ```dart
@@ -109,8 +112,9 @@ class CalendarMonthView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // mainAxisSize.min을 두지 않아 부모(Expanded)의 세로 공간을 모두 차지하고,
+    // 그리드를 Expanded로 늘려 남는 높이를 자연스럽게 채운다.
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 연/월 제목 + 이전·다음 달 버튼
@@ -123,12 +127,14 @@ class CalendarMonthView extends StatelessWidget {
         // 요일 레이블 행 (일~토)
         const _WeekdayRow(),
         const SizedBox(height: AppSpacing.xs),
-        // 날짜 셀 그리드
-        _DateGrid(
-          month: month,
-          dayMap: dayMap,
-          selectedDate: selectedDate,
-          onDateTap: onDateTap,
+        // 날짜 셀 그리드 — 남는 세로 공간을 채운다.
+        Expanded(
+          child: _DateGrid(
+            month: month,
+            dayMap: dayMap,
+            selectedDate: selectedDate,
+            onDateTap: onDateTap,
+          ),
         ),
       ],
     );
@@ -153,17 +159,26 @@ class _MonthHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Row(
       children: [
-        // 연/월 텍스트 — 남은 공간을 모두 차지
+        // 연/월 텍스트 — 연도는 ink, 월 숫자만 primary 강조
+        // Text.rich를 사용해 find.text()로 검색 가능하게 유지한다.
         Expanded(
-          child: Text(
-            '${month.year}년 ${month.month}월',
-            style: textTheme.titleLarge?.copyWith(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w700,
+          child: Text.rich(
+            TextSpan(
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+                height: 1.2,
+              ),
+              children: [
+                TextSpan(text: '${month.year}년 '),
+                TextSpan(
+                  text: '${month.month}월',
+                  style: const TextStyle(color: AppColors.primary),
+                ),
+              ],
             ),
           ),
         ),
@@ -197,8 +212,6 @@ class _WeekdayRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Row(
       children: List.generate(_kWeekdays.length, (index) {
         // 요일별 색상 (Dart 3 switch 표현식)
@@ -212,9 +225,10 @@ class _WeekdayRow extends StatelessWidget {
           child: Center(
             child: Text(
               _kWeekdays[index],
-              style: textTheme.labelSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600, // 시안 기준 600
                 color: color,
-                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -251,20 +265,30 @@ class _DateGrid extends StatelessWidget {
     final int daysCount = _daysInMonth(month);
     // 6주(42칸) 상한 — 어떤 달도 오버플로우 없음
     final int totalCells = ((offset + daysCount) / 7).ceil() * 7;
+    final int rows = totalCells ~/ 7; // 이 달의 주(행) 수 (5 또는 6)
 
     // 시간을 버린 '오늘'(미래 날짜 비활성 비교용).
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        mainAxisExtent: _kDayCellHeight, // 고정 높이 — 화면 너비 무관
-      ),
-      itemCount: totalCells,
-      itemBuilder: (context, index) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 가용 높이를 행 수로 나눠 행 높이를 정한다. 최소(_kDayCellHeight)~최대
+        // (_kDayCellMaxHeight)로 클램프해 작은 화면 오버플로우·긴 화면 과신장을 막는다.
+        final double rowHeight = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight / rows)
+                .clamp(_kDayCellHeight, _kDayCellMaxHeight)
+            : _kDayCellHeight;
+
+        return GridView.builder(
+          // bounded 높이(Expanded)를 받으므로 shrinkWrap 불필요.
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisExtent: rowHeight, // 가용 높이에 맞춰 채움
+          ),
+          itemCount: totalCells,
+          itemBuilder: (context, index) {
         final int dayNumber = index - offset + 1;
 
         // 그리드 앞쪽 빈 칸 및 마지막 채우기 칸 — 빈 영역
@@ -291,6 +315,8 @@ class _DateGrid extends StatelessWidget {
           weekdayIndex: weekdayIndex,
           onTap: () => onDateTap(date),
         );
+          },
+        );
       },
     );
   }
@@ -303,12 +329,11 @@ class _DateGrid extends StatelessWidget {
 /// 캘린더 날짜 셀.
 ///
 /// 시각 상태 (우선순위 순):
-/// - **오늘**: accent 채운 원 + 흰 글자 (최우선)
-/// - **DONE + primaryEmotion**: [DiaryTheme.fromEmotion] 파스텔 배경 원
-///   + 아래에 moodEmoji(fontSize 12)
-/// - **DRAFT**: 옅은 회색 테두리 원 — "작성 중" 상태 암시
-/// - **선택됨(오늘·DONE 아닌 경우)**: accentSoft 둥근 사각형
-/// - **오늘 + DONE**: 오늘 스타일 우선, 이모지는 아래에 계속 표시
+/// - **오늘**: primary 채운 원 + 흰 글자 (최우선)
+/// - **기록 있는 날(DONE·DRAFT)**: hairline 링 원 + 하단 5px 점
+///   - DONE: accent(바이올렛) 점
+///   - DRAFT: inkMuted 점
+/// - **선택됨(기록 없는 날)**: primarySoft 둥근 사각형
 class _DayCell extends StatelessWidget {
   const _DayCell({
     required this.day,
@@ -341,69 +366,57 @@ class _DayCell extends StatelessWidget {
   Color _dayTextColor() {
     if (isDisabled) return AppColors.inkMuted; // 미래 날짜 — 흐리게(최우선)
     if (isToday) return AppColors.surface;     // 채운 원 위 흰 글자
-    if (weekdayIndex == 0) return _kSundayLabelColor;
-    if (weekdayIndex == 6) return _kSaturdayLabelColor;
+    if (weekdayIndex == 0) return AppColors.error;   // 일요일 — error 적색
+    if (weekdayIndex == 6) return AppColors.primary; // 토요일 — primary 블루
     return AppColors.ink;
   }
 
-  /// 날짜 배경 데코레이션 결정 (우선순위: 오늘 > DONE > DRAFT > 선택)
+  /// 날짜 배경 데코레이션 결정 (우선순위: 오늘 > 기록 있음 > 선택)
+  ///
+  /// 시안: 오늘=primary 채운 원, 기록 있는 날(DONE·DRAFT 모두)=hairline 링 원.
+  /// 하단 5px 점으로 DONE/DRAFT를 구분한다([_buildEmotionIndicator] 참고).
   BoxDecoration? _buildBgDecoration() {
-    // 오늘 — accent 채운 원(모든 상태 위에 덮어씀)
+    // 오늘 — primary 채운 원 (모든 상태 위에 덮어씀)
     if (isToday) {
       return const BoxDecoration(
-        color: AppColors.accent,
+        color: AppColors.primary,
         shape: BoxShape.circle,
       );
     }
-    // DONE → 감정 팔레트 파스텔 배경 원.
-    // primaryEmotion이 null이면 [DiaryTheme.neutral] 폴백(연 웜그레이).
-    if (summaryDay != null && summaryDay!.isDone) {
-      return BoxDecoration(
-        color: DiaryTheme.fromEmotion(summaryDay!.primaryEmotion).backgroundColor,
-        shape: BoxShape.circle,
-      );
-    }
-    // DRAFT → 옅은 회색 테두리 원("작성 중" 상태 암시, 이모지·감정색 없음)
-    if (summaryDay != null && summaryDay!.isDraft) {
+    // 기록 있는 날(DONE·DRAFT) — hairline 링 원 (inset 0 0 0 1px hairline)
+    if (summaryDay != null) {
       return BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.inkMuted.withAlpha(153), // 60% 투명도
-          width: 1.5,
-        ),
+        border: Border.all(color: AppColors.hairline, width: 1.0),
       );
     }
-    // 선택됨(오늘·감정색 아닌 경우)
+    // 선택됨(기록 없는 날)
     if (isSelected) {
       return BoxDecoration(
-        color: AppColors.accentSoft,
+        color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(AppRadius.sm),
       );
     }
     return null;
   }
 
-  /// 날짜 숫자 아래 감정 표시 영역 위젯.
+  /// 날짜 숫자 아래 5px 상태 점.
   ///
-  /// - DONE + moodEmoji 있음: 이모지 텍스트(fontSize 12)
-  /// - DONE + moodEmoji 없음: null(빈 공간 유지)
-  /// - DRAFT: null(배경 링으로 이미 구분됨)
-  /// - 기록 없음: null
+  /// - DONE: accent(바이올렛) 점
+  /// - DRAFT: inkMuted 점
+  /// - 기록 없음: null(빈 공간 유지)
   Widget? _buildEmotionIndicator() {
     if (summaryDay == null) return null;
-    // DONE + 이모지 → 이모지 표시
-    if (summaryDay!.isDone && summaryDay!.moodEmoji != null) {
-      return Text(
-        summaryDay!.moodEmoji!,
-        style: const TextStyle(
-          fontSize: 12,
-          height: 1.0, // 수직 정렬 보정
-        ),
-        textAlign: TextAlign.center,
-      );
-    }
-    // DRAFT·기타 → 배경 링만으로 상태 표시(하단 공간은 비어 있음)
-    return null;
+    // DONE → accent 점, DRAFT → inkMuted 점
+    final Color dotColor =
+        summaryDay!.isDone ? AppColors.accent : AppColors.inkMuted;
+    return Center(
+      child: Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+      ),
+    );
   }
 
   @override
@@ -439,6 +452,7 @@ class _DayCell extends StatelessWidget {
               child: Text(
                 '$day',
                 style: textTheme.bodyMedium?.copyWith(
+                  fontSize: 16, // 셀 확대에 맞춰 날짜 숫자도 소폭 키움
                   color: _dayTextColor(),
                   fontWeight:
                       isToday ? FontWeight.w600 : FontWeight.w400,

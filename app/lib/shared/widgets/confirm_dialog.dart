@@ -61,19 +61,29 @@ class _ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
     // 확인 버튼 색상: 파괴적 액션이면 에러 색, 아니면 accent
     final confirmColor =
-        isDestructive ? colorScheme.error : AppColors.accent;
+        isDestructive ? colorScheme.error : AppColors.primary;
     final confirmForeground = AppColors.surface;
 
+    // 아이콘 서클 색상 — isDestructive: errorSoft+error, 기본: primarySoft+primary
+    final iconBg = isDestructive ? AppColors.errorSoft : AppColors.primarySoft;
+    final iconColor = isDestructive ? AppColors.error : AppColors.primary;
+    final iconData = isDestructive
+        ? Icons.delete_outline_rounded
+        : Icons.check_circle_outline_rounded;
+
     return AlertDialog(
-      // 좌우 패딩 조정 — 기본값보다 넉넉하게
+      // 시안 기준 radius 20
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      // 아이콘 원이 상단에 있으므로 title 위 패딩 축소
       titlePadding: const EdgeInsets.fromLTRB(
         AppSpacing.xl,
-        AppSpacing.xl,
+        AppSpacing.lg,
         AppSpacing.xl,
         AppSpacing.sm,
       ),
@@ -90,21 +100,38 @@ class _ConfirmDialog extends StatelessWidget {
         AppSpacing.lg,
       ),
 
-      // ── 제목 ──
+      // ── 상단 아이콘 원 (48px) ──
+      icon: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: iconBg,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(iconData, size: 26, color: iconColor),
+      ),
+      iconPadding: const EdgeInsets.only(top: AppSpacing.xl, bottom: 0),
+
+      // ── 제목 (700 18px) ──
       title: Text(
         title,
-        style: textTheme.titleMedium?.copyWith(
-          color: AppColors.ink,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 18,
           fontWeight: FontWeight.w700,
+          color: AppColors.ink,
+          letterSpacing: -0.02 * 18,
         ),
       ),
 
-      // ── 본문 메시지 ──
+      // ── 본문 메시지 (inkAlt 14px 1.55) ──
       content: Text(
         message,
-        style: textTheme.bodyMedium?.copyWith(
-          color: AppColors.ink,
-          height: 1.5,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 14,
+          height: 1.55,
+          color: AppColors.inkAlt,
         ),
       ),
 

@@ -1,0 +1,10 @@
+/* Wanted Design System — global stylesheet entry point.
+   Consumers link this one file. It is a list of @imports only.
+   Order matters: atomic Figma tokens first, then friendly aliases on top. */
+
+@import "./components/fig-tokens.css";   /* Figma Variables: atomic + semantic colors, theme/dark modes */
+@import "./tokens/fonts.css";            /* @font-face (Pretendard JP, Wanted Sans) + family stacks */
+@import "./tokens/typography.css";       /* type scale tokens + .wds-* classes */
+@import "./tokens/spacing.css";          /* spacing, radius, elevation */
+@import "./tokens/semantic.css";         /* friendly semantic color aliases */
+@import "./components/components.css";    /* component class styles (states, variants) */

@@ -41,8 +41,6 @@ class EmptyStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -52,19 +50,25 @@ class EmptyStateView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── 아이콘 ──
-            Icon(
-              icon,
-              size: 56,
-              color: AppColors.inkMuted,
+            // ── 아이콘 — 64px bgAlt 원 컨테이너 (시안 기준)
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: AppColors.bgAlt,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 30, color: AppColors.inkMuted),
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // ── 메시지 ──
+            // ── 메시지 — 600 16px inkAlt (시안 기준)
             Text(
               message,
-              style: textTheme.bodyLarge?.copyWith(
-                color: AppColors.inkMuted,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.inkAlt,
               ),
               textAlign: TextAlign.center,
             ),

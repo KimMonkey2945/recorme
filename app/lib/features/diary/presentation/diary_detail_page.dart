@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/diary_theme.dart';
 import '../../../shared/widgets/app_snackbar.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
@@ -158,11 +159,12 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     final diary = async.asData?.value;
     final palette =
         (diary?.hasTheme == true) ? DiaryTheme.fromEmotion(diary!.primaryEmotion) : null;
-    // 페이지 배경: DONE이면 감정색의 옅은 틴트(흰색과 블렌드)를 깔아 분위기를 전한다.
-    // 무드 카드는 감정 원색(palette.backgroundColor)이라, 틴트로 낮춰야 카드가 묻히지 않고 대비가 유지된다.
+    // 페이지 배경: 베이스는 따뜻한 종이(paper). DONE이면 감정색의 옅은 틴트를 종이 위에
+    // 블렌드해 분위기를 전한다. 무드 카드는 감정 원색이라, 틴트로 낮춰야 카드가 묻히지 않는다.
     final bgColor = palette == null
-        ? Colors.white
-        : Color.alphaBlend(palette.backgroundColor.withValues(alpha: 0.45), Colors.white);
+        ? AppColors.paper
+        : Color.alphaBlend(
+            palette.backgroundColor.withValues(alpha: 0.45), AppColors.paper);
 
     return AnimatedContainer(
       // 분석 완료 직후 배경색을 부드럽게 전환(PENDING → DONE 시 자연스러운 색 전이).

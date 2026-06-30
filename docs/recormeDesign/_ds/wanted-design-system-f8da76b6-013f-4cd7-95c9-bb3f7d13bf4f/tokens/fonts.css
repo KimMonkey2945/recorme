@@ -1,0 +1,28 @@
+/* Wanted Design System — Webfonts (self-hosted, SIL OFL)
+   Primary UI typeface: Pretendard JP (variable, full Hangul/Latin).
+   Brand / display typeface: Wanted Sans Variable (logo + large display).
+   Binaries live in assets/fonts/ — fully offline, no CDN needed. */
+
+@font-face {
+  font-family: "Pretendard JP";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/PretendardJPVariable.woff2") format("woff2-variations");
+}
+
+/* Wanted Sans Variable — 92 subset @font-face rules (family "Wanted Sans Variable") */
+@import "../assets/fonts/wanted-sans/WantedSansVariable.css";
+
+:root {
+  /* font family stacks */
+  --font-sans: "Pretendard JP", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-brand: "Wanted Sans Variable", "Wanted Sans", "Pretendard JP", -apple-system, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+}

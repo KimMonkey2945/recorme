@@ -157,11 +157,12 @@ void main() {
       // 헤더 이모지·코멘트 확인.
       expect(find.text('😊'), findsOneWidget);
       expect(find.text('햇살 같은 하루'), findsOneWidget);
-      // 수정 버튼 없음, 삭제 버튼만 있음.
+      // 수정 버튼 없음(확정), '닫기' 버튼 + 아이콘 전용 삭제 버튼 있음.
       expect(find.text('수정'), findsNothing);
-      expect(find.text('삭제'), findsOneWidget);
+      // 삭제 버튼은 아이콘 전용으로 변경됨(텍스트 '삭제' 없음).
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
 
-      await tester.tap(find.text('삭제'));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       expect(deleted, true);
     });
 
@@ -186,11 +187,11 @@ void main() {
       await tester.pump();
 
       expect(find.byType(QuillEditor), findsOneWidget);
-      // DRAFT 배지 표시.
+      // DRAFT 카드 배지 표시.
       expect(find.text('임시 저장'), findsOneWidget);
-      // 수정·삭제 버튼 모두 표시.
-      await tester.tap(find.text('수정'));
-      await tester.tap(find.text('삭제'));
+      // 수정 버튼은 '이어 쓰기'로 변경, 삭제 버튼은 아이콘 전용.
+      await tester.tap(find.text('이어 쓰기'));
+      await tester.tap(find.byIcon(Icons.delete_outline));
       expect(edited, true);
       expect(deleted, true);
     });
@@ -215,9 +216,9 @@ void main() {
               body: DiaryEditorView(
                 dateText: '2026년 6월 24일',
                 controller: controller,
-                plainLength: canSave ? 5 : 0,
+                // canSave는 plainLength.value>0 && !saving로 파생 → 길이만 주입.
+                plainLength: ValueNotifier<int>(canSave ? 5 : 0),
                 saving: false,
-                canSave: canSave,
                 onRegister: () {},
                 onRemember: () => remembered = true,
                 onCancel: () {},
@@ -321,7 +322,8 @@ void main() {
       expect(find.byType(QuillEditor), findsOneWidget);
       // 확정 기록은 수정 버튼 없음 — isDraft=false이면 onEdit=null.
       expect(find.text('수정'), findsNothing);
-      expect(find.text('삭제'), findsOneWidget);
+      // 삭제 버튼은 아이콘 전용으로 변경됨.
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
     testWidgets('DiaryDetailPage: DRAFT 상태 — 수정·삭제 버튼 모두 표시',
@@ -332,8 +334,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(QuillEditor), findsOneWidget);
-      expect(find.text('수정'), findsOneWidget);
-      expect(find.text('삭제'), findsOneWidget);
+      // 수정 버튼은 '이어 쓰기'로 변경, 삭제 버튼은 아이콘 전용.
+      expect(find.text('이어 쓰기'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     });
 
     testWidgets('DiaryEditorPage: 신규 모드(빈 입력)로 렌더', (tester) async {

@@ -109,6 +109,11 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
       dayMap[DateTime(d.year, d.month, d.day)] = day;
     }
 
+    // 헤더 감성 메시지용 — 확정 기록(DRAFT 제외) 수. 데이터 도착 전엔 hasData=false로 중립 문구.
+    final summaryData = summary.asData?.value;
+    final recordCount =
+        summaryData?.days.where((d) => !d.isDraft).length ?? 0;
+
     // 로그인과 동일한 화사한 웜 그라데이션 배경 (앱바 뒤까지 채우기 위해 Container로 감쌈)
     return Container(
       decoration: const BoxDecoration(gradient: AppColors.bgGradient),
@@ -129,33 +134,170 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
           ],
         ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          // 좌우 스와이프로 월 이동(속도 부호로 방향 판단).
-          child: GestureDetector(
-            onHorizontalDragEnd: (details) {
-              final v = details.primaryVelocity ?? 0;
-              if (v < 0) {
-                _changeMonth(1); // 왼쪽으로 스와이프 → 다음 달
-              } else if (v > 0) {
-                _changeMonth(-1); // 오른쪽으로 스와이프 → 이전 달
-              }
-            },
-            child: CalendarMonthView(
-              month: _displayMonth,
-              dayMap: dayMap,
-              onDateTap: _onDateTap,
-              onPrevMonth: () => _changeMonth(-1),
-              // 이번 달이면 다음 달 chevron 비활성(미래 달 차단).
-              onNextMonth: _atCurrentMonth ? null : () => _changeMonth(1),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── 인사말 헤더 — 닉네임 + 이번 달 기록 수 기반 감성 메시지 ──
+            _GreetingSection(
+              count: recordCount,
+              daysInMonth: DateUtils.getDaysInMonth(
+                _displayMonth.year, _displayMonth.month,
+              ),
+              isCurrentMonth: _atCurrentMonth,
+              month: _displayMonth.month,
+              hasData: summaryData != null,
             ),
-          ),
+            // ── 캘린더 본문(나머지 공간 차지) ──
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg, AppSpacing.sm,
+                  AppSpacing.lg, AppSpacing.sm,
+                ),
+                // 좌우 스와이프로 월 이동(속도 부호로 방향 판단).
+                child: GestureDetector(
+                  onHorizontalDragEnd: (details) {
+                    final v = details.primaryVelocity ?? 0;
+                    if (v < 0) {
+                      _changeMonth(1); // 왼쪽으로 스와이프 → 다음 달
+                    } else if (v > 0) {
+                      _changeMonth(-1); // 오른쪽으로 스와이프 → 이전 달
+                    }
+                  },
+                  child: CalendarMonthView(
+                    month: _displayMonth,
+                    dayMap: dayMap,
+                    onDateTap: _onDateTap,
+                    onPrevMonth: () => _changeMonth(-1),
+                    // 이번 달이면 다음 달 chevron 비활성(미래 달 차단).
+                    onNextMonth: _atCurrentMonth ? null : () => _changeMonth(1),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _onWriteToday,
         child: const Icon(Icons.edit),
       ),
+      ),
+    );
+  }
+}
+
+/// 월 요약 로딩/에러 시 보여줄 중립 폴백 문구(월 이동 중 깜빡임 방지).
+const String _kGreetingFallback = '어떻게 기록할까요?';
+
+/// 그 달 기록 수 기반 감성 헤더 문구를 만든다.
+///
+/// [count]는 확정 기록 수(DRAFT 제외), [daysInMonth]는 그 달 총 일수,
+/// [isCurrentMonth]면 '이번 달' 톤·아니면 '[month]월' 톤, [month]는 1~12.
+///
+/// 단계: 0 / 1 / 2~중반 / 절반~ / 꽉 참(=일수와 동일). 하루 1기록 원칙이라
+/// [count]는 [daysInMonth]를 넘지 않는다. 위젯에서 분리해 단위 테스트가 쉽도록 top-level.
+String diaryCountGreeting({
+  required int count,
+  required int daysInMonth,
+  required bool isCurrentMonth,
+  required int month,
+}) {
+  // 절반 임계값(올림). 예: 30일 → 15.
+  final half = (daysInMonth + 1) ~/ 2;
+
+  if (count <= 0) {
+    return isCurrentMonth
+        ? '아직 이번 달엔 기록된 기억이 없어요.\n오늘 있었던 일을 적어볼까요?'
+        : '$month월엔 기록된 기억이 없어요.';
+  }
+  if (count == 1) {
+    return isCurrentMonth ? '이번 달 첫 기억을 남겼어요 ✨' : '$month월엔 기억 1개를 남겼어요.';
+  }
+  if (count >= daysInMonth) {
+    return isCurrentMonth
+        ? '이번 달은 정말 많은 일들이 있었네요.\n이번 달도 수고했어요 🌙'
+        : '$month월은 정말 많은 일들이 있었네요.\n그달도 수고 많았어요 🌙';
+  }
+  if (count >= half) {
+    return isCurrentMonth ? '벌써 $count개의 기억이 쌓였어요.' : '$month월엔 기억 $count개가 쌓였어요.';
+  }
+  return isCurrentMonth ? '이번 달의 기록된 기억은 $count개예요.' : '$month월엔 기억 $count개를 남겼어요.';
+}
+
+/// 헤더 헤드라인 공통 스타일 — 닉네임 줄과 감성 메시지 줄이 동일하게 사용한다.
+/// PoorStory 26 w700 ink, 살짝 음수 자간.
+const TextStyle _kGreetingHeadlineStyle = TextStyle(
+  fontFamily: 'PoorStory',
+  fontSize: 26,
+  fontWeight: FontWeight.w700,
+  color: AppColors.ink,
+  letterSpacing: -0.01 * 26,
+  height: 1.25,
+);
+
+/// 캘린더 상단 인사말 헤더.
+///
+/// '{닉네임}님'(닉네임 있을 때만) + 그 달 기록 수에 반응하는 감성 메시지.
+/// 두 줄 모두 [_kGreetingHeadlineStyle](PoorStory 26)로 한 덩어리 헤드라인처럼 보인다.
+///
+/// 닉네임은 [myProfileProvider]에서 읽는다. 로딩/오류 시 닉네임 줄 없이 메시지만 표시.
+/// 주 문구는 [count](DRAFT 제외 확정 기록 수)·[daysInMonth]·[isCurrentMonth]·
+/// [month]로 [diaryCountGreeting]에서 산출한다. [hasData]가 false면(요약 로딩/에러)
+/// 중립 폴백 문구를 보여 월 이동 중 깜빡임을 막는다.
+class _GreetingSection extends ConsumerWidget {
+  const _GreetingSection({
+    required this.count,
+    required this.daysInMonth,
+    required this.isCurrentMonth,
+    required this.month,
+    required this.hasData,
+  });
+
+  /// 보고 있는 달의 확정 기록 수(DRAFT 제외).
+  final int count;
+
+  /// 보고 있는 달의 총 일수(꽉 참 판정용).
+  final int daysInMonth;
+
+  /// 보고 있는 달이 현재(이번) 달인지 — '이번 달' vs '{month}월' 톤 분기.
+  final bool isCurrentMonth;
+
+  /// 보고 있는 달(1~12) — 과거 달 문구의 'N월'에 사용.
+  final int month;
+
+  /// 월 요약 데이터 도착 여부. false면 중립 폴백.
+  final bool hasData;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nickname = ref.watch(myProfileProvider).asData?.value.nickname ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 6,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 닉네임 줄 — 메시지와 같은 크기. 닉네임 없으면 줄 자체를 생략.
+          if (nickname.isNotEmpty) ...[
+            Text('$nickname님', style: _kGreetingHeadlineStyle),
+            const SizedBox(height: 2),
+          ],
+          // 주 문구: 기록 수 기반 감성 메시지 — 닉네임 줄과 동일 스타일
+          Text(
+            hasData
+                ? diaryCountGreeting(
+                    count: count,
+                    daysInMonth: daysInMonth,
+                    isCurrentMonth: isCurrentMonth,
+                    month: month,
+                  )
+                : _kGreetingFallback,
+            style: _kGreetingHeadlineStyle,
+          ),
+        ],
       ),
     );
   }

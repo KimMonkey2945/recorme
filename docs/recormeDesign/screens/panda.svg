@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="205" viewBox="0 0 230 205">
+<defs>
+<radialGradient id="furG" cx="40%" cy="28%" r="80%"><stop offset="0%" stop-color="#E08442"></stop><stop offset="58%" stop-color="#C0612A"></stop><stop offset="100%" stop-color="#9A4A20"></stop></radialGradient>
+<radialGradient id="headG" cx="40%" cy="24%" r="82%"><stop offset="0%" stop-color="#E88E4B"></stop><stop offset="60%" stop-color="#BE5F2A"></stop><stop offset="100%" stop-color="#974820"></stop></radialGradient>
+<radialGradient id="darkG" cx="42%" cy="26%" r="86%"><stop offset="0%" stop-color="#4A3327"></stop><stop offset="100%" stop-color="#1B110B"></stop></radialGradient>
+<radialGradient id="faceG" cx="44%" cy="30%" r="82%"><stop offset="0%" stop-color="#FFFFFF"></stop><stop offset="100%" stop-color="#E9DBC8"></stop></radialGradient>
+<radialGradient id="tailG" cx="42%" cy="30%" r="82%"><stop offset="0%" stop-color="#D9793B"></stop><stop offset="100%" stop-color="#9A4A20"></stop></radialGradient>
+<linearGradient id="woodG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E0BC8C"></stop><stop offset="100%" stop-color="#BE9460"></stop></linearGradient>
+</defs>
+<rect width="230" height="205" fill="#FBF4EC"></rect>
+<ellipse cx="70" cy="92" rx="62" ry="56" fill="url(#darkG)"></ellipse>
+<ellipse cx="92" cy="78" rx="46" ry="40" fill="url(#furG)" opacity="0.92"></ellipse>
+<circle cx="196" cy="116" r="18" fill="url(#tailG)"></circle><circle cx="208" cy="130" r="15" fill="url(#darkG)"></circle><circle cx="214" cy="143" r="12" fill="url(#tailG)"></circle><circle cx="216" cy="153" r="9" fill="url(#darkG)"></circle>
+<rect x="0" y="150" width="230" height="9" fill="#E2BE8E"></rect>
+<rect x="0" y="159" width="230" height="40" fill="url(#woodG)"></rect>
+<line x1="0" y1="170" x2="230" y2="170" stroke="#A97F4E" stroke-width="1.4" opacity="0.5"></line><line x1="0" y1="183" x2="230" y2="183" stroke="#A97F4E" stroke-width="1.4" opacity="0.5"></line>
+<line x1="0" y1="150" x2="230" y2="150" stroke="#F1D9B4" stroke-width="2" opacity="0.8"></line>
+<g transform="rotate(-7 140 108)">
+<path d="M104 60 L112 20 L140 48 Z" fill="url(#headG)"></path><path d="M176 58 L172 18 L146 44 Z" fill="url(#headG)"></path>
+<path d="M112 54 L118 30 L133 49 Z" fill="#F4E7D6"></path><path d="M170 52 L166 28 L150 46 Z" fill="#F4E7D6"></path>
+<circle cx="140" cy="104" r="54" fill="url(#headG)"></circle>
+<ellipse cx="138" cy="120" rx="44" ry="38" fill="url(#faceG)"></ellipse>
+<ellipse cx="112" cy="98" rx="16" ry="17" fill="url(#faceG)"></ellipse><ellipse cx="166" cy="98" rx="16" ry="17" fill="url(#faceG)"></ellipse>
+<path d="M120 92 Q112 116 124 138" stroke="#A84F22" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.92"></path>
+<path d="M160 92 Q168 116 156 138" stroke="#A84F22" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.92"></path>
+<line x1="126" y1="130" x2="78" y2="124" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line><line x1="126" y1="135" x2="76" y2="138" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line><line x1="126" y1="140" x2="80" y2="152" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line>
+<line x1="154" y1="130" x2="202" y2="124" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line><line x1="154" y1="135" x2="204" y2="138" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line><line x1="154" y1="140" x2="200" y2="152" stroke="#FFFBF4" stroke-width="1.5" stroke-linecap="round"></line>
+<path d="M104 104 Q116 96 128 104 Q116 112 104 104 Z" fill="#2A1A12"></path><path d="M152 104 Q164 96 176 104 Q164 112 152 104 Z" fill="#2A1A12"></path>
+<circle cx="118" cy="103" r="2.2" fill="#fff" opacity="0.85"></circle><circle cx="166" cy="103" r="2.2" fill="#fff" opacity="0.85"></circle>
+<path d="M130 132 L150 132 Q151 142 140 148 Q129 142 130 132 Z" fill="#241712"></path>
+<ellipse cx="100" cy="120" rx="9" ry="6" fill="#E98C6C" opacity="0.4"></ellipse><ellipse cx="180" cy="120" rx="9" ry="6" fill="#E98C6C" opacity="0.4"></ellipse>
+</g></svg>

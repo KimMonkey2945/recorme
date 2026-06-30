@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// 앱 전역 컬러 토큰 — "Quiet Journal" 디자인 컨셉.
+/// 앱 전역 컬러 토큰 — Wanted Design System 기반.
 ///
-/// 감정 기반 동적 테마(Phase 4)는 별도 테마 객체로 주입되므로,
-/// 여기서는 중립 캔버스 역할의 6가지 고정 토큰만 정의한다.
+/// ## 색 역할 분리 (중요)
+/// - [primary] 계열(블루): 주 CTA·링크·선택·입력 포커스·FAB 등 "조작" 맥락.
+/// - [accent] 계열(바이올렛): 감정 분석·AI 코멘트·sparkle 등 "감정/AI" 맥락.
+///   → 두 색을 혼용하지 말 것. 버튼은 [primary], 감정·분석 표현은 [accent].
+/// - 감정 기반 동적 테마(상세 화면)는 [DiaryTheme]가 별도 주입한다.
 class AppColors {
   AppColors._();
 
@@ -12,16 +15,18 @@ class AppColors {
   // ──────────────────────────────────────────
 
   /// 앱 배경 — 순수 화이트 (#FFFFFF).
-  /// 감정 배경색(따뜻한 톤)이 대비되어 보이도록 중립 흰 캔버스로 설정.
-  /// 캘린더·로그인 등 주요 화면은 [bgGradient]를 별도 사용한다.
   static const Color canvas = Color(0xFFFFFFFF);
 
   /// 카드·시트 배경 — 순수 화이트 (#FFFFFF)
   static const Color surface = Color(0xFFFFFFFF);
 
-  /// 기본 배경 그라데이션 — 흰색.
-  /// 로그인·캘린더 등 주요 화면의 공용 배경. 감정 무드 카드가 색을 담당하도록
-  /// 기본 캔버스는 순수 화이트로 통일한다(상·하단 동일 흰색 = 단색 흰 배경).
+  /// 보조 배경 — 밝은 쿨그레이 (#F7F7F8). 섹션 구분·비활성 영역.
+  static const Color bgAlt = Color(0xFFF7F7F8);
+
+  /// 종이 배경 — 따뜻한 베이지 (#FBF9F4). 에디터·상세 화면 베이스.
+  static const Color paper = Color(0xFFFBF9F4);
+
+  /// 기본 배경 그라데이션 — 흰색 (로그인·캘린더 공용 캔버스).
   static const Color bgGradientTop = Color(0xFFFFFFFF);
   static const Color bgGradientBottom = Color(0xFFFFFFFF);
   static const LinearGradient bgGradient = LinearGradient(
@@ -31,44 +36,60 @@ class AppColors {
   );
 
   // ──────────────────────────────────────────
-  // 텍스트
+  // 텍스트 (쿨 뉴트럴 스케일)
   // ──────────────────────────────────────────
 
-  /// 본문 텍스트 — 웜 니어블랙 (#232228)
-  static const Color ink = Color(0xFF232228);
+  /// 본문/제목 텍스트 — 니어블랙 (#171717)
+  static const Color ink = Color(0xFF171717);
 
-  /// 보조 텍스트 — 뮤트 퍼플그레이 (#9B98A3)
-  static const Color inkMuted = Color(0xFF9B98A3);
+  /// 보조 텍스트 — 쿨그레이 (#7C8089). 부제·메타 정보.
+  static const Color inkAlt = Color(0xFF7C8089);
+
+  /// 약한 보조 텍스트 — 옅은 쿨그레이 (#98989E). 플레이스홀더·비활성 라벨.
+  static const Color inkMuted = Color(0xFF98989E);
 
   // ──────────────────────────────────────────
-  // 강조색
+  // Primary (블루) — 주 CTA·링크·선택·포커스
   // ──────────────────────────────────────────
 
-  /// 주 강조색 — 차분한 더스크 바이올렛 (#6C5CE0)
-  static const Color accent = Color(0xFF6C5CE0);
+  /// 주색 — Wanted 블루 (#3366FF). 버튼·링크·선택·FAB·입력 포커스.
+  static const Color primary = Color(0xFF3366FF);
 
-  /// 강조 틴트 — 오늘 하이라이트·칩 배경 (#ECE9FB)
-  static const Color accentSoft = Color(0xFFECE9FB);
+  /// 주색 강조 — 진한 블루 (#005EEB). hover·pressed 등.
+  static const Color primaryStrong = Color(0xFF005EEB);
+
+  /// 주색 틴트 — 옅은 블루 배경 (#EAF0FF). 선택 하이라이트·indicator.
+  static const Color primarySoft = Color(0xFFEAF0FF);
+
+  // ──────────────────────────────────────────
+  // Accent (바이올렛) — 감정 / AI 강조
+  // ──────────────────────────────────────────
+
+  /// 강조색 — 바이올렛 (#6541F2). 감정 분석·AI 코멘트·sparkle 등 AI 맥락 전용.
+  static const Color accent = Color(0xFF6541F2);
+
+  /// 강조 틴트 — 옅은 바이올렛 배경 (#F0ECFE). 분석중 카드·무드 칩 배경.
+  static const Color accentSoft = Color(0xFFF0ECFE);
 
   // ──────────────────────────────────────────
   // 구분선
   // ──────────────────────────────────────────
 
-  /// 헤어라인 구분선 — 따뜻한 오프화이트 (#ECE8E1)
-  static const Color hairline = Color(0xFFECE8E1);
+  /// 헤어라인 구분선 — 쿨그레이 (#E0E1E6)
+  static const Color hairline = Color(0xFFE0E1E6);
 
   // ──────────────────────────────────────────
-  // 시맨틱 (에러/경고/성공 등)
+  // 시맨틱 (에러/경고)
   // ──────────────────────────────────────────
 
-  /// 에러 / 파괴적 액션 강조색
-  static const Color error = Color(0xFFD94F4F);
+  /// 에러 / 파괴적 액션 강조색 (#FF4242)
+  static const Color error = Color(0xFFFF4242);
 
   /// 에러 틴트 배경
   static const Color errorSoft = Color(0xFFFCECEC);
 
-  /// 경고색 — 글자수 80~95% 구간·주의 강조 (웜 앰버 #E09B2D)
-  static const Color warning = Color(0xFFE09B2D);
+  /// 경고색 — 글자수 80~95% 구간·주의 강조 (#FF9200)
+  static const Color warning = Color(0xFFFF9200);
 
   /// 경고 틴트 배경 — 경고 메시지 배경 등
   static const Color warningSoft = Color(0xFFFAF0DC);

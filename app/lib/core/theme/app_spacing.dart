@@ -40,14 +40,14 @@ class AppRadius {
   /// 8dp — 인풋 필드, 작은 컨테이너
   static const double sm = 8;
 
-  /// 14dp — 버튼 반경
-  static const double button = 14;
+  /// 12dp — 버튼·입력 반경 (Wanted DS)
+  static const double button = 12;
 
   /// 16dp — 바텀시트, 모달 상단
   static const double modal = 16;
 
-  /// 20dp — 카드 반경 (Quiet Journal 핵심 형태 토큰)
-  static const double card = 20;
+  /// 16dp — 카드 반경 (Wanted DS 핵심 형태 토큰)
+  static const double card = 16;
 
   /// 999dp — 완전한 pill 형태 (칩, 뱃지, FAB)
   static const double chip = 999;

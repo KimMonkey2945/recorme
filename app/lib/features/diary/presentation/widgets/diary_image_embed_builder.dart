@@ -40,7 +40,7 @@ class DiaryImageEmbedBuilder extends EmbedBuilder {
                 child: Center(
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: AppColors.accent,
+                    color: AppColors.primary,
                   ),
                 ),
               );

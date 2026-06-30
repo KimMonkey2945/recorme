@@ -1,0 +1,49 @@
+/* Wanted Design System — Semantic color aliases
+   Friendly names mapped onto the Figma semantic tokens (see components/fig-tokens.css).
+   These follow theme/dark mode automatically. Use these in components. */
+
+:root {
+  /* brand / primary (Wanted blue) */
+  --color-primary: var(--primary-normal);          /* rgb(51,102,255) */
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-heavy: var(--primary-heavy);
+  --color-on-primary: var(--static-white);
+
+  /* secondary brand accent (violet) */
+  --color-accent-violet: var(--accent-violet);     /* rgb(101,65,242) */
+  --color-accent-cyan: var(--accent-cyan);
+
+  /* text / label */
+  --text-strong: var(--label-strong);              /* near-black */
+  --text-normal: var(--label-normal);
+  --text-neutral: var(--label-neutral);
+  --text-alternative: var(--label-alternative);
+  --text-assistive: var(--label-assistive);
+  --text-disable: var(--label-disable);
+
+  /* surfaces */
+  --bg-normal: var(--background-normal-normal);
+  --bg-alternative: var(--background-normal-alternative);
+  --bg-elevated: var(--background-elevated-normal);
+  --surface-card: var(--background-elevated-normal);
+
+  /* lines / dividers */
+  --line-alternative: var(--line-normal-alternative);
+  --line-neutral: var(--line-normal-neutral);
+  --line: var(--line-normal-normal);
+  --line-strong: var(--line-normal-strong);
+
+  /* fills (translucent grey backgrounds) */
+  --fill: var(--fill-normal);
+  --fill-soft: var(--fill-alternative);
+  --fill-bold: var(--fill-strong);
+
+  /* status */
+  --color-positive: var(--status-positive);        /* green */
+  --color-negative: var(--status-negative);        /* red */
+  --color-cautionary: var(--status-cautionary);    /* orange */
+
+  /* interaction */
+  --color-disable: var(--interaction-disable);
+  --color-inactive: var(--interaction-inactive);
+}

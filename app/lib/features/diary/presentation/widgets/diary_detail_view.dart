@@ -5,9 +5,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../domain/diary_content.dart';
 import 'diary_image_embed_builder.dart';
+import 'diary_quill_styles.dart';
 
-/// 분석 예상 소요 시간 안내 문구(상수로 분리해 향후 일괄 수정 용이).
-const String kAnalysisEtaText = '약 1분 내외 소요돼요';
+/// 분석 진행 중 보조 문구(상수로 분리해 향후 일괄 수정 용이).
+const String kAnalysisEtaText = '곧 이 날의 감정이 기록에 담길 거예요';
 
 /// 기록 상세 표현 위젯.
 ///
@@ -149,10 +150,12 @@ class _DiaryDetailViewState extends State<DiaryDetailView> {
           Expanded(
             child: QuillEditor.basic(
               controller: _controller,
-              config: const QuillEditorConfig(
+              config: QuillEditorConfig(
                 padding: EdgeInsets.zero,
                 showCursor: false,
-                embedBuilders: [DiaryImageEmbedBuilder()],
+                embedBuilders: const [DiaryImageEmbedBuilder()],
+                // 종이 + 명조(serif) 본문 — 감정 텍스트색(있으면) 반영.
+                customStyles: diaryPaperStyles(context, color: widget.textColor),
               ),
             ),
           ),
@@ -194,24 +197,94 @@ class _DiaryDetailViewState extends State<DiaryDetailView> {
 // 날짜 + AI 헤더
 // ──────────────────────────────────────────────────────────────
 
-/// 상세 화면 상단의 날짜 라인. (감정 표현은 하단 [_MoodCard]가 담당.)
+/// 상세 화면 상단의 날짜 헤더.
+///
+/// '2026년 6월 24일 (화)' 포맷의 [dateText]를 파싱해
+/// 연/월(inkAlt 14px) + 일(WantedSans 800 36px) + 요일(inkAlt 600 20px)로
+/// 계층형으로 표시한다.
 class _DiaryHeader extends StatelessWidget {
   const _DiaryHeader({required this.dateText});
 
   final String dateText;
 
+  /// '2026년 6월 24일 (화)' → { yearMonth: '2026년 6월', day: '24일', weekday: '화요일' }
+  _DateParts _parse(String text) {
+    final parts = text.trim().split(' ');
+    if (parts.length >= 4) {
+      final yearMonth = '${parts[0]} ${parts[1]}';
+      final day = parts[2];
+      // '(화)' → '화요일'
+      final wkChar = parts[3].replaceAll('(', '').replaceAll(')', '');
+      return _DateParts(
+        yearMonth: yearMonth,
+        day: day,
+        weekday: '$wkChar요일',
+      );
+    }
+    // 폴백: 그대로 표시
+    return _DateParts(yearMonth: text, day: '', weekday: '');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Text(
-      dateText,
-      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppColors.ink,
+    final p = _parse(dateText);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 연/월 — inkAlt 14px 500
+        if (p.yearMonth.isNotEmpty)
+          Text(
+            p.yearMonth,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.inkAlt,
+            ),
           ),
-      overflow: TextOverflow.ellipsis,
-      maxLines: 1,
+        if (p.day.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          // 일 — PoorStory 36px
+          Text(
+            p.day,
+            style: const TextStyle(
+              fontFamily: 'PoorStory',
+              fontSize: 36,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+              letterSpacing: -0.36,
+              height: 1.0,
+            ),
+          ),
+        ],
+        if (p.weekday.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          // 요일 — inkAlt 600 20px
+          Text(
+            p.weekday,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: AppColors.inkAlt,
+            ),
+          ),
+        ],
+      ],
     );
   }
+}
+
+/// [_DiaryHeader] 파싱 결과 DTO
+class _DateParts {
+  const _DateParts({
+    required this.yearMonth,
+    required this.day,
+    required this.weekday,
+  });
+  final String yearMonth;
+  final String day;
+  final String weekday;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -313,8 +386,11 @@ class _MoodCard extends StatelessWidget {
 // 상태 배지 (DRAFT / FAILED 전용)
 // ──────────────────────────────────────────────────────────────
 
-/// DRAFT·FAILED 상태만 시각화하는 pill 배지.
-/// PENDING과 DONE은 각각 큰 카드·헤더 이모지가 대신하므로 이 위젯에서 제외.
+/// DRAFT·FAILED 상태 배지.
+///
+/// DRAFT: bgAlt 배경 전체 폭 카드 (연필 아이콘 + 제목 + 설명 문구).
+/// FAILED: 헤어라인 pill 배지 (에러 아이콘 + '분석 실패').
+/// PENDING·DONE은 각각 큰 카드·헤더가 대신하므로 이 위젯에서 제외.
 class _AnalysisStatusBadge extends StatelessWidget {
   const _AnalysisStatusBadge({required this.status});
 
@@ -322,33 +398,66 @@ class _AnalysisStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (String label, Widget icon, Color bg, Color fg) = switch (status) {
-      'FAILED' => (
-          '분석 실패',
-          const Icon(Icons.error_outline, size: 14, color: AppColors.inkMuted),
-          AppColors.hairline,
-          AppColors.inkMuted,
-        ),
-      // DRAFT 및 그 외 상태 (기본값)
-      _ => (
-          '임시 저장',
-          const Icon(Icons.edit_outlined, size: 14, color: AppColors.inkMuted),
-          AppColors.hairline,
-          AppColors.inkMuted,
-        ),
-    };
+    if (status == 'DRAFT') return _buildDraftCard(context);
+    return _buildFailedBadge(context);
+  }
 
-    final String semanticLabel = switch (status) {
-      'FAILED' => '감정 분석에 실패했습니다',
-      _ => '임시 저장된 일기입니다',
-    };
-
+  /// DRAFT — bgAlt 카드: 연필 아이콘 + '임시 저장' + 설명 문구
+  Widget _buildDraftCard(BuildContext context) {
     return Semantics(
-      label: semanticLabel,
+      label: '임시 저장된 기록입니다',
+      excludeSemantics: true,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: AppColors.bgAlt,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.edit_outlined, size: 18, color: AppColors.ink),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '임시 저장',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '마저 작성하고 기록을 완성해 보세요',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.inkMuted,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// FAILED — 기존 헤어라인 pill 배지 유지
+  Widget _buildFailedBadge(BuildContext context) {
+    return Semantics(
+      label: '감정 분석에 실패했습니다',
       excludeSemantics: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: bg,
+          color: AppColors.hairline,
           borderRadius: BorderRadius.circular(AppRadius.chip),
         ),
         child: Padding(
@@ -359,12 +468,12 @@ class _AnalysisStatusBadge extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              icon,
+              const Icon(Icons.error_outline, size: 14, color: AppColors.inkMuted),
               const SizedBox(width: AppSpacing.xs),
               Text(
-                label,
+                '분석 실패',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: fg,
+                      color: AppColors.inkMuted,
                       fontWeight: FontWeight.w500,
                     ),
               ),
@@ -382,12 +491,36 @@ class _AnalysisStatusBadge extends StatelessWidget {
 
 /// 감정 분석 진행 상태를 안내하는 카드.
 ///
-/// [timedOut]이 false이면 분석 진행 중 안내(CircularProgressIndicator + ETA),
-/// true이면 폴링 상한 초과 안내("잠시 후 다시 확인해 주세요")로 전환된다.
-class _AnalysisPendingCard extends StatelessWidget {
+/// [timedOut]이 false이면 회전하는 반짝이 아이콘(Icons.auto_awesome) + ETA 문구,
+/// true이면 시계 아이콘 + "잠시 후 다시 확인해 주세요"로 전환된다.
+class _AnalysisPendingCard extends StatefulWidget {
   const _AnalysisPendingCard({this.timedOut = false});
 
   final bool timedOut;
+
+  @override
+  State<_AnalysisPendingCard> createState() => _AnalysisPendingCardState();
+}
+
+class _AnalysisPendingCardState extends State<_AnalysisPendingCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    // 2초에 1회전 무한 반복 — 분석 진행 중 시각 피드백
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _rotationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -403,20 +536,21 @@ class _AnalysisPendingCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 아이콘: 진행 중=회전 반짝이, 타임아웃=시계
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: timedOut
+              child: widget.timedOut
                   ? const Icon(
                       Icons.schedule_outlined,
                       color: AppColors.accent,
                       size: 20,
                     )
-                  : const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
+                  : RotationTransition(
+                      turns: _rotationController,
+                      child: const Icon(
+                        Icons.auto_awesome,
                         color: AppColors.accent,
+                        size: 20,
                       ),
                     ),
             ),
@@ -426,13 +560,13 @@ class _AnalysisPendingCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    timedOut ? '잠시 후 다시 확인해 주세요' : '감정을 분석하고 있어요',
+                    widget.timedOut ? '잠시 후 다시 확인해 주세요' : '감정을 담는 중이에요',
                     style: textTheme.bodyMedium?.copyWith(
                       color: AppColors.accent,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (!timedOut) ...[
+                  if (!widget.timedOut) ...[
                     const SizedBox(height: AppSpacing.xs),
                     Text(
                       kAnalysisEtaText,
@@ -462,9 +596,13 @@ class _AnalysisPendingCard extends StatelessWidget {
 // 하단 액션 버튼
 // ──────────────────────────────────────────────────────────────
 
-/// 수정(조건부)·삭제 버튼 배치.
+/// 하단 액션 버튼 영역.
 ///
-/// [onEdit]이 null이면(확정 기록) 수정 버튼을 숨기고 삭제 버튼만 전체 폭으로 표시한다.
+/// DRAFT([onEdit] != null):
+///   [이어 쓰기 (FilledButton, 확장)] + [휴지통 아이콘 OutlinedButton 52px]
+///
+/// 확정([onEdit] == null):
+///   [닫기 (OutlinedButton, 확장)] + [휴지통 아이콘 OutlinedButton 52px]
 class _ActionButtons extends StatelessWidget {
   const _ActionButtons({
     this.onEdit,
@@ -479,37 +617,51 @@ class _ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDraft = onEdit != null;
+
     return Row(
       children: [
-        if (onEdit != null) ...[
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: onEdit,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.ink,
-                minimumSize: const Size(0, 52),
-                side: const BorderSide(color: AppColors.hairline, width: 1.5),
-                shape: RoundedRectangleBorder(borderRadius: _buttonRadius),
-                tapTargetSize: MaterialTapTargetSize.padded,
-              ),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('수정'),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-        ],
+        // 주 액션 버튼 — DRAFT='이어 쓰기'(solid), 확정='닫기'(outlined)
         Expanded(
-          child: OutlinedButton.icon(
+          child: isDraft
+              ? FilledButton.icon(
+                  onPressed: onEdit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.surface,
+                    minimumSize: const Size(0, 52),
+                    shape: RoundedRectangleBorder(borderRadius: _buttonRadius),
+                  ),
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  label: const Text('이어 쓰기'),
+                )
+              : OutlinedButton(
+                  // TODO: 로직 연결 지점 — Navigator.of(context).pop() 처리
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.ink,
+                    minimumSize: const Size(0, 52),
+                    side: const BorderSide(color: AppColors.hairline, width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: _buttonRadius),
+                  ),
+                  child: const Text('닫기'),
+                ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        // 삭제 — 아이콘 전용 OutlinedButton 52×52dp
+        SizedBox(
+          width: 52,
+          height: 52,
+          child: OutlinedButton(
             onPressed: onDelete,
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.error,
-              minimumSize: const Size(0, 52),
+              padding: EdgeInsets.zero,
               side: const BorderSide(color: AppColors.error, width: 1.5),
               shape: RoundedRectangleBorder(borderRadius: _buttonRadius),
               tapTargetSize: MaterialTapTargetSize.padded,
             ),
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: const Text('삭제'),
+            child: const Icon(Icons.delete_outline, size: 20),
           ),
         ),
       ],

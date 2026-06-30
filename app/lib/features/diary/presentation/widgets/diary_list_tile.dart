@@ -124,7 +124,7 @@ class DiaryListTile extends StatelessWidget {
                           Text(
                             dateText,
                             style: textTheme.labelMedium?.copyWith(
-                              color: AppColors.accent,
+                              color: AppColors.inkAlt, // 시안: date eyebrow inkAlt
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.2,
                             ),
@@ -140,8 +140,8 @@ class DiaryListTile extends StatelessWidget {
                       Text(
                         preview,
                         style: textTheme.bodyMedium?.copyWith(
-                          color: AppColors.ink,
-                          height: 1.55, // 기록 느낌을 살리는 넉넉한 행간
+                          color: AppColors.inkAlt, // 시안: preview inkAlt
+                          height: 1.55,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

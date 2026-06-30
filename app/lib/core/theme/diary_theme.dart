@@ -82,7 +82,7 @@ class DiaryTheme {
   static const DiaryTheme neutral = DiaryTheme._(
     backgroundColor: Color(0xFFF2F1ED),
     textColor: Color(0xFF232228),
-    accentColor: Color(0xFF6C5CE0),
+    accentColor: Color(0xFF6541F2),
   );
 
   // ──────────────────────────────────────────

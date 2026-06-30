@@ -77,7 +77,7 @@ class ProfileEditImageSection extends StatelessWidget {
           icon: const Icon(Icons.camera_alt_rounded, size: 16),
           label: const Text('사진 변경'),
           style: TextButton.styleFrom(
-            foregroundColor: AppColors.accent,
+            foregroundColor: AppColors.primary,
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.md,
               vertical: AppSpacing.xs,

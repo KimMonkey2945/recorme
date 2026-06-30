@@ -204,7 +204,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                         borderSide:
-                            const BorderSide(color: AppColors.accent, width: 1.5),
+                            const BorderSide(color: AppColors.primary, width: 1.5),
                       ),
                     ),
                   ),

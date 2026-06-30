@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
@@ -82,15 +83,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final loading = _socialLoading || emailLoading;
 
     return Scaffold(
-      // Foodu 톤 참고 — 화사한 웜 그라데이션 배경
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(gradient: AppColors.bgGradient),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-            child: SingleChildScrollView(
+      // 베이스 단색 — tea_sel.mp4의 스튜디오 회색 배경(#EEF0F2)과 맞춰
+      // 영상 사각 테두리가 완전히 묻히도록 처리
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── 베이스 단색 (영상 배경과 동일한 옅은 회색) ──
+          const ColoredBox(color: Color(0xFFEEF0F2)),
+          // ── 실제 콘텐츠 레이어 ──
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+              child: SingleChildScrollView(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   minHeight: MediaQuery.of(context).size.height -
@@ -128,9 +132,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
+          ),          // Padding 닫기
+        ),            // SafeArea 닫기
+        ],            // Stack.children 리스트 닫기
+      ),              // Stack 닫기
     );
   }
 }
@@ -139,45 +144,109 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 // 브랜드 영역
 // ─────────────────────────────────────────────────────────────
 
-/// accentSoft 배경 아이콘 배지 + 워드마크 + 태그라인으로 구성된 브랜드 섹션.
-class _BrandSection extends StatelessWidget {
+/// 마스코트 영상 + 그라데이션 워드마크 + 태그라인으로 구성된 브랜드 섹션.
+///
+/// 마스코트는 `box_sel.mp4`를 화면 진입 시 **한 번만**(무한 반복 X) 음소거 자동 재생한다.
+/// 초기화 전·로드 실패 시에는 정지 이미지(`mascot.png`)를 같은 폭으로 보여
+/// 검은 박스 깜빡임이나 레이아웃 점프를 막는다.
+class _BrandSection extends StatefulWidget {
   const _BrandSection();
 
   @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+  State<_BrandSection> createState() => _BrandSectionState();
+}
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 앱 정체성 시각 요소 — accentSoft 배경 + 펜 아이콘
-        Container(
+class _BrandSectionState extends State<_BrandSection> {
+  // 히어로 영상 폭(기존 정지 이미지 180 → 히어로 260으로 확대).
+  static const double _heroWidth = 260;
+
+  late final VideoPlayerController _controller;
+  bool _videoReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset('assets/videos/tea_sel.mp4')
+      ..setVolume(0); // 음소거
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _videoReady = true);
+      _controller.play(); // 화면 진입 시 한 번만 재생(setLooping 미호출)
+    }).catchError((Object _) {
+      // 초기화 실패 시 폴백 이미지를 계속 노출한다(_videoReady=false 유지).
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose(); // 컨트롤러 누수 방지
+    super.dispose();
+  }
+
+  /// 영상 초기화 전·실패 시 보여줄 정지 마스코트(+이미지 로드 실패 폴백 배지).
+  Widget _fallbackMascot() => Image.asset(
+        'assets/images/mascot.png',
+        width: _heroWidth,
+        errorBuilder: (context, error, stackTrace) => Container(
           width: 92,
           height: 92,
           decoration: BoxDecoration(
-            color: AppColors.accentSoft,
+            color: AppColors.primarySoft,
             borderRadius: BorderRadius.circular(AppRadius.card + 8),
           ),
-          child: const Icon(
-            Icons.edit_rounded,
-            size: 44,
+          child: const Icon(Icons.edit_rounded, size: 44, color: AppColors.primary),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 마스코트 — box_sel.mp4 히어로 영상(초기화 전·실패 시 정지 이미지 폴백)
+        _videoReady
+            ? SizedBox(
+                width: _heroWidth,
+                child: AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: VideoPlayer(_controller),
+                ),
+              )
+            : _fallbackMascot(),
+        const SizedBox(height: AppSpacing.lg),
+        // 그라데이션 워드마크 — WantedSans 800 48px, [바이올렛→블루→시안] 100deg
+        ShaderMask(
+          shaderCallback: (Rect bounds) => const LinearGradient(
+            transform: GradientRotation(1.745), // 100deg in radians
+            colors: [
+              Color(0xFF7C3AED), // 바이올렛
+              Color(0xFF3366FF), // 블루
+              Color(0xFF06B6D4), // 시안
+            ],
+            stops: [0.0, 0.52, 1.0],
+          ).createShader(bounds),
+          child: const Text(
+            'recorme',
+            style: TextStyle(
+              fontFamily: 'PoorStory',
+              fontSize: 48,
+              fontWeight: FontWeight.w800,
+              color: Colors.white, // ShaderMask가 이 색을 그라데이션으로 대체한다
+              letterSpacing: -1.0,
+              height: 1.0,
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        // 태그라인 — accent(바이올렛), WantedSans 700 15px
+        const Text(
+          '오늘 하루, 콕 찍어 기록해요',
+          style: TextStyle(
+            fontFamily: 'PoorStory',
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
             color: AppColors.accent,
           ),
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        // 워드마크
-        Text(
-          'recorme',
-          style: textTheme.displayLarge?.copyWith(
-            fontSize: 40,
-            letterSpacing: -1.2,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        // 태그라인 — inkMuted 보조 텍스트
-        Text(
-          '하루를 글로 기록하세요',
-          style: textTheme.titleMedium?.copyWith(color: AppColors.inkMuted),
         ),
       ],
     );
@@ -239,7 +308,7 @@ class _EmailLoginForm extends StatelessWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 52),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.button),
+                borderRadius: BorderRadius.circular(15), // 시안 기준 15dp
               ),
             ),
             child: loading
@@ -355,7 +424,7 @@ class _KakaoButton extends StatelessWidget {
         disabledForegroundColor: _kakaoLabelDisabled,
         minimumSize: const Size(double.infinity, 52),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.button),
+          borderRadius: BorderRadius.circular(15), // 시안 기준 15dp
         ),
         textStyle: const TextStyle(
           fontSize: 15,
@@ -395,7 +464,7 @@ class _GoogleButton extends StatelessWidget {
         disabledForegroundColor: AppColors.inkMuted,
         minimumSize: const Size(double.infinity, 52),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.button),
+          borderRadius: BorderRadius.circular(15), // 시안 기준 15dp
         ),
         side: const BorderSide(color: AppColors.hairline, width: 1.5),
         textStyle: const TextStyle(

@@ -1,0 +1,54 @@
+/* Wanted Design System — Typography scale (the "OOTB" scale)
+   font-size / line-height / letter-spacing per role.
+   Default UI weight is Medium (500); set weight per use. */
+
+:root {
+  /* ── Display ─────────────────────────────── */
+  --font-display1-size: 56px;  --font-display1-line: 1.286;  --font-display1-spacing: -0.032em;
+  --font-display2-size: 40px;  --font-display2-line: 1.3;    --font-display2-spacing: -0.027em;
+
+  /* ── Title ───────────────────────────────── */
+  --font-title1-size: 36px;    --font-title1-line: 1.334;    --font-title1-spacing: -0.027em;
+  --font-title2-size: 28px;    --font-title2-line: 1.358;    --font-title2-spacing: -0.026em;
+  --font-title3-size: 24px;    --font-title3-line: 1.334;    --font-title3-spacing: -0.025em;
+
+  /* ── Heading ─────────────────────────────── */
+  --font-heading1-size: 22px;  --font-heading1-line: 1.364; --font-heading1-spacing: -0.023em;
+  --font-heading2-size: 20px;  --font-heading2-line: 1.4;   --font-heading2-spacing: -0.021em;
+
+  /* ── Headline ────────────────────────────── */
+  --font-headline1-size: 18px; --font-headline1-line: 1.444; --font-headline1-spacing: -0.019em;
+  --font-headline2-size: 17px; --font-headline2-line: 1.412; --font-headline2-spacing: -0.018em;
+
+  /* ── Body ────────────────────────────────── */
+  --font-body1-size: 16px;     --font-body1-line: 1.5;      --font-body1-spacing: 0.0057em;
+  --font-body1-reading-line: 1.625;
+  --font-body2-size: 15px;     --font-body2-line: 1.467;    --font-body2-spacing: 0.0096em;
+  --font-body2-reading-line: 1.6;
+
+  /* ── Label ───────────────────────────────── */
+  --font-label1-size: 14px;    --font-label1-line: 1.429;   --font-label1-spacing: 0.0145em;
+  --font-label1-reading-line: 1.571;
+  --font-label2-size: 13px;    --font-label2-line: 1.385;   --font-label2-spacing: 0.0194em;
+
+  /* ── Caption ─────────────────────────────── */
+  --font-caption1-size: 12px;  --font-caption1-line: 1.334; --font-caption1-spacing: 0.0252em;
+  --font-caption2-size: 11px;  --font-caption2-line: 1.364; --font-caption2-spacing: 0.0311em;
+}
+
+/* ── Utility classes (apply size/line/spacing; set weight separately) ── */
+.wds-display1  { font-family: var(--font-sans); font-size: var(--font-display1-size);  line-height: var(--font-display1-line);  letter-spacing: var(--font-display1-spacing);  font-weight: var(--weight-bold); }
+.wds-display2  { font-family: var(--font-sans); font-size: var(--font-display2-size);  line-height: var(--font-display2-line);  letter-spacing: var(--font-display2-spacing);  font-weight: var(--weight-bold); }
+.wds-title1    { font-family: var(--font-sans); font-size: var(--font-title1-size);    line-height: var(--font-title1-line);    letter-spacing: var(--font-title1-spacing);    font-weight: var(--weight-bold); }
+.wds-title2    { font-family: var(--font-sans); font-size: var(--font-title2-size);    line-height: var(--font-title2-line);    letter-spacing: var(--font-title2-spacing);    font-weight: var(--weight-bold); }
+.wds-title3    { font-family: var(--font-sans); font-size: var(--font-title3-size);    line-height: var(--font-title3-line);    letter-spacing: var(--font-title3-spacing);    font-weight: var(--weight-bold); }
+.wds-heading1  { font-family: var(--font-sans); font-size: var(--font-heading1-size);  line-height: var(--font-heading1-line);  letter-spacing: var(--font-heading1-spacing);  font-weight: var(--weight-bold); }
+.wds-heading2  { font-family: var(--font-sans); font-size: var(--font-heading2-size);  line-height: var(--font-heading2-line);  letter-spacing: var(--font-heading2-spacing);  font-weight: var(--weight-semibold); }
+.wds-headline1 { font-family: var(--font-sans); font-size: var(--font-headline1-size); line-height: var(--font-headline1-line); letter-spacing: var(--font-headline1-spacing); font-weight: var(--weight-semibold); }
+.wds-headline2 { font-family: var(--font-sans); font-size: var(--font-headline2-size); line-height: var(--font-headline2-line); letter-spacing: var(--font-headline2-spacing); font-weight: var(--weight-semibold); }
+.wds-body1     { font-family: var(--font-sans); font-size: var(--font-body1-size);     line-height: var(--font-body1-line);     letter-spacing: var(--font-body1-spacing);     font-weight: var(--weight-medium); }
+.wds-body2     { font-family: var(--font-sans); font-size: var(--font-body2-size);     line-height: var(--font-body2-line);     letter-spacing: var(--font-body2-spacing);     font-weight: var(--weight-medium); }
+.wds-label1    { font-family: var(--font-sans); font-size: var(--font-label1-size);    line-height: var(--font-label1-line);    letter-spacing: var(--font-label1-spacing);    font-weight: var(--weight-medium); }
+.wds-label2    { font-family: var(--font-sans); font-size: var(--font-label2-size);    line-height: var(--font-label2-line);    letter-spacing: var(--font-label2-spacing);    font-weight: var(--weight-medium); }
+.wds-caption1  { font-family: var(--font-sans); font-size: var(--font-caption1-size);  line-height: var(--font-caption1-line);  letter-spacing: var(--font-caption1-spacing);  font-weight: var(--weight-medium); }
+.wds-caption2  { font-family: var(--font-sans); font-size: var(--font-caption2-size);  line-height: var(--font-caption2-line);  letter-spacing: var(--font-caption2-spacing);  font-weight: var(--weight-medium); }

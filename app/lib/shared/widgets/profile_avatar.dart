@@ -64,7 +64,7 @@ class ProfileAvatar extends StatelessWidget {
   Widget _buildFallback() {
     final hasInitial = initial != null && initial!.isNotEmpty;
     return ColoredBox(
-      color: AppColors.accentSoft,
+      color: AppColors.primarySoft,
       child: Center(
         child: hasInitial
             ? Text(
@@ -72,14 +72,14 @@ class ProfileAvatar extends StatelessWidget {
                 style: TextStyle(
                   fontSize: radius * 0.7,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.accent,
+                  color: AppColors.primary,
                   height: 1.0,
                 ),
               )
             : Icon(
                 Icons.person_rounded,
                 size: radius * 0.9,
-                color: AppColors.accent,
+                color: AppColors.primary,
               ),
       ),
     );

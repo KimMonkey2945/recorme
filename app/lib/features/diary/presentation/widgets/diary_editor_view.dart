@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
 import 'package:record/features/diary/presentation/widgets/diary_image_embed_builder.dart';
+import 'package:record/features/diary/presentation/widgets/diary_quill_styles.dart';
 
 /// 기록 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
 ///
@@ -34,7 +36,6 @@ class DiaryEditorView extends StatelessWidget {
     required this.plainLength,
     this.maxLength = 500,
     required this.saving,
-    required this.canSave,
     required this.onRegister,
     required this.onRemember,
     required this.onCancel,
@@ -47,17 +48,18 @@ class DiaryEditorView extends StatelessWidget {
   /// 본문 리치 텍스트 컨트롤러(상위가 생성·소유).
   final QuillController controller;
 
-  /// 현재 순수 텍스트 길이(상위가 계산해 전달 — 카운터 표시용).
-  final int plainLength;
+  /// 현재 순수 텍스트 길이(상위가 계산해 전달 — 카운터·저장 가능 판단용).
+  ///
+  /// 매 글자 입력마다 [QuillEditor] 전체가 rebuild되면 한글 IME 조합/입력 연결이
+  /// 끊겨 백스페이스가 1회 후 멈추므로, 길이는 [setState]가 아닌 리스너블로 받아
+  /// 카운터·버튼만 [ValueListenableBuilder]로 갱신한다(에디터는 rebuild 제외).
+  final ValueListenable<int> plainLength;
 
   /// 본문 최대 글자 수(순수 텍스트 기준 하드 제한). 기본 500자.
   final int maxLength;
 
   /// 저장 진행 중이면 true — 버튼을 로딩 상태로 전환.
   final bool saving;
-
-  /// 저장 가능 여부(내용 있음 + 저장 중 아님).
-  final bool canSave;
 
   /// '등록' 버튼 탭 콜백 — confirm:false로 임시 저장(DRAFT).
   final VoidCallback onRegister;
@@ -118,43 +120,52 @@ class DiaryEditorView extends StatelessWidget {
           Expanded(
             child: DecoratedBox(
               decoration: const BoxDecoration(
-                color: AppColors.surface,
+                // 종이 질감 — 따뜻한 베이지 배경.
+                color: AppColors.paper,
                 borderRadius: _kCardRadius,
                 border: Border.fromBorderSide(
                   BorderSide(color: AppColors.hairline),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x08232228),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  ),
-                ],
               ),
               child: QuillEditor.basic(
                 controller: controller,
-                config: const QuillEditorConfig(
+                config: QuillEditorConfig(
                   placeholder: '오늘 하루를 기록해보세요',
-                  padding: EdgeInsets.all(AppSpacing.xl),
+                  padding: const EdgeInsets.all(AppSpacing.xl),
                   expands: true,
-                  embedBuilders: [DiaryImageEmbedBuilder()],
+                  embedBuilders: const [DiaryImageEmbedBuilder()],
+                  // 종이 + 명조(serif) 본문.
+                  customStyles: diaryPaperStyles(context),
                 ),
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
 
-          // ── 글자수 카운터 (순수 텍스트 기준, 우측 정렬) ─────────────
-          _CharCounter(current: plainLength, max: maxLength),
-          const SizedBox(height: AppSpacing.md),
+          // ── 글자수 카운터 + 하단 버튼 바 ─────────────────────────
+          // 길이 변화는 이 부분만 rebuild한다(위 에디터는 rebuild 제외 → IME 보존).
+          ValueListenableBuilder<int>(
+            valueListenable: plainLength,
+            builder: (context, length, _) {
+              final canSave = length > 0 && !saving;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 글자수 카운터 (순수 텍스트 기준, 우측 정렬)
+                  _CharCounter(current: length, max: maxLength),
+                  const SizedBox(height: AppSpacing.md),
 
-          // ── 하단 버튼 바 ─────────────────────────────────────────
-          _BottomButtonBar(
-            saving: saving,
-            canSave: canSave,
-            onRegister: onRegister,
-            onRemember: onRemember,
-            onCancel: onCancel,
+                  // 하단 버튼 바
+                  _BottomButtonBar(
+                    saving: saving,
+                    canSave: canSave,
+                    onRegister: onRegister,
+                    onRemember: onRemember,
+                    onCancel: onCancel,
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -166,7 +177,8 @@ class DiaryEditorView extends StatelessWidget {
 // 날짜 읽기 전용 칩
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 선택된 날짜를 표시하는 읽기 전용 Pill 칩.
+/// 선택된 날짜를 표시하는 읽기 전용 텍스트.
+/// 시안: pill 배지 대신 plain Text(inkAlt 600 14px)로 단순화.
 class _DateChip extends StatelessWidget {
   const _DateChip({required this.dateText});
 
@@ -176,32 +188,12 @@ class _DateChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
-        ),
-        decoration: const BoxDecoration(
-          color: AppColors.accentSoft,
-          borderRadius: BorderRadius.all(Radius.circular(AppRadius.chip)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.calendar_today_outlined,
-              size: 14,
-              color: AppColors.accent,
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              dateText,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
+      child: Text(
+        dateText,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.inkAlt,
         ),
       ),
     );
@@ -225,11 +217,9 @@ class _CharCounter extends StatelessWidget {
   final int current;
   final int max;
 
+  /// 이진 색상 — 최대치에 도달했을 때만 error, 그 외는 inkMuted.
   Color _resolveColor() {
-    if (max <= 0) return AppColors.inkMuted;
-    final ratio = current / max;
-    if (ratio >= 0.95) return AppColors.error;
-    if (ratio >= 0.80) return AppColors.warning;
+    if (current >= max) return AppColors.error;
     return AppColors.inkMuted;
   }
 
@@ -322,9 +312,9 @@ class _BottomButtonBar extends StatelessWidget {
             child: OutlinedButton(
               onPressed: canSave ? onRegister : null,
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accent,
-                side: const BorderSide(color: AppColors.accent),
-                disabledForegroundColor: AppColors.accentSoft,
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.primary),
+                disabledForegroundColor: AppColors.primarySoft,
                 shape: _kButtonShape,
                 padding: EdgeInsets.zero,
               ),
@@ -341,16 +331,27 @@ class _BottomButtonBar extends StatelessWidget {
             child: FilledButton(
               onPressed: canSave ? onRemember : null,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                disabledBackgroundColor: AppColors.accentSoft,
+                backgroundColor: AppColors.primary,
+                disabledBackgroundColor: AppColors.primarySoft,
                 shape: _kButtonShape,
                 padding: EdgeInsets.zero,
               ),
+              // 반짝이 아이콘 + 라벨 (시안: auto_awesome 아이콘 추가)
               child: saving
                   ? loadingIndicator
-                  : const Text(
-                      '오늘을 기억하기',
-                      overflow: TextOverflow.ellipsis,
+                  : const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 16),
+                        SizedBox(width: AppSpacing.xs),
+                        Flexible(
+                          child: Text(
+                            '오늘을 기억하기',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
             ),
           ),

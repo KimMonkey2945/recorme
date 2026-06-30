@@ -77,7 +77,7 @@ class ErrorView extends StatelessWidget {
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('다시 시도'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.accent,
+                  backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.surface,
                 ),
               ),

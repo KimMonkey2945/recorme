@@ -61,13 +61,13 @@ class EmailConfirmPage extends ConsumerWidget {
                   height: 92,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.accentSoft,
+                    color: AppColors.primarySoft,
                     borderRadius: BorderRadius.circular(AppRadius.card + 8),
                   ),
                   child: const Icon(
                     Icons.mark_email_unread_outlined,
                     size: 44,
-                    color: AppColors.accent,
+                    color: AppColors.primary,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl),

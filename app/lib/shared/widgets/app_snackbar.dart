@@ -36,40 +36,30 @@ SnackBar _buildSnackBar(
 }) {
   final textTheme = Theme.of(context).textTheme;
 
-  // 배경색: 에러면 에러 색, 아니면 ink(어두운 토스트)
-  final backgroundColor = isError ? AppColors.error : AppColors.ink;
-  final foregroundColor = AppColors.surface;
+  // 배경색: 에러=에러 색, 일반=반투명 잉크(시안: rgba(23,23,25,0.92) → 0xEB171717)
+  final backgroundColor =
+      isError ? AppColors.error : const Color(0xEB171717);
+  const foregroundColor = AppColors.surface;
 
-  // 에러 스낵바에는 아이콘 프리픽스 추가
-  final Widget content = isError
-      ? Row(
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 18,
-              color: foregroundColor,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(
-                message,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: foregroundColor,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        )
-      : Text(
+  // 에러: 경고 아이콘, 일반: 체크 아이콘 (시안 기준)
+  final Widget content = Row(
+    children: [
+      Icon(
+        isError ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+        size: 20,
+        color: foregroundColor,
+      ),
+      const SizedBox(width: AppSpacing.sm),
+      Expanded(
+        child: Text(
           message,
-          style: textTheme.bodyMedium?.copyWith(
-            color: foregroundColor,
-          ),
+          style: textTheme.bodyMedium?.copyWith(color: foregroundColor),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-        );
+        ),
+      ),
+    ],
+  );
 
   return SnackBar(
     content: content,
@@ -85,7 +75,7 @@ SnackBar _buildSnackBar(
       vertical: AppSpacing.md,
     ),
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(AppRadius.sm),
+      borderRadius: BorderRadius.circular(12), // 시안 기준 12dp
     ),
     // 일반 메시지는 2초, 에러 메시지는 3초 표시
     duration: Duration(seconds: isError ? 3 : 2),

@@ -18,7 +18,6 @@ Future<void> _pump(
   WidgetTester tester, {
   required QuillController controller,
   int plainLength = 0,
-  bool canSave = false,
   bool saving = false,
   VoidCallback? onRegister,
   VoidCallback? onRemember,
@@ -37,9 +36,9 @@ Future<void> _pump(
       body: DiaryEditorView(
         dateText: '2026년 6월 24일',
         controller: controller,
-        plainLength: plainLength,
+        // 길이는 리스너블로 주입(실제 페이지의 ValueNotifier 흐름과 동일).
+        plainLength: ValueNotifier<int>(plainLength),
         saving: saving,
-        canSave: canSave,
         onRegister: onRegister ?? () {},
         onRemember: onRemember ?? () {},
         onCancel: () {},
@@ -72,14 +71,14 @@ void main() {
       expect(find.text('123 / 500'), findsOneWidget);
     });
 
-    testWidgets('canSave=false면 기억하기 버튼 비활성, true면 활성 + onRemember 호출',
+    testWidgets('내용 없으면 기억하기 버튼 비활성, 있으면 활성 + onRemember 호출',
         (tester) async {
       final controller = QuillController.basic();
       addTearDown(controller.dispose);
       var remembered = false;
 
-      // 비활성: 내용 없음.
-      await _pump(tester, controller: controller, canSave: false);
+      // 비활성: 내용 없음(plainLength=0 → canSave 파생값 false).
+      await _pump(tester, controller: controller, plainLength: 0);
       final rememberBtn = find.widgetWithText(FilledButton, '오늘을 기억하기');
       expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNull);
 
@@ -88,7 +87,6 @@ void main() {
         tester,
         controller: controller,
         plainLength: 5,
-        canSave: true,
         onRemember: () => remembered = true,
       );
       expect(tester.widget<FilledButton>(rememberBtn).onPressed, isNotNull);
@@ -96,14 +94,14 @@ void main() {
       expect(remembered, true);
     });
 
-    testWidgets('canSave=false면 등록 버튼 비활성, true면 활성 + onRegister 호출',
+    testWidgets('내용 없으면 등록 버튼 비활성, 있으면 활성 + onRegister 호출',
         (tester) async {
       final controller = QuillController.basic();
       addTearDown(controller.dispose);
       var registered = false;
 
-      // 비활성: 내용 없음.
-      await _pump(tester, controller: controller, canSave: false);
+      // 비활성: 내용 없음(plainLength=0 → canSave 파생값 false).
+      await _pump(tester, controller: controller, plainLength: 0);
       final registerBtn = find.widgetWithText(OutlinedButton, '등록');
       expect(tester.widget<OutlinedButton>(registerBtn).onPressed, isNull);
 
@@ -112,7 +110,6 @@ void main() {
         tester,
         controller: controller,
         plainLength: 5,
-        canSave: true,
         onRegister: () => registered = true,
       );
       expect(tester.widget<OutlinedButton>(registerBtn).onPressed, isNotNull);

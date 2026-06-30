@@ -53,7 +53,11 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   bool _redirectingToDetail = false;
 
   /// 현재 순수 텍스트 길이(카운터·저장 가능 판단용).
-  int _plainLength = 0;
+  ///
+  /// 매 글자 입력마다 [setState]로 페이지를 rebuild하면 [QuillEditor]가 통째로
+  /// 재구성되어 한글 IME 입력 연결이 끊긴다(백스페이스 1회 후 멈춤). 따라서 길이는
+  /// 리스너블로 두고 뷰의 카운터·버튼만 갱신해 에디터 rebuild를 피한다.
+  final ValueNotifier<int> _plainLength = ValueNotifier<int>(0);
 
   /// 글자수 초과 시 되돌릴 마지막 유효 상태.
   String _lastValidJson = '';
@@ -83,12 +87,11 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     _controller
       ..removeListener(_onDocumentChanged)
       ..dispose();
+    _plainLength.dispose();
     super.dispose();
   }
 
   String get _dateText => '${_date.year}년 ${_date.month}월 ${_date.day}일';
-
-  bool get _canSave => _plainLength > 0 && !_saving;
 
   /// 기존 기록이 처음 도착하면 Delta를 1회 프리필한다.
   void _ensurePrefilled(Diary? diary) {
@@ -99,7 +102,7 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     }
     _lastValidJson = contentJsonFromDocument(_controller.document);
     _lastValidSelection = _controller.selection;
-    _plainLength = plainTextOf(_controller.document).length;
+    _plainLength.value = plainTextOf(_controller.document).length;
   }
 
   /// 본문 변경 감지 → 글자수 갱신 + 순수 텍스트 500자 하드 제한.
@@ -118,18 +121,18 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         ChangeSource.local,
       );
       _enforcing = false;
+      // 길이만 갱신(에디터 rebuild 없이) + 초과 안내 스낵바.
+      _plainLength.value = plainTextOf(_controller.document).length;
       if (mounted) {
         showAppSnackBar(context, '본문은 최대 $_maxLength자까지 작성할 수 있어요');
-        setState(() => _plainLength = plainTextOf(_controller.document).length);
       }
       return;
     }
 
     _lastValidJson = contentJsonFromDocument(_controller.document);
     _lastValidSelection = _controller.selection;
-    if (length != _plainLength && mounted) {
-      setState(() => _plainLength = length);
-    }
+    // setState 대신 리스너블만 갱신 → 카운터·버튼만 rebuild(에디터 보존).
+    _plainLength.value = length;
   }
 
   /// 본문에 박힌 이미지(임베드) 개수.
@@ -310,7 +313,6 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         plainLength: _plainLength,
         maxLength: _maxLength,
         saving: _saving,
-        canSave: _canSave,
         onRegister: _onRegister,
         onRemember: _onRemember,
         onCancel: () => context.pop(),

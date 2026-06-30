@@ -1,0 +1,305 @@
+/* Wanted Design System — component styles.
+   Token-driven. Imported from styles.css so hover/focus/disabled states work
+   and JSX components stay thin (they emit these class names). */
+
+/* ===================================================================
+   BUTTON
+   =================================================================== */
+.wds-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: var(--radius-12);
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, filter .15s ease, transform .05s ease;
+  box-sizing: border-box;
+}
+.wds-btn:active { transform: scale(0.985); }
+.wds-btn--full { width: 100%; }
+
+/* sizes */
+.wds-btn--lg { height: 48px; padding: 0 28px; font-size: 16px; gap: 6px; border-radius: var(--radius-12); }
+.wds-btn--md { height: 40px; padding: 0 20px; font-size: 15px; gap: 4px; border-radius: var(--radius-12); }
+.wds-btn--sm { height: 32px; padding: 0 14px; font-size: 14px; gap: 4px; border-radius: var(--radius-8); }
+.wds-btn--xs { height: 28px; padding: 0 10px; font-size: 13px; gap: 4px; border-radius: var(--radius-8); }
+
+/* SOLID */
+.wds-btn--solid.wds-btn--primary   { background: var(--primary-normal); color: var(--static-white); }
+.wds-btn--solid.wds-btn--primary:hover   { background: var(--primary-strong); }
+.wds-btn--solid.wds-btn--primary:active  { background: var(--primary-heavy); }
+.wds-btn--solid.wds-btn--negative  { background: var(--color-negative); color: var(--static-white); }
+.wds-btn--solid.wds-btn--negative:hover  { filter: brightness(0.94); }
+.wds-btn--solid.wds-btn--assistive { background: var(--fill); color: var(--text-neutral); }
+.wds-btn--solid.wds-btn--assistive:hover { background: var(--fill-bold); }
+
+/* OUTLINED */
+.wds-btn--outlined { background: transparent; }
+.wds-btn--outlined.wds-btn--primary   { border-color: var(--primary-normal); color: var(--primary-normal); }
+.wds-btn--outlined.wds-btn--primary:hover   { background: rgba(51,102,255,0.06); }
+.wds-btn--outlined.wds-btn--assistive { border-color: var(--line); color: var(--text-neutral); }
+.wds-btn--outlined.wds-btn--assistive:hover { background: var(--fill-soft); }
+.wds-btn--outlined.wds-btn--negative  { border-color: var(--color-negative); color: var(--color-negative); }
+.wds-btn--outlined.wds-btn--negative:hover  { background: rgba(255,66,66,0.06); }
+
+/* TEXT */
+.wds-btn--text { background: transparent; padding-left: 8px; padding-right: 8px; }
+.wds-btn--text.wds-btn--primary   { color: var(--primary-normal); }
+.wds-btn--text.wds-btn--assistive { color: var(--text-neutral); }
+.wds-btn--text.wds-btn--negative  { color: var(--color-negative); }
+.wds-btn--text:hover { background: var(--fill-soft); }
+
+/* disabled (all variants) */
+.wds-btn:disabled, .wds-btn[aria-disabled="true"] {
+  cursor: not-allowed; pointer-events: none; transform: none;
+  background: var(--color-disable); color: var(--text-disable); border-color: transparent; filter: none;
+}
+.wds-btn--outlined:disabled, .wds-btn--text:disabled,
+.wds-btn--outlined[aria-disabled="true"], .wds-btn--text[aria-disabled="true"] {
+  background: transparent; color: var(--text-disable); border-color: var(--line-alternative);
+}
+
+/* ===================================================================
+   ICON BUTTON
+   =================================================================== */
+.wds-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: var(--radius-8);
+  cursor: pointer; color: var(--text-normal); background: transparent;
+  transition: background-color .15s ease, color .15s ease, transform .05s ease;
+  box-sizing: border-box; padding: 0;
+}
+.wds-iconbtn:active { transform: scale(0.94); }
+.wds-iconbtn--lg { width: 48px; height: 48px; }
+.wds-iconbtn--md { width: 40px; height: 40px; }
+.wds-iconbtn--sm { width: 32px; height: 32px; }
+.wds-iconbtn--normal:hover { background: var(--fill-soft); }
+.wds-iconbtn--filled { background: var(--fill); }
+.wds-iconbtn--filled:hover { background: var(--fill-bold); }
+.wds-iconbtn--outlined { border-color: var(--line); }
+.wds-iconbtn--outlined:hover { background: var(--fill-soft); }
+.wds-iconbtn--primary { color: var(--primary-normal); }
+.wds-iconbtn:disabled { color: var(--text-disable); cursor: not-allowed; pointer-events: none; }
+
+/* ===================================================================
+   BADGE (small status / count)
+   =================================================================== */
+.wds-badge {
+  display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  font-family: var(--font-sans); font-weight: var(--weight-semibold);
+  font-size: 11px; line-height: 1; height: 18px; min-width: 18px;
+  padding: 0 6px; border-radius: var(--radius-circle); box-sizing: border-box;
+  color: var(--static-white); background: var(--color-negative);
+}
+.wds-badge--dot { width: 6px; height: 6px; min-width: 0; padding: 0; }
+.wds-badge--primary  { background: var(--primary-normal); }
+.wds-badge--neutral  { background: var(--fill-bold); color: var(--text-neutral); }
+
+/* ===================================================================
+   CONTENT BADGE / TAG (label chips, non-interactive)
+   =================================================================== */
+.wds-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-sans); font-weight: var(--weight-semibold);
+  font-size: 12px; line-height: 1.34; height: 24px; padding: 0 8px;
+  border-radius: var(--radius-4); box-sizing: border-box;
+  color: var(--text-neutral); background: var(--fill);
+}
+.wds-tag--lg { height: 28px; font-size: 13px; padding: 0 10px; border-radius: var(--radius-8); }
+.wds-tag--primary  { color: var(--primary-normal); background: rgba(51,102,255,0.10); }
+.wds-tag--violet   { color: var(--accent-foreground-violet); background: var(--accent-background-violet, rgba(101,65,242,0.10)); }
+.wds-tag--positive { color: var(--accent-foreground-green); background: rgba(0,191,64,0.10); }
+.wds-tag--negative { color: var(--color-negative); background: rgba(255,66,66,0.10); }
+.wds-tag--outline  { background: transparent; border: 1px solid var(--line); color: var(--text-neutral); }
+
+/* ===================================================================
+   CHIP (interactive filter / selection)
+   =================================================================== */
+.wds-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-sans); font-weight: var(--weight-medium);
+  font-size: 14px; height: 36px; padding: 0 14px;
+  border-radius: var(--radius-circle); box-sizing: border-box;
+  background: var(--bg-normal); color: var(--text-neutral);
+  border: 1px solid var(--line); cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.wds-chip--sm { height: 30px; font-size: 13px; padding: 0 12px; }
+.wds-chip:hover { background: var(--fill-soft); }
+.wds-chip[aria-pressed="true"], .wds-chip.is-active {
+  background: var(--label-strong); border-color: var(--label-strong); color: var(--static-white);
+}
+.wds-chip--accent[aria-pressed="true"], .wds-chip--accent.is-active {
+  background: rgba(51,102,255,0.08); border-color: var(--primary-normal); color: var(--primary-normal);
+}
+
+/* ===================================================================
+   AVATAR
+   =================================================================== */
+.wds-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-circle); overflow: hidden; flex-shrink: 0;
+  background: var(--fill); color: var(--text-alternative);
+  font-family: var(--font-sans); font-weight: var(--weight-semibold);
+}
+.wds-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wds-avatar--xl { width: 72px; height: 72px; font-size: 28px; }
+.wds-avatar--lg { width: 56px; height: 56px; font-size: 22px; }
+.wds-avatar--md { width: 40px; height: 40px; font-size: 16px; }
+.wds-avatar--sm { width: 32px; height: 32px; font-size: 13px; }
+.wds-avatar--xs { width: 24px; height: 24px; font-size: 11px; }
+.wds-avatar--square { border-radius: var(--radius-12); }
+
+/* ===================================================================
+   DIVIDER
+   =================================================================== */
+.wds-divider { border: 0; background: var(--line-neutral); }
+.wds-divider--h { width: 100%; height: 1px; }
+.wds-divider--v { width: 1px; align-self: stretch; min-height: 12px; }
+.wds-divider--thick.wds-divider--h { height: 8px; background: var(--fill-soft); }
+
+/* ===================================================================
+   SWITCH
+   =================================================================== */
+.wds-switch { display: inline-flex; align-items: center; cursor: pointer; }
+.wds-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.wds-switch__track {
+  position: relative; width: 52px; height: 32px; border-radius: var(--radius-circle);
+  background: var(--interaction-inactive); transition: background-color .2s ease;
+}
+.wds-switch__thumb {
+  position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--static-white); box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform .2s ease;
+}
+.wds-switch input:checked + .wds-switch__track { background: var(--primary-normal); }
+.wds-switch input:checked + .wds-switch__track .wds-switch__thumb { transform: translateX(20px); }
+.wds-switch input:disabled + .wds-switch__track { opacity: .4; cursor: not-allowed; }
+.wds-switch--sm .wds-switch__track { width: 40px; height: 24px; }
+.wds-switch--sm .wds-switch__thumb { width: 18px; height: 18px; }
+.wds-switch--sm input:checked + .wds-switch__track .wds-switch__thumb { transform: translateX(16px); }
+
+/* ===================================================================
+   CHECKBOX & RADIO
+   =================================================================== */
+.wds-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-family: var(--font-sans); font-size: 15px; color: var(--text-normal); }
+.wds-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+.wds-check__box {
+  width: 22px; height: 22px; border-radius: var(--radius-circle); flex-shrink: 0;
+  border: 2px solid var(--line-strong); background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--static-white);
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.wds-check--square .wds-check__box { border-radius: 6px; }
+.wds-check input:checked + .wds-check__box { background: var(--primary-normal); border-color: var(--primary-normal); }
+.wds-check input:disabled + .wds-check__box { background: var(--color-disable); border-color: var(--line-alternative); }
+.wds-check__box svg { opacity: 0; transition: opacity .1s ease; }
+.wds-check input:checked + .wds-check__box svg { opacity: 1; }
+.wds-radio .wds-check__box::after {
+  content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--static-white); opacity: 0; transition: opacity .1s ease;
+}
+.wds-radio input:checked + .wds-check__box::after { opacity: 1; }
+
+/* ===================================================================
+   TEXT FIELD / INPUT
+   =================================================================== */
+.wds-field { display: flex; flex-direction: column; gap: 6px; font-family: var(--font-sans); }
+.wds-field__label { font-size: 14px; font-weight: var(--weight-semibold); color: var(--text-normal); }
+.wds-field__box {
+  display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px;
+  border-radius: var(--radius-12); background: var(--bg-normal);
+  border: 1px solid var(--line); transition: border-color .15s ease, box-shadow .15s ease;
+  box-sizing: border-box; color: var(--text-normal);
+}
+.wds-field__box:focus-within { border-color: var(--primary-normal); box-shadow: 0 0 0 1px var(--primary-normal); }
+.wds-field__box input {
+  flex: 1; border: 0; outline: 0; background: transparent; font-family: var(--font-sans);
+  font-size: 16px; color: var(--text-normal); min-width: 0;
+}
+.wds-field__box input::placeholder { color: var(--text-assistive); }
+.wds-field__box .wds-field__icon { color: var(--text-alternative); display: inline-flex; }
+.wds-field--sm .wds-field__box { height: 40px; border-radius: var(--radius-8); }
+.wds-field--error .wds-field__box { border-color: var(--color-negative); }
+.wds-field--error .wds-field__box:focus-within { box-shadow: 0 0 0 1px var(--color-negative); }
+.wds-field__help { font-size: 13px; color: var(--text-alternative); }
+.wds-field--error .wds-field__help { color: var(--color-negative); }
+.wds-field__box[aria-disabled="true"], .wds-field__box.is-disabled { background: var(--fill-soft); color: var(--text-disable); }
+
+/* ===================================================================
+   CARD
+   =================================================================== */
+.wds-card {
+  background: var(--surface-card); border-radius: var(--radius-16);
+  border: 1px solid var(--line-alternative); box-shadow: var(--shadow-normal);
+  box-sizing: border-box; overflow: hidden;
+}
+.wds-card--flat { box-shadow: none; }
+.wds-card--interactive { cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }
+.wds-card--interactive:hover { box-shadow: var(--shadow-strong); }
+.wds-card--interactive:active { transform: translateY(1px); }
+
+/* ===================================================================
+   ALERT / CALLOUT
+   =================================================================== */
+.wds-alert {
+  display: flex; gap: 12px; padding: 16px; border-radius: var(--radius-12);
+  font-family: var(--font-sans); background: var(--fill-soft); color: var(--text-normal); box-sizing: border-box;
+}
+.wds-alert__icon { flex-shrink: 0; margin-top: 1px; }
+.wds-alert__title { font-size: 15px; font-weight: var(--weight-semibold); margin: 0 0 2px; }
+.wds-alert__body { font-size: 14px; color: var(--text-alternative); margin: 0; }
+.wds-alert--info     { background: rgba(51,102,255,0.07); }
+.wds-alert--info     .wds-alert__icon { color: var(--primary-normal); }
+.wds-alert--positive { background: rgba(0,191,64,0.08); }
+.wds-alert--positive .wds-alert__icon { color: var(--accent-foreground-green); }
+.wds-alert--negative { background: rgba(255,66,66,0.07); }
+.wds-alert--negative .wds-alert__icon { color: var(--color-negative); }
+.wds-alert--cautionary { background: rgba(255,146,0,0.08); }
+.wds-alert--cautionary .wds-alert__icon { color: var(--color-cautionary); }
+
+/* ===================================================================
+   TOOLTIP
+   =================================================================== */
+.wds-tooltip {
+  display: inline-flex; align-items: center; font-family: var(--font-sans);
+  font-size: 13px; font-weight: var(--weight-medium); line-height: 1.4;
+  padding: 8px 12px; border-radius: var(--radius-8);
+  background: var(--inverse-background); color: var(--inverse-label); box-sizing: border-box;
+}
+
+/* ===================================================================
+   TABS
+   =================================================================== */
+.wds-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-neutral); }
+.wds-tab {
+  position: relative; appearance: none; border: 0; background: transparent; cursor: pointer;
+  font-family: var(--font-sans); font-size: 16px; font-weight: var(--weight-semibold);
+  color: var(--text-alternative); padding: 12px 16px; transition: color .15s ease;
+}
+.wds-tab:hover { color: var(--text-normal); }
+.wds-tab.is-active { color: var(--text-strong); }
+.wds-tab.is-active::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+  background: var(--label-strong); border-radius: 2px;
+}
+
+/* ===================================================================
+   BOTTOM NAVIGATION
+   =================================================================== */
+.wds-bottomnav {
+  display: flex; background: var(--bg-normal); border-top: 1px solid var(--line-alternative);
+  padding: 6px 0 max(8px, env(safe-area-inset-bottom));
+}
+.wds-bottomnav__item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: transparent; border: 0; cursor: pointer; padding: 6px 0;
+  font-family: var(--font-sans); font-size: 11px; font-weight: var(--weight-medium);
+  color: var(--text-assistive);
+}
+.wds-bottomnav__item.is-active { color: var(--label-strong); }

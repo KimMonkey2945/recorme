@@ -95,6 +95,41 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
         body: SafeArea(
           child: Column(
             children: [
+              // ── 페이지 타이틀 헤더 ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 주제목: PoorStory 26px ink
+                    const Text(
+                      '지나온 날들',
+                      style: TextStyle(
+                        fontFamily: 'PoorStory',
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                        letterSpacing: -0.01 * 26,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    // 부제목: 총 N개의 기록 (데이터가 로드되면 업데이트)
+                    Text(
+                      '총 ${async.asData?.value.length ?? 0}개의 기록',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // 월 이동 헤더(캘린더와 동일 패턴).
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -141,7 +176,7 @@ class _DiaryListPageState extends ConsumerState<DiaryListPage> {
       data: (items) {
         if (items.isEmpty) return const _EmptyMonth();
         return RefreshIndicator(
-          color: AppColors.accent,
+          color: AppColors.primary,
           onRefresh: () async => ref.invalidate(monthDiariesProvider(_yearMonth)),
           child: ListView.separated(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -177,7 +212,7 @@ class _EmptyMonth extends StatelessWidget {
   Widget build(BuildContext context) {
     return const EmptyStateView(
       icon: Icons.book_outlined,
-      message: '이 달에 작성한 일기가 없어요',
+      message: '이 달에 기록된 기억이 없어요',
     );
   }
 }

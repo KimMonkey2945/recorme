@@ -46,6 +46,7 @@ dependencies:
   image_picker: ^1.1.2  # 프로필 이미지 파일 첨부(갤러리 선택)
   flutter_quill: ^11.5.0  # 일기 리치 텍스트 에디터(Delta JSON, 서식·인라인 이미지)
   flutter_quill_extensions: ^11.0.0  # Quill 인라인 이미지 임베드 빌더
+  video_player: ^2.9.2  # 로그인 화면 마스코트 영상 재생
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +76,31 @@ flutter:
 
   assets:
     - assets/icons/
+    - assets/fonts/
+    - assets/images/
+    - assets/videos/
+
+  # 커스텀 폰트 — Wanted Design System 기반.
+  # Pretendard/WantedSans는 가변 폰트(Variable)라 단일 파일이 100~900 weight를 모두 커버한다.
+  fonts:
+    # 앱 전역 기본 폰트 — Poor Story (한글 지원 손글씨체, 단일 weight 400).
+    - family: PoorStory
+      fonts:
+        - asset: assets/fonts/PoorStory-Regular.ttf
+    # 본문·UI 기본 폰트 (한글 가독성).
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/PretendardVariable.ttf
+    # 로고·대형 타이틀용 브랜드 폰트.
+    - family: WantedSans
+      fonts:
+        - asset: assets/fonts/WantedSansVariable.ttf
+    # 종이 화면(에디터·상세) serif 본문용 한글 명조.
+    - family: NanumMyeongjo
+      fonts:
+        - asset: assets/fonts/NanumMyeongjo-Regular.ttf
+        - asset: assets/fonts/NanumMyeongjo-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

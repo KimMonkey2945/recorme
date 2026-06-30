@@ -61,8 +61,6 @@ class _ProfileBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
@@ -78,29 +76,40 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
-          // 닉네임
+          // 닉네임 — 700 20px ink
           Text(
             user.nickname,
             textAlign: TextAlign.center,
-            style: textTheme.headlineSmall,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
+            ),
           ),
           if (user.email != null && user.email!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.xs),
+            // 이메일 — 13px inkMuted
             Text(
               user.email!,
               textAlign: TextAlign.center,
-              style: textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppColors.inkMuted,
+              ),
             ),
           ],
           const SizedBox(height: AppSpacing.xl),
-          // 자기소개 카드
+          // 자기소개 카드 — bgAlt 배경, 테두리 없음, radius 14
           _SectionCard(
             label: '자기소개',
             child: Text(
               (user.bio != null && user.bio!.isNotEmpty)
                   ? user.bio!
                   : '아직 자기소개가 없어요.',
-              style: textTheme.bodyMedium?.copyWith(
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.6, // 시안 기준 행간
                 color: (user.bio != null && user.bio!.isNotEmpty)
                     ? AppColors.ink
                     : AppColors.inkMuted,
@@ -108,12 +117,15 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          FilledButton.icon(
+          // 프로필 수정 버튼 — outlined (시안: hairline 테두리 + inkAlt)
+          OutlinedButton.icon(
             onPressed: () => context.push('/profile/edit'),
-            icon: const Icon(Icons.edit_rounded, size: 18),
-            label: const Text('프로필 수정'),
-            style: FilledButton.styleFrom(
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('프로필 편집'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.inkAlt,
               minimumSize: const Size(double.infinity, 52),
+              side: const BorderSide(color: AppColors.hairline, width: 1.5),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppRadius.button),
               ),
@@ -125,7 +137,8 @@ class _ProfileBody extends StatelessWidget {
   }
 }
 
-/// 라벨 + 내용으로 구성된 surface 카드.
+/// 라벨 + 내용으로 구성된 카드.
+/// 시안: bgAlt 배경, 테두리 없음, radius 14.
 class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.label, required this.child});
 
@@ -138,11 +151,14 @@ class _SectionCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: 15, // 시안 기준 15dp 수직 패딩
+      ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.hairline),
+        color: AppColors.bgAlt,       // surface → bgAlt
+        borderRadius: BorderRadius.circular(14), // card(16) → 14
+        // border 제거 (시안: no border)
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

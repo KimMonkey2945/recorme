@@ -32,6 +32,9 @@ class AppTheme {
       colorScheme: colorScheme,
       textTheme: textTheme,
 
+      // 기본 폰트 — Poor Story (한글 지원 손글씨체, 앱 전역). 개별 TextStyle은 미지정 시 이를 상속.
+      fontFamily: 'PoorStory',
+
       // ── 스캐폴드 배경: 따뜻한 캔버스 ──
       scaffoldBackgroundColor: AppColors.canvas,
 
@@ -71,7 +74,7 @@ class AppTheme {
       // ── Filled 버튼 ──
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.accent,
+          backgroundColor: AppColors.primary,
           foregroundColor: AppColors.surface,
           minimumSize: const Size(0, 52),        // 탭 영역 48dp+ 확보
           padding: const EdgeInsets.symmetric(
@@ -92,7 +95,7 @@ class AppTheme {
       // ── Outlined 버튼 ──
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.accent,
+          foregroundColor: AppColors.primary,
           minimumSize: const Size(0, 52),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.xl,
@@ -101,7 +104,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
           ),
-          side: const BorderSide(color: AppColors.accent, width: 1.5),
+          side: const BorderSide(color: AppColors.primary, width: 1.5),
           textStyle: textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w600,
             letterSpacing: 0.2,
@@ -113,7 +116,7 @@ class AppTheme {
       // ── Text 버튼 ──
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.accent,
+          foregroundColor: AppColors.primary,
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -144,7 +147,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -157,7 +160,7 @@ class AppTheme {
         hintStyle: textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted),
         labelStyle: textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted),
         floatingLabelStyle: textTheme.labelMedium?.copyWith(
-          color: AppColors.accent,
+          color: AppColors.primary,
         ),
       ),
 
@@ -172,10 +175,10 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surface,
         elevation: 0,
-        indicatorColor: AppColors.accentSoft,
+        indicatorColor: AppColors.primarySoft,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(color: AppColors.accent, size: 24);
+            return const IconThemeData(color: AppColors.primary, size: 24);
           }
           return const IconThemeData(color: AppColors.inkMuted, size: 24);
         }),
@@ -184,7 +187,7 @@ class AppTheme {
             return const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.accent,
+              color: AppColors.primary,
             );
           }
           return const TextStyle(
@@ -198,8 +201,8 @@ class AppTheme {
 
       // ── 칩 ──
       chipTheme: ChipThemeData(
-        backgroundColor: AppColors.accentSoft,
-        labelStyle: textTheme.labelSmall?.copyWith(color: AppColors.accent),
+        backgroundColor: AppColors.primarySoft,
+        labelStyle: textTheme.labelSmall?.copyWith(color: AppColors.primary),
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
           vertical: AppSpacing.xs,
@@ -271,13 +274,13 @@ class AppTheme {
 
   static ColorScheme get _colorScheme => ColorScheme(
         brightness: Brightness.light,
-        // 주 강조색 — 더스크 바이올렛
-        primary: AppColors.accent,
+        // 주색 — Wanted 블루 (CTA·링크·선택)
+        primary: AppColors.primary,
         onPrimary: AppColors.surface,
-        primaryContainer: AppColors.accentSoft,
-        onPrimaryContainer: AppColors.accent,
-        // 세컨더리 — 보조 텍스트 톤으로 통일
-        secondary: AppColors.inkMuted,
+        primaryContainer: AppColors.primarySoft,
+        onPrimaryContainer: AppColors.primaryStrong,
+        // 세컨더리 — 바이올렛(감정/AI 강조)
+        secondary: AppColors.accent,
         onSecondary: AppColors.surface,
         secondaryContainer: AppColors.hairline,
         onSecondaryContainer: AppColors.ink,
@@ -297,10 +300,10 @@ class AppTheme {
         // 인버스 — 스낵바 등
         inverseSurface: AppColors.ink,
         onInverseSurface: AppColors.surface,
-        inversePrimary: AppColors.accentSoft,
+        inversePrimary: AppColors.primarySoft,
         // 그림자·틴트
-        shadow: Color(0x14232228),       // ink 8% 투명도
-        scrim: Color(0x80232228),        // ink 50% 투명도
+        shadow: Color(0x14171717),       // ink 8% 투명도
+        scrim: Color(0x80171717),        // ink 50% 투명도
         surfaceTint: Colors.transparent, // 틴트 비활성 — 순수 색상 유지
       );
 
@@ -317,20 +320,21 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           color: AppColors.ink,
           height: 1.3,
-          letterSpacing: -0.5,
+          letterSpacing: -0.8,
         ),
         displayMedium: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w700,
           color: AppColors.ink,
           height: 1.3,
-          letterSpacing: -0.3,
+          letterSpacing: -0.6,
         ),
         displaySmall: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w700,
           color: AppColors.ink,
           height: 1.3,
+          letterSpacing: -0.4,
         ),
 
         // title 20 / w600 — 화면 제목, 섹션 헤더
@@ -373,9 +377,9 @@ class AppTheme {
           height: 1.4,
         ),
 
-        // body 15 / w400 / height 1.5 — 기록 본문·일반 콘텐츠
+        // body 16 / w400 / height 1.5 — 기록 본문·일반 콘텐츠 (Wanted DS Body1)
         bodyLarge: TextStyle(
-          fontSize: 15,
+          fontSize: 16,
           fontWeight: FontWeight.w400,
           color: AppColors.ink,
           height: 1.5,          // 넉넉한 행간 — 기록 본문 가독성
