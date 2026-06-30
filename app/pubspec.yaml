@@ -79,6 +79,8 @@ flutter:
     - assets/fonts/
     - assets/images/
     - assets/videos/
+    - assets/emotions/  # 감정별 마스코트(레서판다) 표정 PNG (영상 포스터·폴백용)
+    - assets/emotions/video/  # 감정별 마스코트 움직이는 영상 mp4
 
   # 커스텀 폰트 — Wanted Design System 기반.
   # Pretendard/WantedSans는 가변 폰트(Variable)라 단일 파일이 100~900 weight를 모두 커버한다.

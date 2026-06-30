@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../shared/widgets/emotion_video.dart';
 import '../../domain/diary_content.dart';
 import 'diary_image_embed_builder.dart';
 import 'diary_quill_styles.dart';
@@ -36,6 +40,7 @@ class DiaryDetailView extends StatefulWidget {
     this.onEdit,
     this.pollingTimedOut = false,
     // 감정 테마 필드 (DONE 시에만 비-null)
+    this.primaryEmotion,
     this.moodCardColor,
     this.textColor,
     this.accentColor,
@@ -62,6 +67,9 @@ class DiaryDetailView extends StatefulWidget {
   /// 폴링 타임아웃 여부. true이면 "잠시 후 다시 확인해 주세요" 안내로 전환.
   final bool pollingTimedOut;
 
+  /// 감정 코드 (예: 'JOY'). 무드 카드의 마스코트 이미지 선택에 사용. DONE 시에만 비-null.
+  final String? primaryEmotion;
+
   /// 무드 카드 채움색 — 감정 배경색(파스텔). DONE 시에만 비-null. 페이지 배경엔 쓰지 않음.
   final Color? moodCardColor;
 
@@ -84,13 +92,65 @@ class DiaryDetailView extends StatefulWidget {
   State<DiaryDetailView> createState() => _DiaryDetailViewState();
 }
 
-class _DiaryDetailViewState extends State<DiaryDetailView> {
+/// 감정 인트로 모션의 3단계.
+/// - [big]: 이모지가 화면 중앙에 크게 차올라 감정 모션 표출(글을 가림).
+/// - [settle]: 이모지가 글 하단 좌측 슬롯으로 작아지며 이동, 코멘트 페이드인.
+/// - [rest]: 이모지(좌) + 코멘트(우)가 글 하단에 안착한 최종 상태.
+enum _IntroPhase { big, settle, rest }
+
+class _DiaryDetailViewState extends State<DiaryDetailView>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late QuillController _controller;
+
+  // ── 시네마틱 인트로 상태 ──────────────────────────────────────
+  late final AnimationController _settleController;
+  late final Animation<double> _curved;
+
+  /// BIG 단계 머무는 시간을 재는 타이머(끝나면 SETTLE 시작).
+  Timer? _dwellTimer;
+  _IntroPhase _phase = _IntroPhase.big;
+
+  /// 단일 영상 위젯 — 오버레이↔안착 슬롯 간 reparent해도 같은 컨트롤러를 유지(재시작 방지).
+  final GlobalKey _videoKey = GlobalKey();
+
+  /// 안착 슬롯 rect 측정용 키.
+  final GlobalKey _slotKey = GlobalKey();
+
+  /// 좌표 기준(Stack)으로 쓰는 키 — 슬롯 글로벌 좌표를 Stack 로컬로 변환.
+  final GlobalKey _stackKey = GlobalKey();
+
+  /// 측정된 안착 슬롯 rect(Stack 로컬 좌표). 측정 전엔 null.
+  Rect? _restRect;
+
+  /// 측정된 Stack 크기 — BIG 중앙 배치 계산용.
+  Size? _stackSize;
+
+  // ── 인트로 튜닝 상수 ──────────────────────────────────────────
+  /// BIG 단계 머무는 시간(감정 모션 표출).
+  static const Duration _kDwell = Duration(milliseconds: 1800);
+
+  /// SETTLE 단계 길이(작아지며 안착).
+  static const Duration _kSettle = Duration(milliseconds: 700);
+
+  /// BIG 단계 이모지 최대 크기(화면 폭의 90% 또는 이 값 중 작은 쪽).
+  static const double _kBigMax = 320;
+
+  /// 안착(REST) 이모지 크기.
+  static const double _kRestSize = 72;
+
+  /// DONE이고 감정 코드가 있어 인트로/안착을 보여줄 상태인지.
+  bool _hasEmotion(DiaryDetailView w) =>
+      w.analysisStatus == 'DONE' && w.primaryEmotion != null;
 
   @override
   void initState() {
     super.initState();
     _controller = _buildReadOnlyController(widget.content);
+    _settleController = AnimationController(vsync: this, duration: _kSettle);
+    _curved = CurvedAnimation(parent: _settleController, curve: Curves.easeInOutCubic);
+    WidgetsBinding.instance.addObserver(this);
+    // 첫 레이아웃 후 인트로 시작(슬롯 측정·MediaQuery 접근 가능 시점).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
   }
 
   @override
@@ -99,6 +159,10 @@ class _DiaryDetailViewState extends State<DiaryDetailView> {
     if (oldWidget.content != widget.content) {
       _controller.dispose();
       _controller = _buildReadOnlyController(widget.content);
+    }
+    // PENDING→DONE 등으로 감정이 처음 생기면 인트로 재생.
+    if (!_hasEmotion(oldWidget) && _hasEmotion(widget)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
     }
   }
 
@@ -112,22 +176,114 @@ class _DiaryDetailViewState extends State<DiaryDetailView> {
   }
 
   @override
+  void didChangeMetrics() {
+    // 리사이즈/회전 시 슬롯·Stack 좌표 재측정(안착 후에도 위치 유지).
+    if (_hasEmotion(widget)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(_measureRestRect);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _dwellTimer?.cancel();
+    _settleController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
+
+  // ── 인트로 제어 ───────────────────────────────────────────────
+
+  /// 인트로를 BIG부터 시작한다. 감정이 없으면 무시.
+  /// 모션 줄이기 설정이면 BIG·SETTLE을 건너뛰고 바로 REST로.
+  void _startIntro() {
+    if (!mounted || !_hasEmotion(widget)) return;
+    _dwellTimer?.cancel();
+    _settleController.reset();
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      setState(() => _phase = _IntroPhase.rest);
+      return;
+    }
+    _measureRestRect(); // Stack은 이미 레이아웃 완료
+    setState(() => _phase = _IntroPhase.big);
+    _dwellTimer = Timer(_kDwell, _startSettle);
+  }
+
+  /// BIG → SETTLE 전환. 탭(건너뛰기) 또는 dwell 타이머가 호출.
+  void _startSettle() {
+    if (!mounted || _phase != _IntroPhase.big) return;
+    _dwellTimer?.cancel();
+    _measureRestRect(); // 최신 좌표 확보
+    if (_restRect == null || _stackSize == null) {
+      // 측정 실패 시 즉시 안착(애니메이션 생략).
+      setState(() => _phase = _IntroPhase.rest);
+      return;
+    }
+    setState(() => _phase = _IntroPhase.settle);
+    _settleController.forward(from: 0).whenComplete(() {
+      if (mounted) setState(() => _phase = _IntroPhase.rest);
+    });
+  }
+
+  /// 안착 슬롯의 rect(Stack 로컬 좌표)와 Stack 크기를 측정해 저장한다.
+  void _measureRestRect() {
+    final stackBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    final slotBox = _slotKey.currentContext?.findRenderObject() as RenderBox?;
+    if (stackBox == null || slotBox == null) return;
+    if (!stackBox.hasSize || !slotBox.hasSize) return;
+    final topLeft = slotBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    _restRect = topLeft & slotBox.size;
+    _stackSize = stackBox.size;
+  }
+
+  /// BIG 단계 이모지 rect(중앙 정사각형). 측정 전엔 화면 크기로 폴백.
+  Rect _bigRect() {
+    final s = _stackSize ?? MediaQuery.sizeOf(context);
+    final dim = math.min(s.width * 0.9, _kBigMax);
+    return Rect.fromCenter(
+      center: Offset(s.width / 2, s.height / 2),
+      width: dim,
+      height: dim,
+    );
+  }
+
+  /// 현재 오버레이 이모지 rect — SETTLE 동안 BIG→안착으로 보간.
+  Rect _currentOverlayRect() {
+    final big = _bigRect();
+    if (_phase == _IntroPhase.big || _restRect == null) return big;
+    return Rect.lerp(big, _restRect!, _curved.value) ?? big;
+  }
+
+  /// 코멘트 불투명도 — BIG=0, SETTLE 후반 0→1, REST=1.
+  double _commentOpacity() {
+    switch (_phase) {
+      case _IntroPhase.big:
+        return 0;
+      case _IntroPhase.rest:
+        return 1;
+      case _IntroPhase.settle:
+        return ((_settleController.value - 0.5) / 0.5).clamp(0.0, 1.0);
+    }
+  }
+
+  /// 단일 감정 영상 위젯(고정 [_videoKey]로 reparent 시 컨트롤러 유지).
+  Widget _emotionVideo(double size) => EmotionVideo(
+        key: _videoKey,
+        emotionCode: widget.primaryEmotion,
+        size: size,
+        moodEmoji: widget.moodEmoji,
+      );
 
   @override
   Widget build(BuildContext context) {
     final isPending = widget.analysisStatus == 'PENDING';
     final isDone = widget.analysisStatus == 'DONE';
-    // 무드 카드 표시 여부 — DONE이고 이모지/코멘트/제목 중 하나라도 있을 때.
-    final showMoodCard = isDone &&
-        (widget.moodEmoji != null ||
-            widget.aiComment != null ||
-            widget.aiTitle != null);
+    final showEmotion = isDone && widget.primaryEmotion != null;
 
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,30 +315,120 @@ class _DiaryDetailViewState extends State<DiaryDetailView> {
               ),
             ),
           ),
-          const SizedBox(height: AppSpacing.xl),
 
-          // ── 무드 카드 (DONE, 삭제 버튼 바로 위) ─────────────────
-          if (showMoodCard) ...[
-            _MoodCard(
-              moodEmoji: widget.moodEmoji,
-              aiComment: widget.aiComment,
-              aiTitle: widget.aiTitle,
-              cardColor: widget.moodCardColor ?? AppColors.accentSoft,
-              inkColor: widget.textColor ?? AppColors.ink,
-              accentColor: widget.accentColor ?? AppColors.accent,
-            ),
+          // ── DONE: 글 하단 감정 안착 행(이모지 좌 + 코멘트 우, 박스 없음) ──
+          if (showEmotion) ...[
             const SizedBox(height: AppSpacing.lg),
+            _buildRestingRow(),
           ],
+          const SizedBox(height: AppSpacing.xl),
 
           // ── 하단 액션 버튼 ──────────────────────────────────
           _ActionButtons(onEdit: widget.onEdit, onDelete: widget.onDelete),
         ],
       ),
     );
+
+    // 감정이 없으면 인트로/오버레이 불필요 — 콘텐츠만.
+    if (!showEmotion) return content;
+
+    // 감정 있을 때: Stack으로 감싸 인트로 오버레이를 콘텐츠 위에 띄운다.
+    return Stack(
+      key: _stackKey,
+      fit: StackFit.expand,
+      children: [
+        content,
+        if (_phase != _IntroPhase.rest) _buildIntroOverlay(),
+      ],
+    );
+  }
+
+  /// 글 하단 감정 안착 행 — 좌: 영상 슬롯(REST에서 인라인 영상), 우: AI 제목·코멘트.
+  Widget _buildRestingRow() {
+    final inkColor = widget.textColor ?? AppColors.ink;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 좌측 슬롯 — BIG/SETTLE엔 빈 자리(영상은 오버레이), REST엔 영상 인라인.
+        SizedBox(
+          key: _slotKey,
+          width: _kRestSize,
+          height: _kRestSize,
+          child: _phase == _IntroPhase.rest ? _emotionVideo(_kRestSize) : null,
+        ),
+        const SizedBox(width: AppSpacing.md),
+        // 우측 AI 제목·코멘트 — 인트로 동안 페이드인.
+        Expanded(
+          child: AnimatedBuilder(
+            animation: _settleController,
+            builder: (context, child) => Opacity(
+              opacity: _commentOpacity(),
+              child: child,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.aiTitle != null)
+                  Text(
+                    widget.aiTitle!,
+                    style: textTheme.titleMedium?.copyWith(
+                      color: inkColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                if (widget.aiTitle != null && widget.aiComment != null)
+                  const SizedBox(height: AppSpacing.xs),
+                if (widget.aiComment != null)
+                  Text(
+                    widget.aiComment!,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: inkColor,
+                      height: 1.45,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 4,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 인트로 오버레이 — 콘텐츠 위 전체를 덮고, 큰 이모지를 중앙→안착으로 이동.
+  /// 배경은 투명(종이 배경 비침). 탭하면 즉시 안착(건너뛰기).
+  Widget _buildIntroOverlay() {
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _phase == _IntroPhase.big ? _startSettle : null,
+        child: AnimatedBuilder(
+          animation: _settleController,
+          builder: (context, _) {
+            final rect = _currentOverlayRect();
+            return Stack(
+              children: [
+                Positioned(
+                  left: rect.left,
+                  top: rect.top,
+                  child: _emotionVideo(rect.width),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 
   /// DRAFT / FAILED일 때만 상태 배지를 반환한다.
-  /// PENDING은 큰 카드가 대신하고, DONE은 헤더 이모지·코멘트가 대신한다.
+  /// PENDING은 큰 카드가 대신하고, DONE은 글 하단 안착 행이 대신한다.
   Widget _buildStatusBadge() {
     final status = widget.analysisStatus;
     if (status == 'PENDING' || status == 'DONE') return const SizedBox.shrink();
@@ -285,101 +531,6 @@ class _DateParts {
   final String yearMonth;
   final String day;
   final String weekday;
-}
-
-// ──────────────────────────────────────────────────────────────
-// 무드 카드 (DONE 기록의 감정 표현 — 이모지·제목·코멘트 묶음)
-// ──────────────────────────────────────────────────────────────
-
-/// 감정색으로 채운 둥근 카드. 좌측 강조 바 + 큰 이모지 칩 + AI 제목/코멘트.
-class _MoodCard extends StatelessWidget {
-  const _MoodCard({
-    required this.cardColor,
-    required this.inkColor,
-    required this.accentColor,
-    this.moodEmoji,
-    this.aiComment,
-    this.aiTitle,
-  });
-
-  final Color cardColor;
-  final Color inkColor;
-  final Color accentColor;
-  final String? moodEmoji;
-  final String? aiComment;
-  final String? aiTitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        // 좌측 강조 바 — 감정 accent.
-        border: Border(
-          left: BorderSide(color: accentColor, width: 4),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // 큰 이모지 칩
-            if (moodEmoji != null)
-              Container(
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  moodEmoji!,
-                  style: const TextStyle(fontSize: 34),
-                ),
-              ),
-            if (moodEmoji != null) const SizedBox(width: AppSpacing.md),
-
-            // AI 제목 + 코멘트
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (aiTitle != null)
-                    Text(
-                      aiTitle!,
-                      style: textTheme.titleMedium?.copyWith(
-                        color: inkColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  if (aiTitle != null && aiComment != null)
-                    const SizedBox(height: AppSpacing.xs),
-                  if (aiComment != null)
-                    Text(
-                      aiComment!,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: inkColor,
-                        height: 1.45,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 4,
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ──────────────────────────────────────────────────────────────

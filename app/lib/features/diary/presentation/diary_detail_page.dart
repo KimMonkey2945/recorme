@@ -21,10 +21,10 @@ const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일']
 /// id로 단건을 조회해 전체 내용을 보여주고, 수정(에디터 이동)·삭제(확인
 /// 다이얼로그 후 소프트 삭제 → 메인 복귀)를 제공한다. 표현은 [DiaryDetailView].
 ///
-/// ## 배경색 동적 전환
-/// analysisStatus == 'DONE'이면 [DiaryTheme.fromEmotion]으로 감정별 큐레이트 팔레트를
-/// 적용한다. LLM이 내려주는 backgroundColor는 신뢰도가 낮으므로 [primaryEmotion]
-/// 코드 기반 팔레트를 우선 사용한다. DONE이 아니면 순수 화이트로 유지.
+/// ## 배경
+/// 상세 배경은 감정과 무관하게 항상 흰색으로 통일한다. 감정 이모지(영상)의 흰 배경과
+/// 페이지 배경 사이에 이질감이 생기지 않도록, 이전의 감정색 틴트 배경은 제거했다.
+/// 감정 팔레트는 본문·코멘트 텍스트 색상 등에만 사용한다.
 ///
 /// ## PENDING 자동 갱신
 /// analysisStatus가 'PENDING'이면 3초마다 [diaryByIdProvider]를 invalidate해
@@ -131,17 +131,14 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     final id = int.tryParse(widget.diaryId) ?? -1;
 
     // 상태 변화를 감지해 폴링을 제어한다.
-    ref.listen<AsyncValue<Diary>>(
-      diaryByIdProvider(id),
-      (_, next) {
-        final status = next.asData?.value.analysisStatus;
-        if (status == 'PENDING') {
-          _startPolling(id);
-        } else if (status != null) {
-          _stopPolling();
-        }
-      },
-    );
+    ref.listen<AsyncValue<Diary>>(diaryByIdProvider(id), (_, next) {
+      final status = next.asData?.value.analysisStatus;
+      if (status == 'PENDING') {
+        _startPolling(id);
+      } else if (status != null) {
+        _stopPolling();
+      }
+    });
 
     final async = ref.watch(diaryByIdProvider(id));
 
@@ -153,62 +150,54 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
       });
     }
 
-    // 감정 팔레트 — primaryEmotion 기반 큐레이트 색상.
-    // LLM backgroundColor는 신뢰도 낮음 → DiaryTheme 팔레트 우선.
-    // DONE(hasTheme=true)일 때만 팔레트 적용, 아니면 null → 흰색 기본.
+    // 감정 팔레트 — 본문·코멘트 텍스트/포인트 색상에만 사용(배경엔 미적용).
     final diary = async.asData?.value;
-    final palette =
-        (diary?.hasTheme == true) ? DiaryTheme.fromEmotion(diary!.primaryEmotion) : null;
-    // 페이지 배경: 베이스는 따뜻한 종이(paper). DONE이면 감정색의 옅은 틴트를 종이 위에
-    // 블렌드해 분위기를 전한다. 무드 카드는 감정 원색이라, 틴트로 낮춰야 카드가 묻히지 않는다.
-    final bgColor = palette == null
-        ? AppColors.paper
-        : Color.alphaBlend(
-            palette.backgroundColor.withValues(alpha: 0.45), AppColors.paper);
+    final palette = (diary?.hasTheme == true)
+        ? DiaryTheme.fromEmotion(diary!.primaryEmotion)
+        : null;
 
-    return AnimatedContainer(
-      // 분석 완료 직후 배경색을 부드럽게 전환(PENDING → DONE 시 자연스러운 색 전이).
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-      color: bgColor,
-      child: Scaffold(
-        // Scaffold 자체 배경은 투명 — AnimatedContainer 색이 보이도록.
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          // 타이틀 없음 — 날짜·AI 제목이 본문 헤더에서 담당.
-          backgroundColor: Colors.transparent,
-        ),
-        body: SafeArea(
-          child: async.when(
-            loading: () => const LoadingView(),
-            error: (_, _) => ErrorView(
-              message: '일기를 불러오지 못했어요',
-              onRetry: () => ref.invalidate(diaryByIdProvider(id)),
-            ),
-            data: (d) => DiaryDetailView(
-              dateText: _dateText(d.writtenDate),
-              content: d.content,
-              analysisStatus: d.analysisStatus,
-              pollingTimedOut: _pollingTimedOut,
-              // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
-              onEdit: d.isDraft
-                  ? () async {
-                      await context
-                          .push('/editor?date=${_dateParam(d.writtenDate)}');
-                      ref.invalidate(diaryByIdProvider(id));
-                    }
-                  : null,
-              onDelete: () => _handleDelete(context, id),
-              // 팔레트 색상 전달 — DONE 아니면 null이므로 DiaryDetailView 기본값 사용.
-              // moodCardColor는 무드 카드 채움색(감정 배경색). 페이지 배경엔 쓰지 않음.
-              moodCardColor: palette?.backgroundColor,
-              textColor: palette?.textColor,
-              accentColor: palette?.accentColor,
-              // 이모지·코멘트·제목은 API 값 그대로 사용 (LLM이 잘 생성함).
-              moodEmoji: d.moodEmoji,
-              aiComment: d.aiComment,
-              aiTitle: d.aiTitle,
-            ),
+    return Scaffold(
+      // 상세 배경: 감정과 무관하게 흰색으로 통일(이모지 영상 흰 배경과 일치).
+      backgroundColor: AppColors.surface,
+      appBar: AppBar(
+        // 타이틀 없음 — 날짜·AI 제목이 본문 헤더에서 담당.
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      body: SafeArea(
+        child: async.when(
+          loading: () => const LoadingView(),
+          error: (_, _) => ErrorView(
+            message: '일기를 불러오지 못했어요',
+            onRetry: () => ref.invalidate(diaryByIdProvider(id)),
+          ),
+          data: (d) => DiaryDetailView(
+            dateText: _dateText(d.writtenDate),
+            content: d.content,
+            analysisStatus: d.analysisStatus,
+            pollingTimedOut: _pollingTimedOut,
+            // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
+            onEdit: d.isDraft
+                ? () async {
+                    await context.push(
+                      '/editor?date=${_dateParam(d.writtenDate)}',
+                    );
+                    ref.invalidate(diaryByIdProvider(id));
+                  }
+                : null,
+            onDelete: () => _handleDelete(context, id),
+            // 감정 코드 전달 — 무드 카드 마스코트 이미지 선택용(DONE 시에만 비-null).
+            primaryEmotion: d.hasTheme ? d.primaryEmotion : null,
+            // 팔레트 색상 전달 — DONE 아니면 null이므로 DiaryDetailView 기본값 사용.
+            // moodCardColor는 무드 카드 채움색(감정 배경색). 페이지 배경엔 쓰지 않음.
+            moodCardColor: palette?.backgroundColor,
+            textColor: palette?.textColor,
+            accentColor: palette?.accentColor,
+            // 이모지·코멘트·제목은 API 값 그대로 사용 (LLM이 잘 생성함).
+            moodEmoji: d.moodEmoji,
+            aiComment: d.aiComment,
+            aiTitle: d.aiTitle,
           ),
         ),
       ),

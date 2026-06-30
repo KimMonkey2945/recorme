@@ -403,11 +403,12 @@ class _DayCell extends StatelessWidget {
   /// 날짜 숫자 아래 5px 상태 점.
   ///
   /// - DONE: accent(바이올렛) 점
-  /// - DRAFT: inkMuted 점
+  /// - DRAFT/PENDING: inkMuted 점
   /// - 기록 없음: null(빈 공간 유지)
+  ///
+  /// (마스코트는 작아서 식별이 어려워 상세 화면 영상으로 옮겼고, 캘린더는 점으로 상태만 구분)
   Widget? _buildEmotionIndicator() {
     if (summaryDay == null) return null;
-    // DONE → accent 점, DRAFT → inkMuted 점
     final Color dotColor =
         summaryDay!.isDone ? AppColors.accent : AppColors.inkMuted;
     return Center(
