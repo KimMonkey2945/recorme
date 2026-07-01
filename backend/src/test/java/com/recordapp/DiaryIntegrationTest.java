@@ -138,8 +138,10 @@ class DiaryIntegrationTest {
 	}
 
 	private int userRowCount(String supabaseUid) {
+		// supabase_uid 는 UUID 타입 컬럼이라 String 파라미터를 ::uuid 로 캐스팅해 비교한다
+		// (미캐스팅 시 PG 가 uuid = varchar 연산자 부재로 42883 을 던진다).
 		Integer n = jdbc().queryForObject(
-				"SELECT count(*) FROM users WHERE supabase_uid = ?", Integer.class, supabaseUid);
+				"SELECT count(*) FROM users WHERE supabase_uid = ?::uuid", Integer.class, supabaseUid);
 		return n == null ? 0 : n;
 	}
 

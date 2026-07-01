@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/network/dio_client.dart';
+import '../../../../core/notifications/notification_service.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../data/auth_repository.dart';
 import '../../data/email_lookup_repository.dart';
@@ -70,6 +72,11 @@ class AuthController extends Notifier<AuthStatus> {
           (authState.event == AuthChangeEvent.signedIn ||
               authState.event == AuthChangeEvent.initialSession)) {
         _provisionUser();
+        // 세션 확립 직후 FCM 토큰을 백엔드에 등록(Bearer 준비 완료 상태).
+        // 권한 미승인이어도 토큰 등록은 무해하며, 권한 UX는 캘린더 진입 시 별도 처리.
+        ref
+            .read(notificationServiceProvider)
+            .registerToken(ref.read(dioProvider));
       }
     });
     ref.onDispose(sub.cancel);
@@ -113,7 +120,17 @@ class AuthController extends Notifier<AuthStatus> {
   Future<void> updatePassword(String newPassword) =>
       ref.read(authRepositoryProvider).updatePassword(newPassword);
 
-  Future<void> signOut() => ref.read(authRepositoryProvider).signOut();
+  Future<void> signOut() async {
+    // 로그아웃 전에 FCM 토큰을 백엔드에서 해제한다(Bearer가 유효할 때 DELETE 전송).
+    try {
+      await ref
+          .read(notificationServiceProvider)
+          .unregister(ref.read(dioProvider));
+    } catch (_) {
+      // 토큰 해제 실패는 로그아웃 흐름을 막지 않는다.
+    }
+    await ref.read(authRepositoryProvider).signOut();
+  }
 
   /// 로그인 직후 `GET /users/me`를 1회 호출해 백엔드 JIT 프로비저닝을 트리거한다.
   /// 프로필 화면 진입 없이도 인증 즉시 `users` 행이 생성된다. 실패는 무시하고

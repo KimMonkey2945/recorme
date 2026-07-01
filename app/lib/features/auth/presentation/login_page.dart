@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -10,6 +12,34 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_snackbar.dart';
 import 'providers/auth_provider.dart';
 import 'widgets/auth_form_fields.dart';
+
+/// 마스코트 영상 1편의 표시 설정(경로·베이스 배경색·히어로 폭).
+///
+/// 영상마다 해상도와 스튜디오 배경 톤이 달라, 로그인 화면 베이스 색과 표시 폭을
+/// 영상별로 묶어 관리한다. 베이스 색을 영상 배경과 맞춰 사각 테두리(seam)를 없앤다.
+class _MascotVideo {
+  const _MascotVideo(this.asset, this.bgColor, this.maxWidth,
+      {this.feather = false});
+
+  final String asset;
+  final Color bgColor; // 로그인 베이스 색(= 영상 배경 톤). 가장자리 페이드 색으로도 사용
+  final double maxWidth; // 표시 최대 폭. 가용 폭과 min → 모바일은 화면 가득, 데스크톱은 cap
+  final bool feather; // 가장자리를 bgColor로 부드럽게 덮어 영상 사각 경계를 지운다(와이드 전용)
+
+  /// 한 편을 무작위로 고른다(화면 진입 시 1회).
+  static _MascotVideo pickRandom() => _all[Random().nextInt(_all.length)];
+
+  static const List<_MascotVideo> _all = [
+    // 정사각(640×640) — 배경이 페이지와 같은 밝은 회색이라 경계가 거의 없음
+    _MascotVideo('assets/videos/tea_sel.mp4', Color(0xFFEEF0F2), 260),
+    _MascotVideo('assets/videos/box_sel.mp4', Color(0xFFEEF0F2), 260),
+    // 16:9 와이드(1280×720) — 배경이 페이지보다 진한 회색 그라데이션이고 프레임마다
+    // 밝기가 달라 단색만으로는 경계가 남는다. 베이스 색을 가장자리 톤에 맞추고
+    // 추가로 4변을 페이드(feather)해 사각 경계를 지운다. 폭도 크게(560까지) 키운다.
+    _MascotVideo('assets/videos/ballet_sel.mp4', Color(0xFFCFD0D2), 560,
+        feather: true),
+  ];
+}
 
 /// 로그인 화면. 이메일/비밀번호 로그인 + 카카오/구글 소셜 로그인.
 ///
@@ -31,6 +61,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   // 소셜 로그인 진행 상태(이메일 로그인 상태는 emailAuthControllerProvider에서 구독).
   bool _socialLoading = false;
+
+  // 화면 진입 시 한 번만 추첨한 마스코트 영상(베이스 색·재생·표시 폭의 단일 출처).
+  // build에서 뽑으면 로딩 상태 rebuild마다 재추첨되므로 initState에서 1회 고정한다.
+  late final _MascotVideo _mascot;
+
+  @override
+  void initState() {
+    super.initState();
+    _mascot = _MascotVideo.pickRandom();
+  }
 
   @override
   void dispose() {
@@ -83,13 +123,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final loading = _socialLoading || emailLoading;
 
     return Scaffold(
-      // 베이스 단색 — tea_sel.mp4의 스튜디오 회색 배경(#EEF0F2)과 맞춰
-      // 영상 사각 테두리가 완전히 묻히도록 처리
+      // 베이스 단색 — 뽑힌 마스코트 영상의 배경색(_mascot.bgColor)에 맞춰
+      // 영상 사각 테두리가 완전히 묻히도록 처리(영상마다 배경 톤이 달라 색을 맞춘다)
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 베이스 단색 (영상 배경과 동일한 옅은 회색) ──
-          const ColoredBox(color: Color(0xFFEEF0F2)),
+          // ── 베이스 단색 (뽑힌 영상 배경과 동일한 톤) ──
+          ColoredBox(color: _mascot.bgColor),
           // ── 실제 콘텐츠 레이어 ──
           SafeArea(
             child: Padding(
@@ -105,7 +145,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: AppSpacing.xxl),
-                      const _BrandSection(),
+                      _BrandSection(video: _mascot),
                       const SizedBox(height: AppSpacing.xxl),
                       _EmailLoginForm(
                         formKey: _formKey,
@@ -146,27 +186,28 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
 /// 마스코트 영상 + 그라데이션 워드마크 + 태그라인으로 구성된 브랜드 섹션.
 ///
-/// 마스코트는 `box_sel.mp4`를 화면 진입 시 **한 번만**(무한 반복 X) 음소거 자동 재생한다.
+/// 재생할 영상은 부모(`_LoginPageState`)가 진입 시 1회 추첨해 [video]로 전달한다
+/// (베이스 배경색과 동일 출처). 화면 진입 시 **한 번만**(무한 반복 X) 음소거 자동 재생한다.
 /// 초기화 전·로드 실패 시에는 정지 이미지(`mascot.png`)를 같은 폭으로 보여
 /// 검은 박스 깜빡임이나 레이아웃 점프를 막는다.
 class _BrandSection extends StatefulWidget {
-  const _BrandSection();
+  const _BrandSection({required this.video});
+
+  /// 부모가 추첨해 전달한 마스코트 영상 설정(경로·배경색·표시 폭).
+  final _MascotVideo video;
 
   @override
   State<_BrandSection> createState() => _BrandSectionState();
 }
 
 class _BrandSectionState extends State<_BrandSection> {
-  // 히어로 영상 폭(기존 정지 이미지 180 → 히어로 260으로 확대).
-  static const double _heroWidth = 260;
-
   late final VideoPlayerController _controller;
   bool _videoReady = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset('assets/videos/tea_sel.mp4')
+    _controller = VideoPlayerController.asset(widget.video.asset)
       ..setVolume(0); // 음소거
     _controller.initialize().then((_) {
       if (!mounted) return;
@@ -184,9 +225,9 @@ class _BrandSectionState extends State<_BrandSection> {
   }
 
   /// 영상 초기화 전·실패 시 보여줄 정지 마스코트(+이미지 로드 실패 폴백 배지).
-  Widget _fallbackMascot() => Image.asset(
+  Widget _fallbackMascot(double width) => Image.asset(
         'assets/images/mascot.png',
-        width: _heroWidth,
+        width: width,
         errorBuilder: (context, error, stackTrace) => Container(
           width: 92,
           height: 92,
@@ -198,21 +239,40 @@ class _BrandSectionState extends State<_BrandSection> {
         ),
       );
 
+  /// 히어로 영상. [feather]면 4변을 배경색으로 페이드해 사각 경계를 지운다.
+  Widget _heroVideo(double width) {
+    final player = AspectRatio(
+      aspectRatio: _controller.value.aspectRatio,
+      child: widget.video.feather
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                VideoPlayer(_controller),
+                // 가장자리를 베이스 색으로 부드럽게 덮음 → 뒤 ColoredBox(같은 색)와 이어져
+                // 영상 경계가 사라진다. 프레임별 배경 밝기 차이도 이 페이드가 흡수한다.
+                IgnorePointer(child: _EdgeFade(color: widget.video.bgColor)),
+              ],
+            )
+          : VideoPlayer(_controller),
+    );
+    return SizedBox(width: width, child: player);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 히어로 폭 = min(설정 maxWidth, 가용 폭) → 모바일은 화면 가득, 데스크톱은 cap.
+    // 가용 폭 = 화면폭 - 좌우 콘텐츠 패딩(AppSpacing.xxl*2).
+    // LayoutBuilder는 상위 IntrinsicHeight와 충돌하므로 MediaQuery로 계산한다.
+    final available = MediaQuery.sizeOf(context).width - AppSpacing.xxl * 2;
+    final w = widget.video.maxWidth < available
+        ? widget.video.maxWidth
+        : available;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 마스코트 — box_sel.mp4 히어로 영상(초기화 전·실패 시 정지 이미지 폴백)
-        _videoReady
-            ? SizedBox(
-                width: _heroWidth,
-                child: AspectRatio(
-                  aspectRatio: _controller.value.aspectRatio,
-                  child: VideoPlayer(_controller),
-                ),
-              )
-            : _fallbackMascot(),
+        // 마스코트 — 랜덤 히어로 영상(초기화 전·실패 시 정지 이미지 폴백).
+        _videoReady ? _heroVideo(w) : _fallbackMascot(w),
         const SizedBox(height: AppSpacing.lg),
         // 그라데이션 워드마크 — WantedSans 800 48px, [바이올렛→블루→시안] 100deg
         ShaderMask(
@@ -249,6 +309,77 @@ class _BrandSectionState extends State<_BrandSection> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 영상 위에 얹어 4변을 [color]로 부드럽게 페이드시키는 오버레이.
+///
+/// 각 변에서 안쪽으로 사라지는 선형 그라데이션 4장을 겹친다. 뒤 베이스([color]와
+/// 동일)와 이어져 영상의 사각 경계가 눈에 띄지 않게 녹아든다. 페이드 폭은 짧은 변
+/// 대비 비율이라 어떤 크기에서도 균일하게 보인다.
+class _EdgeFade extends StatelessWidget {
+  const _EdgeFade({required this.color});
+
+  final Color color;
+
+  // 페이드 폭(각 변 기준 비율). 피사체를 과하게 먹지 않도록 얇게 유지한다.
+  static const double _fadeX = 0.10; // 좌·우
+  static const double _fadeY = 0.16; // 상·하
+
+  @override
+  Widget build(BuildContext context) {
+    final transparent = color.withAlpha(0);
+
+    Widget grad(Alignment begin, Alignment end) => DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: begin,
+              end: end,
+              colors: [color, transparent],
+            ),
+          ),
+        );
+
+    // 영상 크기를 받아 각 변 페이드 폭을 픽셀로 계산하고 Positioned로 배치한다
+    // (Align/FractionallySizedBox 조합은 DecoratedBox에 무한 제약을 넘겨 레이아웃 실패).
+    return LayoutBuilder(
+      builder: (context, c) {
+        final fx = c.maxWidth * _fadeX;
+        final fy = c.maxHeight * _fadeY;
+        return Stack(
+          children: [
+            // 상단: 위 → 아래로 사라짐
+            Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: fy,
+                child: grad(Alignment.topCenter, Alignment.bottomCenter)),
+            // 하단: 아래 → 위로 사라짐
+            Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: fy,
+                child: grad(Alignment.bottomCenter, Alignment.topCenter)),
+            // 좌측: 왼쪽 → 오른쪽으로 사라짐
+            Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: fx,
+                child: grad(Alignment.centerLeft, Alignment.centerRight)),
+            // 우측: 오른쪽 → 왼쪽으로 사라짐
+            Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: fx,
+                child: grad(Alignment.centerRight, Alignment.centerLeft)),
+          ],
+        );
+      },
     );
   }
 }

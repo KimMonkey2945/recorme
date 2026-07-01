@@ -22,6 +22,13 @@ public enum ErrorCode {
 	DIARY_ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 기억한 일기는 수정할 수 없어요."),
 	IMAGE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "사진은 일기당 최대 5장까지 첨부할 수 있습니다."),
 
+	// 작심삼일(결심)
+	RESOLUTION_NOT_FOUND(HttpStatus.NOT_FOUND, "작심삼일을 찾을 수 없습니다."),
+	RESOLUTION_NOT_ACTIVE(HttpStatus.CONFLICT, "진행 중인 작심삼일이 아니에요."),
+	RESOLUTION_CHECK_NOT_TODAY(HttpStatus.CONFLICT, "오늘 완료할 수 있는 항목이 아니에요."),
+	RESOLUTION_NOT_EXTENDABLE(HttpStatus.CONFLICT, "성공한 작심삼일만 연장할 수 있어요."),
+	RESOLUTION_ALREADY_EXTENDED(HttpStatus.CONFLICT, "이미 연장한 작심삼일이에요."),
+
 	// 파일 업로드
 	INVALID_FILE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일입니다."),
 	FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 너무 큽니다."),

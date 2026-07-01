@@ -15,6 +15,9 @@
 | | `emotion_track_map` | 감정 → 트랙 매핑 |
 | 사회적 | `friendships` | 친구 관계 |
 | | `diary_reactions` | 공감(리액션) — 댓글 없음 |
+| 작심삼일 | `resolutions` | 3일 결심(시작일·할일·상태·연장 체인) |
+| | `resolution_checks` | 결심의 일별 체크(3일치, 완료/미완료) |
+| 알림 | `device_tokens` | FCM 기기 토큰(서버 푸시 팬아웃) |
 
 ## 2. ERD (관계 개요)
 
@@ -32,6 +35,10 @@ diaries 1───∞ diary_reactions
 emotion_types 1───∞ themes
 emotion_types 1───∞ emotion_track_map ∞───1 tracks
 emotion_types 1───∞ emotion_analyses (primary_emotion)
+
+users 1───∞ resolutions 1───∞ resolution_checks   (연장은 streak_group_id UUID 체인으로 self-묶음)
+users 1───∞ resolution_checks                      (캘린더 직접조회용 비정규화 FK)
+users 1───∞ device_tokens
 ```
 
 ## 3. 설계 규칙
@@ -199,6 +206,83 @@ CREATE TABLE diary_reactions (
     CONSTRAINT uq_reaction_once UNIQUE (diary_id, user_id, type)
 );
 CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
+
+-- ========== 작심삼일 (결심) ==========
+-- [V9__add_resolutions.sql] 3일 결심 + 일별 체크 한 세트. users(id) FK라 users(V1) 이후 적용.
+-- 상태: ONGOING → SUCCESS | FAILED(터미널). '예정'(미래 시작)은 별도 상태 없이 start_date > today 로 파생,
+--       취소는 soft delete(deleted_at). 상태 전이는 서비스/배치가 수행(DB 트리거 미사용).
+CREATE TABLE resolutions (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title            VARCHAR(100) NOT NULL,                     -- 할일 제목(1~100자)
+    start_date       DATE NOT NULL,                             -- 시작일(오늘/미래, 과거 금지는 서비스 검증)
+    end_date         DATE NOT NULL,                             -- 종료일 = start_date + 2 (3일)
+    status           VARCHAR(20) NOT NULL DEFAULT 'ONGOING',    -- ONGOING/SUCCESS/FAILED
+    reminder_time    TIME,                                      -- 매일 알림 시각(KST 벽시계). NULL=알림 없음
+    streak_group_id  UUID NOT NULL DEFAULT gen_random_uuid(),   -- 연장 체인 묶음(첫 도전 생성, 연장 시 복사)
+    streak_seq       SMALLINT NOT NULL DEFAULT 1,               -- 체인 내 순번(1부터, 연장 시 +1) = "N연속"
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at       TIMESTAMPTZ,
+    -- title 1~100: 백엔드 ResolutionConstraints.TITLE_MAX 와 동일 상수.
+    CONSTRAINT chk_resolutions_title_len  CHECK (char_length(title) BETWEEN 1 AND 100),
+    -- 3일 span 불변식(불변 표현이라 CHECK 가능). '시작일 오늘/미래'는 비불변이라 서비스 검증.
+    CONSTRAINT chk_resolutions_span       CHECK (end_date = start_date + 2),
+    CONSTRAINT chk_resolutions_status     CHECK (status IN ('ONGOING','SUCCESS','FAILED')),
+    CONSTRAINT chk_resolutions_streak_seq CHECK (streak_seq >= 1),
+    -- 같은 체인 내 순번 중복(동시 이중 연장 경합) 방지.
+    CONSTRAINT uq_resolutions_streak_seq  UNIQUE (streak_group_id, streak_seq)
+);
+-- 리스트(진행/성공/실패 탭 + 최신순 커서). user_id·status 등치 후 (start_date,id) 정렬 무료.
+CREATE INDEX idx_resolutions_user_status_start
+    ON resolutions (user_id, status, start_date DESC, id DESC) WHERE deleted_at IS NULL;
+
+-- ========== 작심삼일 일별 체크 (resolution 1:3) ==========
+-- resolution 생성 시 3행(day_index 1~3, check_date = start_date + 0/1/2)을 PENDING 으로 프리생성.
+-- user_id 는 월 캘린더를 단일 테이블 range scan 으로 끝내기 위한 비정규화(부모 조인 없이 조회).
+-- deleted_at 없음: 부모 soft delete 시 캘린더 쿼리가 r.deleted_at IS NULL 로 거르고, 물리 삭제 시 FK CASCADE 로 정리.
+CREATE TABLE resolution_checks (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    resolution_id  BIGINT NOT NULL REFERENCES resolutions(id) ON DELETE CASCADE,
+    user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- 캘린더 직접조회용 비정규화
+    check_date     DATE NOT NULL,                             -- 이 체크가 속한 날짜
+    day_index      SMALLINT NOT NULL,                         -- 1..3 (1·2·3일차)
+    status         VARCHAR(20) NOT NULL DEFAULT 'PENDING',    -- PENDING/DONE/MISSED
+    completed_at   TIMESTAMPTZ,                               -- DONE 전이 시각(NULL=미완료)
+    reminded_on    DATE,                                      -- 리마인더 발송한 날짜(하루 1회 멱등 선점 키)
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_resolution_checks_day    CHECK (day_index BETWEEN 1 AND 3),
+    CONSTRAINT chk_resolution_checks_status CHECK (status IN ('PENDING','DONE','MISSED')),
+    -- 상태-데이터 정합: DONE 이면 완료시각 필수(PENDING/MISSED 는 NULL 허용).
+    CONSTRAINT chk_resolution_checks_done   CHECK (status <> 'DONE' OR completed_at IS NOT NULL),
+    CONSTRAINT uq_resolution_checks_day     UNIQUE (resolution_id, check_date),  -- 하루 1체크(중복·경합 방지)
+    CONSTRAINT uq_resolution_checks_idx     UNIQUE (resolution_id, day_index)    -- 3행 프리생성 무결성
+);
+-- 월별 캘린더: 특정 유저의 월 구간 체크를 단일 테이블 range scan 으로.
+CREATE INDEX idx_resolution_checks_user_date ON resolution_checks (user_id, check_date);
+-- 자정 실패배치(check_date < today) + FCM 리마인더(check_date = today) 공용.
+-- PENDING 행만 얇게 인덱싱 → 남은 미완료만 스캔(부분 인덱스로 배치 비용 상수 유지).
+CREATE INDEX idx_resolution_checks_pending ON resolution_checks (check_date) WHERE status = 'PENDING';
+
+-- ========== FCM 기기 토큰 (서버 푸시) ==========
+-- [V10__add_device_tokens.sql] 알림 인프라. 작심삼일 리마인더 외 알림에도 재사용될 범용 테이블.
+-- token 은 기기당 1개(전역 유일). 재로그인/재설치 시 upsert 로 소유 재귀속.
+-- 무효 토큰(FCM UNREGISTERED/INVALID_ARGUMENT)은 물리 DELETE(회수형, soft delete 없음).
+-- 내부 전용 테이블이라 외부 노출 uuid 는 생략(diary_images 관례).
+CREATE TABLE device_tokens (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token         TEXT NOT NULL,                             -- FCM registration token
+    platform      VARCHAR(20) NOT NULL,                      -- ANDROID/IOS/WEB
+    last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),        -- 최근 등록/갱신(스테일 토큰 정리 기준)
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_device_tokens_token     UNIQUE (token),
+    CONSTRAINT chk_device_tokens_platform CHECK (platform IN ('ANDROID','IOS','WEB'))
+);
+-- 유저 팬아웃(리마인더 발송 시 user_id → 토큰들) 조회용.
+CREATE INDEX idx_device_tokens_user ON device_tokens (user_id);
 ```
 
 ## 5. 주요 설계 결정
@@ -209,6 +293,12 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
 - **테마/음악 스냅샷**: `diaries.theme_id`·`track_id`를 결과로 저장해, 추후 프리셋(themes/tracks)이 바뀌어도 과거 기록의 분위기는 보존된다.
 - **음악 소스 추상화**: `tracks.source_type` + `source_ref` + `metadata(JSONB)`로 자체 음원·외부 API(Spotify/YouTube) 어느 쪽이든 동일 테이블로 수용.
 - **공감만**: `diary_reactions`에 `uq_reaction_once`로 1인 1회 공감. 댓글 테이블은 의도적으로 생략(모더레이션 복잡도 회피).
+- **작심삼일 상태 모델**: `resolutions.status`는 `ONGOING → SUCCESS | FAILED`(SUCCESS/FAILED는 터미널). **'예정'(미래 시작)은 별도 상태를 두지 않고 `start_date > 오늘`로 파생**해 상태 수를 줄인다. **취소는 소프트 삭제**(`deleted_at`)로 처리해 물리 삭제와 구분한다. 상태 전이는 서비스/배치가 수행하고 DB 트리거는 쓰지 않는다(`SUCCESS`는 3일 완주 시 `status='ONGOING'` 가드로 1회, `FAILED`는 자정 배치가 초과 미완료 발견 시).
+- **연장 체인(streak)**: 성공한 결심을 '다음 3일'로 이을 때 새 `resolutions` 행을 만들되 `streak_group_id`(UUID)를 복사하고 `streak_seq`를 +1 한다. 같은 체인 내 `(streak_group_id, streak_seq)` **UNIQUE**로 동시 이중 연장 경합을 막고(서비스 선검사 + 제약 최종 방어), `streak_seq`가 "N연속"을 뜻한다. 첫 도전은 `gen_random_uuid()`로 새 체인·`seq=1`.
+- **하루 1체크 + 3행 프리생성**: `resolution_checks`는 결심 생성 시 3행(`day_index` 1~3)을 `PENDING`으로 미리 만든다. `uq_resolution_checks_day(resolution_id, check_date)`로 하루 1체크(중복·경합 차단), `uq_resolution_checks_idx(resolution_id, day_index)`로 3행 무결성을 강제한다. `DONE`이면 `completed_at` 필수(CHECK 정합).
+- **`resolution_checks.user_id` 비정규화**: 월별 캘린더를 `resolutions` 조인 없이 `resolution_checks` **단일 테이블 range scan**(`idx_resolution_checks_user_date`)으로 끝내기 위해 부모의 `user_id`를 복사한다. 부모 소프트 삭제분은 캘린더 쿼리가 `r.deleted_at IS NULL`로 걸러 정합을 유지한다.
+- **리마인더 멱등(`reminded_on`)**: 오늘자 리마인더는 `reminded_on = 오늘`로 마킹해 하루 1회만 발송한다. 선점+마킹을 한 문장(CTE + `FOR UPDATE ... SKIP LOCKED`)으로 처리해 다중 인스턴스 배치가 같은 행을 중복 발송하지 않는다. `idx_resolution_checks_pending`(부분 인덱스)로 남은 미완료만 스캔해 자정 실패 배치·리마인더의 스캔 비용을 상수로 유지한다.
+- **기기 토큰(FCM)**: `device_tokens.token`은 전역 UNIQUE(기기당 1개)라 재로그인/재설치 시 **upsert로 소유를 재귀속**한다. 무효 토큰은 물리 DELETE(회수형, 소프트 삭제 없음). 작심삼일 리마인더·완주 축하 외 다른 알림에도 재사용될 범용 테이블이며 내부 전용이라 외부 노출 UUID는 생략한다.
 
 ## 6. Flyway 운영 방침
 
@@ -218,6 +308,9 @@ CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
   - `V2__add_diaries.sql` — `diaries` (Task 008, 기록 CRUD). MVP 스코프상 `theme_id`/`track_id`·공개 피드 인덱스 제외, `chk_diaries_content_len`(1~500) 포함.
   - `V3__add_diary_images.sql` — `diary_images` (Task 008, 사진 첨부 1:N)
   - `V8__diary_draft_lifecycle.sql` — `diaries.analysis_status` 기본값을 `'PENDING'` → **`'DRAFT'`**로 변경하고 `CHECK (analysis_status IN ('DRAFT','PENDING','DONE','FAILED'))` 제약 추가(기록 draft→확정 라이프사이클). 기존 데이터 백필 없음.
+  - `V9__add_resolutions.sql` — `resolutions` + `resolution_checks` (작심삼일 3일 결심 + 일별 체크 한 세트)
+  - `V10__add_device_tokens.sql` — `device_tokens` (FCM 서버 푸시 기기 토큰)
   - 이후 감정/테마/음악/사회 도메인은 구현 시점에 `Vn__*.sql`로 추가(예: `diaries.theme_id`/`track_id`는 Phase 4에서 `ALTER TABLE ADD COLUMN`). 마스터 데이터(`emotion_types`, 초기 `themes`/`tracks`)는 별도 `Vn__seed_*.sql`로 분리.
+  - (참고) 그 사이 마이그레이션: `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V6=content_text NOT NULL`, `V7=emotion_analyses`, `V8=draft→확정 라이프사이클`.
 - **로컬 개발**: 네이티브 PostgreSQL 18(`recorme` DB/롤)에 빈 DB만 준비하면 `./gradlew bootRun` 시 Flyway가 자동 적용. DBeaver는 조회용. 도커는 배포 시점(Task 016)에 사용.
 - 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 신규 버전 마이그레이션으로만(기배포된 Vn은 수정 금지 — 미배포 단계에서만 V1 직접 재작성 허용).

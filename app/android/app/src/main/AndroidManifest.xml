@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 13+ 알림 표시 권한(FCM 푸시). 런타임 요청은 NotificationService가 처리. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="record"
         android:name="${applicationName}"
@@ -32,6 +34,10 @@
                 <data android:scheme="app.recordapp" android:host="login-callback"/>
             </intent-filter>
         </activity>
+        <!-- 백그라운드 FCM 알림이 사용할 기본 채널(앱에서 사전 등록한 채널과 동일 id). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="resolution_reminders" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

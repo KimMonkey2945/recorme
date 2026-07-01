@@ -39,6 +39,9 @@ out/
 ### 시크릿/환경 (코드·git 금지) ###
 application-secret.yml
 *.env
+# FCM 서비스계정 키(Firebase Admin SDK) — 절대 커밋 금지
+fcm-service-account.json
+*-firebase-adminsdk-*.json
 
 ### 업로드 산출물 (로컬 스토리지 root) ###
 var/

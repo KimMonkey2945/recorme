@@ -14,6 +14,9 @@ import '../../features/diary/presentation/diary_list_page.dart';
 import '../../features/diary/presentation/main_calendar_page.dart';
 import '../../features/profile/presentation/profile_edit_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
+import '../../features/resolution/presentation/resolution_detail_page.dart';
+import '../../features/resolution/presentation/resolution_new_page.dart';
+import '../../features/resolution/presentation/resolution_tab_page.dart';
 import 'scaffold_with_nav_bar.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -108,6 +111,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // 3번째 탭: 작심삼일
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/resolution',
+                builder: (context, state) => const ResolutionTabPage(),
+              ),
+            ],
+          ),
         ],
       ),
       // 셸 밖 전체 화면: 에디터 / 상세
@@ -122,6 +134,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             DiaryDetailPage(diaryId: state.pathParameters['id']!),
+      ),
+      // 셸 밖 전체 화면: 작심삼일 생성 / 상세
+      GoRoute(
+        path: '/resolution/new',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) =>
+            ResolutionNewPage(date: state.uri.queryParameters['date']),
+      ),
+      GoRoute(
+        path: '/resolution/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => ResolutionDetailPage(
+          id: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+        ),
       ),
       // 셸 밖 전체 화면: 프로필 조회 / 수정
       GoRoute(

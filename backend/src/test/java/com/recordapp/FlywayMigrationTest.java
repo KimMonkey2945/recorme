@@ -101,13 +101,17 @@ class FlywayMigrationTest {
 	/**
 	 * 테스트용 기록 1건 INSERT. content·written_date 만 지정하고 나머지는 DDL 기본값에 맡긴다.
 	 * written_date 는 'YYYY-MM-DD' 문자열로 전달한다.
+	 *
+	 * <p>V6 부터 content_text 는 NOT NULL 이고 길이 CHECK(chk_diaries_content_text_len, 1~500)가
+	 * content 가 아니라 content_text 로 이전(V4)됐다. 테스트는 content 와 동일 문자열을 content_text 로도 넣어
+	 * NOT NULL 을 충족시키고, 길이 검증 케이스가 content_text CHECK 로 정확히 걸리게 한다.
 	 */
 	private void insertDiary(Connection c, long userId, String content, String writtenDate)
 			throws SQLException {
 		try (Statement st = c.createStatement()) {
 			st.executeUpdate(
-					"INSERT INTO diaries (user_id, content, written_date) VALUES ("
-							+ userId + ", '" + content + "', DATE '" + writtenDate + "')");
+					"INSERT INTO diaries (user_id, content, content_text, written_date) VALUES ("
+							+ userId + ", '" + content + "', '" + content + "', DATE '" + writtenDate + "')");
 		}
 	}
 
@@ -127,9 +131,11 @@ class FlywayMigrationTest {
 					ResultSet rs = st.executeQuery(
 							"SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_users_email_active'")) {
 				assertThat(rs.next()).as("uq_users_email_active 인덱스 존재").isTrue();
-				assertThat(rs.getString(1))
+				// PG18 은 함수식 인덱스를 lower((email)::text) 로 렌더링하므로 부분 문자열로 관대하게 검증한다.
+					assertThat(rs.getString(1))
 						.contains("UNIQUE")
-						.contains("lower(email)")
+						.contains("lower(")
+						.contains("email")
 						.contains("deleted_at IS NULL");
 			}
 		}

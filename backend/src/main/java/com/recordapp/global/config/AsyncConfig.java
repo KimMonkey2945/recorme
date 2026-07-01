@@ -42,6 +42,24 @@ public class AsyncConfig implements AsyncConfigurer {
 		return executor;
 	}
 
+	/**
+	 * 작심삼일 푸시 발송 전용 스레드풀. 성공 훅(afterCommit)·실패 배치·리마인더 스케줄러의 FCM 발송을
+	 * 트랜잭션·요청 스레드·스케줄러 드레인 루프 밖에서 처리한다. 큐가 차면 {@code CallerRunsPolicy} 로
+	 * 제출 스레드가 직접 실행해 백프레셔를 건다(발송 유실 대신 처리량 조절).
+	 */
+	@Bean("pushExecutor")
+	public Executor pushExecutor() {
+		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+		executor.setCorePoolSize(2);
+		executor.setMaxPoolSize(4);
+		executor.setQueueCapacity(100);
+		executor.setThreadNamePrefix("push-");
+		executor.setRejectedExecutionHandler(
+				new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+		executor.initialize();
+		return executor;
+	}
+
 	@Override
 	public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
 		return new LoggingAsyncUncaughtExceptionHandler();

@@ -26,11 +26,14 @@
    [인증 실패]          → 에러 토스트 후 로그인 페이지 유지
 
 3. 메인 페이지 (캘린더)
-   ↓ 날짜 탭 또는 하단 탭 이동
+   ↓ 날짜 탭 / 글쓰기 FAB / 하단 탭 이동
 
-   [날짜 탭 - 해당 날짜 기록 없음] → 글 에디터 페이지 (신규 작성 모드)
-   [날짜 탭 - 해당 날짜 기록 있음] → 글 상세 페이지
+   [날짜 탭 - 확정 기록 있음]        → 글 상세 페이지
+   [날짜 탭·FAB - 그 외]            → "글 작성 / 작심삼일 작성" 선택 시트
+        ├ 글 작성       → 글 에디터 페이지 (신규 작성 모드)
+        └ 작심삼일 작성  → 작심삼일 작성 페이지 (과거 날짜는 비활성)
    [하단 목록 탭]                   → 글 목록 페이지
+   [하단 작심삼일 탭]                → 작심삼일 페이지 (진행/성공/실패 + 캘린더)
 
 4. 글 에디터 페이지
    ↓ 사용자 행동
@@ -78,7 +81,19 @@
 |----|--------|------|--------------|------------|
 | **F010** | 로그아웃 + 세션 관리 | 로그아웃 시 Supabase signOut(세션 삭제). access 만료 시 Supabase SDK가 자동 갱신, Dio 인터셉터는 Supabase access token 첨부만 담당 | 인증 세션 유지 및 안전한 종료 | 메인 페이지, 글 목록 페이지 |
 
-### 3. MVP 이후 기능 (제외)
+### 3. 작심삼일(3일 결심) 기능
+
+> 기록(diary)과 **독립된 부가 기능**. 날짜 판정은 전부 **서버 KST(Asia/Seoul) 권위**이며, 완료 체크는 날짜 인자 없이 서버 '오늘'로 판정한다.
+
+| ID | 기능명 | 설명 | 관련 페이지 |
+|----|--------|------|------------|
+| **F013** | 작심삼일 생성 | **시작일(오늘/미래, 과거 불가) + 할일 제목 + 알림 시각(선택)**으로 3일 결심 생성. 생성 시 3일치 체크(day 1~3, `PENDING`)를 프리생성. 진입은 캘린더 날짜 탭·글쓰기 FAB의 **"글 작성 / 작심삼일 작성" 선택 시트**에서 분기 | 작심삼일 작성 페이지 |
+| **F014** | 완료 체크 · 성공/실패 판정 | 진행 중 결심의 **오늘 체크를 '완료'(멱등)**. 3일 모두 완료 시 즉시 `SUCCESS`, 하루라도 그 날(KST 자정) 안에 못 누르면 자정 배치가 `MISSED`+결심 `FAILED` 처리 | 작심삼일 상세 페이지 |
+| **F015** | 연장 (streak) | **성공한 결심만** 같은 할일로 '다음 3일'을 이어가 새 작심삼일 생성(시작일 `max(이전 종료+1, 오늘)`). `streak_seq`로 연속 N회 표시. 이중 연장 차단 | 작심삼일 상세 페이지 |
+| **F016** | 작심삼일 목록·캘린더 조회 | **진행중/성공/실패** 세그먼트 리스트(3일 진행 도트·streak 배지, 커서 페이징) + **월별 캘린더**로 결심을 선택·조회 | 작심삼일 탭 |
+| **F017** | 리마인더·완주 푸시 (FCM) | **미완료 시 매일 리마인더**(알림 시각 도래, 하루 1회 멱등), **3일 완주 축하**, 실패 안내를 **FCM 서버 푸시**로 발송. 폰 상단 알림 탭 시 해당 결심 상세로 딥링크 | (시스템 알림 → 작심삼일 상세 페이지) |
+
+### 4. MVP 이후 기능 (제외)
 
 - 감정 분석(LLM) - 기록 내용 기반 감정 자동 분류
 - 감정 기반 테마 - 배경·필체 자동 적용
@@ -88,7 +103,8 @@
 - 친구 관계 - 팔로우/팔로잉
 - 공감(리액션) - 다른 사용자 글에 반응
 - 설정 - 테마, 언어, 알림 설정
-- 푸시 알림
+
+> ~~푸시 알림~~ → **작심삼일 리마인더/완주 푸시(F017)로 구현됨**(FCM). 기록(diary) 관련 알림은 여전히 범위 밖.
 
 ---
 
@@ -104,11 +120,13 @@
 
 ━━━━ 로그인 후 ━━━━
 
-하단 내비게이션 바
+하단 내비게이션 바 (3탭)
 ├── 캘린더 탭
-│   └── 메인 페이지 - F002 (월별 캘린더, 날짜 탭으로 작성/조회 진입)
-└── 목록 탭
-    └── 글 목록 페이지 - F004 (날짜 역순 기록 목록, 커서 페이징)
+│   └── 메인 페이지 - F002 (월별 캘린더). 날짜 탭·글쓰기 FAB → "글 작성 / 작심삼일 작성" 선택 시트로 분기
+├── 목록 탭
+│   └── 글 목록 페이지 - F004 (날짜 역순 기록 목록, 커서 페이징)
+└── 작심삼일 탭
+    └── 작심삼일 페이지 - F016 (진행중/성공/실패 세그먼트 리스트 + 월별 캘린더)
 
 상단 앱 바 (로그인 후 공통)
 ├── 프로필 진입 - F011 (프로필 페이지 → 조회·수정)
@@ -127,6 +145,13 @@
 글 상세 페이지 - F005, F007
 ├── 진입 1: 메인 페이지에서 기록 있는 날짜 탭
 └── 진입 2: 글 목록 페이지 항목 탭
+
+작심삼일 작성 페이지 - F013
+└── 진입: 캘린더 날짜 탭·글쓰기 FAB 선택 시트 → "작심삼일 작성" (제목·시작일·알림 시각 입력 후 생성)
+
+작심삼일 상세 페이지 - F014, F015
+├── 진입 1: 작심삼일 탭 리스트/캘린더 항목 탭
+└── 진입 2: 리마인더/완주 푸시 알림 탭(딥링크)
 ```
 
 ---
@@ -230,6 +255,43 @@
 | written_date | 기록 날짜 (user_id + written_date 부분 유니크, deleted_at IS NULL 한정) | DATE |
 | deleted_at | 소프트 삭제 시각 (NULL이면 활성) | TIMESTAMP |
 
+### resolutions (작심삼일)
+
+| 필드 | 설명 | 타입/관계 |
+|------|------|----------|
+| id | 내부 PK | BIGINT |
+| user_id | 소유자 참조 | → users.id |
+| title | 할일 제목 (최대 100자) | VARCHAR |
+| start_date / end_date | 3일 기간 (end_date = start_date + 2) | DATE |
+| status | 상태 (ONGOING / SUCCESS / FAILED). '예정'은 start_date > 오늘로 파생, 취소는 소프트 삭제 | VARCHAR |
+| reminder_time | 매일 알림 시각(KST 벽시계, NULL이면 알림 없음) | TIME |
+| streak_group_id / streak_seq | 연장 체인 묶음 UUID + 체인 내 순번(연속 N회). (streak_group_id, streak_seq) 유니크로 이중 연장 차단 | UUID / SMALLINT |
+| deleted_at | 소프트 삭제(취소) 시각 | TIMESTAMP |
+
+### resolution_checks (일별 완료 체크)
+
+| 필드 | 설명 | 타입/관계 |
+|------|------|----------|
+| id | 내부 PK | BIGINT |
+| resolution_id | 결심 참조 (생성 시 3행 프리생성) | → resolutions.id |
+| user_id | 월별 캘린더 단일 조회용 비정규화 | → users.id |
+| check_date | 이 체크가 속한 날짜 (resolution_id + check_date 유니크) | DATE |
+| day_index | 1~3 (1·2·3일차) | SMALLINT |
+| status | 상태 (PENDING / DONE / MISSED) | VARCHAR |
+| completed_at | 완료(DONE) 시각 | TIMESTAMP |
+| reminded_on | 리마인더 발송한 날짜(하루 1회 멱등 선점 키) | DATE |
+
+### device_tokens (FCM 기기 토큰)
+
+| 필드 | 설명 | 타입/관계 |
+|------|------|----------|
+| id | 내부 PK | BIGINT |
+| user_id | 소유자 참조(다기기 = user당 N개) | → users.id |
+| token | FCM 등록 토큰 (전역 UNIQUE, 재로그인 시 upsert로 소유 이전) | TEXT |
+| platform | 기기 플랫폼 (ANDROID / IOS / WEB) | VARCHAR |
+
+> 작심삼일·기기토큰은 기록(diary)과 무관한 부가 도메인이다. 완료 체크는 서버 KST '오늘' 기준으로 판정하고, 리마인더/완주 알림은 `device_tokens`로 팬아웃해 FCM 발송한다.
+
 ---
 
 ## 기술 스택
@@ -266,9 +328,17 @@
 - 카카오는 Supabase `signInWithOAuth`(웹 OAuth, 딥링크 콜백)로 처리 — 별도 카카오 SDK 불필요
 - (애플 로그인은 추후 Supabase Apple provider로 확장)
 
+### 알림 (FCM 서버 푸시 — 작심삼일 F017)
+
+- **firebase_core / firebase_messaging ^16.x** - Firebase 초기화 + 푸시 토큰 발급·수신. Firebase 프로젝트 `recorme-c5e1c`, 앱 `com.recorme.app`, `flutterfire configure` 산출물(`firebase_options.dart`·`google-services.json`·gms Gradle 플러그인)
+- **flutter_local_notifications ^22.x** - 포그라운드 수신 알림 렌더링(안드로이드 채널 `resolution_reminders`)
+- **shared_preferences ^2.x** - 알림 권한 요청 1회 플래그 저장
+- 백엔드는 **firebase-admin**(Firebase Admin SDK)으로 발송(`sendEachForMulticast` + 무효 토큰 회수). 서비스계정 키는 `FCM_CREDENTIALS` 환경변수 주입(무키 시 `StubPushService` 폴백)
+
 ### 백엔드 및 데이터베이스 (참고)
 
-- **Spring Boot 3.3.x (Java 21)** - REST API 서버, `@Async` 기반 비동기 처리
+- **Spring Boot 3.5.x (Java 21)** - REST API 서버, `@Async` 비동기 + `@Scheduled`(작심삼일 자정 실패 배치·리마인더, `FOR UPDATE ... SKIP LOCKED` 다중 인스턴스 안전)
 - **MyBatis 3.5.x** - SQL 매퍼 (OFFSET 미사용 커서 페이징)
-- **PostgreSQL 16.x** - 관계형 데이터베이스 (uq_diary_user_day 부분 유니크 제약)
-- **Flyway 10.x** - DB 스키마 버전 관리
+- **PostgreSQL 18.x** - 관계형 데이터베이스 (uq_diary_user_day 부분 유니크 제약, 작심삼일 V9/V10)
+- **Flyway 11.x** - DB 스키마 버전 관리 (기능별 분할 V1~V10)
+- **firebase-admin** - FCM 서버 푸시 발송(작심삼일 리마인더/완주 알림)

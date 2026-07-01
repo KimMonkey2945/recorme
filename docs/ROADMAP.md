@@ -19,7 +19,7 @@
 |---|---|
 | 모바일(`app/`) | Flutter / Dart 3.10.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in, image_picker, **flutter_quill(리치 텍스트 에디터, Delta JSON) + flutter_localizations** |
 | 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)** |
-| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`) |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`, `V9=resolutions+resolution_checks(작심삼일)`, `V10=device_tokens(FCM)`) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -237,6 +237,40 @@
   - **미래 날짜 선택 차단**: 캘린더에서 오늘 이후 날짜는 흐리게+탭 무효(`_DayCell.isDisabled`), 이번 달이면 다음 달 chevron 비활성(스와이프 포함, 캘린더·목록 공통), 에디터/탭 진입에 이중 방어 가드.
   - ⚠️ **웹 한글 IME 한계(수용)**: flutter_quill 에디터는 Flutter **웹**에서 한글(CJK) IME 조합 입력이 제한됨(알려진 한계, 영문 정상). **한글 입력은 Android/iOS에서 검증**(코드·`tasks/_LOCAL_E2E_TEST_DIARY.md`에 명시). 웹은 영문·서식·이미지·날짜·실시간 갱신 검증용.
   - 검증: 앱 `flutter analyze` 무경고 + `flutter test` 60건 통과. 백엔드 `compileJava/compileTestJava` 통과, 로컬 PostgreSQL 18(`recorme`)에 **Flyway V4/V5 적용 실측**(기존 기록이 Delta+인라인 이미지로 변환 확인). Testcontainers 실행은 배포 전 Docker 일괄(기존 방침).
+
+### Phase 5: 작심삼일(3일 결심) ✅
+
+기록(diary)과 독립된 부가 기능으로 **작심삼일**(시작일 + 할일 + 3일)을 구현한다. 매일 '완료'를 체크해 3일 완주하면 `SUCCESS`, 하루라도 그 날(KST 자정 전) 미완료면 `FAILED`, 성공 시 '다음 3일'로 **연장**해 연속(streak)을 이어간다. 동시 다중 진행·월별 캘린더·매일 리마인더를 지원한다. DB·백엔드 도메인/스케줄러·모바일(데이터·UI)·**FCM 서버 푸시(Firebase 연동)**까지 **코드·설정 레벨 구현 완료**됐고, 남은 것은 **실기기(Z Flip3) 실제 푸시 수신·딥링크 라이브 검증**뿐이다.
+
+> **진행 현황**: 백엔드 도메인(`domain/resolution`·`domain/device`) + 스케줄러(자정 실패 배치·오늘 리마인더 선점) + `infra/push`(FCM 다형·무키 Stub 폴백) + 통합/단위 테스트 **108개 통과**. DB는 `V9`(resolutions·resolution_checks)·`V10`(device_tokens). 모바일은 데이터 계층·UI + FCM 연동(`firebase_messaging`·`flutter_local_notifications`) 완료(`flutter analyze` 무경고 + 디버그 APK 빌드 성공). **FCM**: Firebase 프로젝트 `recorme-c5e1c` 생성·`flutterfire configure`(앱 수신) + 서비스계정 키 `FCM_CREDENTIALS` 주입 시 백엔드가 `FcmPushService` 선택(발송) — 기동 로그로 확인. 날짜 판정은 전부 **KST(Asia/Seoul) 서버 권위**. 완료 체크는 날짜 인자 없이 서버 '오늘'로 판정하며 멱등. 리마인더는 `reminded_on` 하루 1회 멱등 + `FOR UPDATE ... SKIP LOCKED` 다중 인스턴스 안전.
+
+- **Task 020: 백엔드 작심삼일 도메인 (CRUD·완료·연장·캘린더)** ✅ - 완료
+  - 구현 기능: F013(결심 생성/조회), F014(완료 체크·성공/실패 전이), F015(연장 streak), F016(월별 캘린더)
+  - ✅ `V9__add_resolutions.sql`(resolutions·resolution_checks + 부분 인덱스·제약), `ResolutionController`(`POST /resolutions`·`GET /resolutions/me`·`/me/calendar`·`/{id}`·`POST /{id}/checks/today`·`POST /{id}/extend`·`DELETE /{id}`), `ResolutionService`(@Transactional, KST 날짜 판정, 소유권 IDOR 차단), `ResolutionMapper`(+XML). 생성/연장은 신규 리소스 201.
+  - 상태 전이: 생성=`ONGOING`(3일 체크 PENDING 프리생성) → 오늘 체크 `DONE` → 3일 완주 시 `SUCCESS`(`status='ONGOING'` 가드 1회). '예정'은 `start_date > 오늘` 파생, 취소는 소프트 삭제.
+  - 완료 체크(멱등): `POST /{id}/checks/today`가 날짜 인자 없이 KST '오늘' 체크를 `DONE` 전이. 이미 `DONE`이면 재요청 200. 진행 중 아니면 409 `RESOLUTION_NOT_ACTIVE`, 오늘 체크 없으면 409 `RESOLUTION_CHECK_NOT_TODAY`.
+  - 연장(streak): 성공한 결심만 `streak_group_id` 복사 + `streak_seq+1`로 신규 생성(시작일 `max(prev.endDate+1, 오늘)`). 성공 아니면 409 `RESOLUTION_NOT_EXTENDABLE`, 이중 연장은 선검사 + `uq(streak_group_id, streak_seq)`로 409 `RESOLUTION_ALREADY_EXTENDED`.
+  - 목록: `GET /resolutions/me?status=&cursor=&size=` 커서 페이징(id DESC), 항목은 `dayStatuses`(day_index 순 체크 상태를 **콤마 결합 문자열** "DONE,PENDING,PENDING")만 얇게 적재. 캘린더: `GET /resolutions/me/calendar?yearMonth=`가 (날짜, 결심)당 1행.
+  - 에러 코드(신규 5종): `RESOLUTION_NOT_FOUND`(404)·`RESOLUTION_NOT_ACTIVE`·`RESOLUTION_CHECK_NOT_TODAY`·`RESOLUTION_NOT_EXTENDABLE`·`RESOLUTION_ALREADY_EXTENDED`(409).
+  - **(테스트)** JUnit5 + Testcontainers/단위 — 작심삼일·기기 도메인 통합/단위 **108개 통과**(생성·완료 멱등·성공 전이·연장 체인·이중 연장 경합·캘린더·IDOR 404·자정 실패 배치·리마인더 선점).
+
+- **Task 021: 백엔드 스케줄러 (자정 실패 배치·오늘 리마인더 선점)** ✅ - 완료
+  - 구현 기능: F017(리마인더/완주 알림의 서버측 파이프라인)
+  - ✅ `ResolutionFailurePoller`(자정 이후 `check_date < today` PENDING 체크를 `FOR UPDATE ... SKIP LOCKED`로 선점 → `MISSED` + 결심 `FAILED`, 짧은 `@Transactional` 배치·다중 인스턴스 안전), `ResolutionReminderScheduler`(오늘·PENDING·미발송·시각 도래 체크를 CTE 한 문장으로 선점+`reminded_on=오늘` 마킹 → 하루 1회 멱등), `ResolutionPushNotifier`(@Async, 완주 축하는 커밋 후 `afterCommit` 발송).
+  - `device_tokens`(`V10`) + `DeviceTokenController`(`POST /devices/tokens`·`DELETE /devices/tokens?token=`, 멱등 200) + `DeviceTokenService`(upsert 소유 재귀속). 토큰 전역 UNIQUE, 팬아웃 인덱스.
+  - ✅ **FCM 서버 발송부 연결 완료**(Task 023): `ResolutionPushNotifier`가 `infra/push/PushService`로 실제 전송. 서비스계정 키(`FCM_CREDENTIALS`) 주입 시 `FcmPushService`(Firebase Admin SDK, `sendEachForMulticast` + 무효 토큰 `UNREGISTERED/INVALID_ARGUMENT` 회수), 미주입 시 `StubPushService` 폴백.
+
+- **Task 022: 앱 작심삼일 (데이터·UI)** ✅ - 완료
+  - 구현 기능: F013~F016 (모바일)
+  - ✅ 작심삼일 데이터 계층(Repository + Dio 실연동, 표준 응답 언랩·커서 페이징)·UI(목록 탭 진행/성공/실패 + 3일 진행 도트[`dayStatuses` 콤마 분해], 생성 폼[제목·시작일·알림시각], 상세[3일 체크·오늘 완료 버튼·연장·취소], 월별 캘린더 배지) 구현.
+  - ✅ **앱 FCM 연동 완료**(Task 023): `firebase_messaging` 토큰 발급 → `POST /devices/tokens` 등록·`onTokenRefresh` 재등록·로그아웃 `DELETE`, 포그라운드 `flutter_local_notifications` 표시, 알림 탭 딥링크(`/resolution/:id`)까지 구현.
+
+- **Task 023: FCM 서버 푸시 연동** ✅ - 완료(실기기 라이브 검증 대기)
+  - 구현 기능: F017 (리마인더·완주 축하 푸시 실제 전송)
+  - ✅ **Firebase 준비**: 프로젝트 `recorme-c5e1c`(Spark) 생성, 앱 `com.recorme.app`(Android/iOS) 등록. `flutterfire configure`로 `lib/firebase_options.dart`·`android/app/google-services.json`·`com.google.gms.google-services` Gradle 플러그인 자동 배선. 서비스계정 키는 `backend/fcm-service-account.json`(gitignore) + 환경변수 `FCM_CREDENTIALS`로 주입(코드·git 금지).
+  - ✅ **백엔드 발송**: `infra/push`(`PushService`/`FcmPushService`/`StubPushService`/`PushConfig` 무키 폴백, `firebase-admin`) — 키 주입 시 기동 로그 `Push service = FCM`. `ResolutionPushNotifier`가 대상 토큰 팬아웃 + `sendEachForMulticast` + 무효 토큰(`UNREGISTERED/INVALID_ARGUMENT`) 물리 회수.
+  - ✅ **앱 수신**: `main.dart` `Firebase.initializeApp`(+백그라운드 핸들러) → Supabase 순서, `core/notifications/NotificationService`(권한 요청 1회 시트·토큰 등록/갱신/삭제·포그라운드 로컬 알림·`onMessageOpenedApp`/`getInitialMessage` 딥링크), Android `POST_NOTIFICATIONS`·core library desugaring. `flutter analyze` 무경고 + `flutter build apk --debug` 성공.
+  - ⏳ **잔여(라이브 검증)**: 실기기(Z Flip3)에서 알림 권한 허용 → 토큰 등록 → 리마인더 시각 도래 1회 발송(멱등)·완주 축하·자정 실패 알림·다중 기기 팬아웃·무효 토큰 회수·알림 탭 딥링크 실동작 확인. iOS는 APNs 키·`GoogleService-Info.plist` 별도 필요.
 
 ### Phase 4: MVP 이후 (개요)
 

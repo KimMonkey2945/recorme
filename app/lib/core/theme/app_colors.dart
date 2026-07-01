@@ -88,6 +88,12 @@ class AppColors {
   /// 에러 틴트 배경
   static const Color errorSoft = Color(0xFFFCECEC);
 
+  /// 성공 / 완료 강조색 (#1AC472) — 작심삼일 완료·성공 상태.
+  static const Color success = Color(0xFF1AC472);
+
+  /// 성공 틴트 배경 (#E8FAF2) — 완료 배지·성공 카드 배경.
+  static const Color successSoft = Color(0xFFE8FAF2);
+
   /// 경고색 — 글자수 80~95% 구간·주의 강조 (#FF9200)
   static const Color warning = Color(0xFFFF9200);
 

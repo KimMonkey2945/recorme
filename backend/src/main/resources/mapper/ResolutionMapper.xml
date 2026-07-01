@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.resolution.mapper.ResolutionMapper">
+
+    <!-- 결심 단건 스칼라 매핑. streak_group_id(UUID)는 ::text 로 캐스팅해 String 매핑을 안정화(연장 체인 식별용).
+         ⚠️ constructor 기반 매핑이라 <arg> 순서가 ResolutionRow 표준 생성자 인자 순서와 정확히 일치해야 한다.
+            map-underscore-to-camel-case 는 setter/필드 매핑에만 적용되고 constructor <arg> 엔 auto-apply 되지 않는다. -->
+    <resultMap id="resolutionRowMap" type="com.recordapp.domain.resolution.dto.ResolutionRow">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="start_date" javaType="java.time.LocalDate"/>
+            <arg column="end_date" javaType="java.time.LocalDate"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="reminder_time" javaType="java.time.LocalTime"/>
+            <arg column="streak_group_id" javaType="java.lang.String"/>
+            <arg column="streak_seq" javaType="java.lang.Short"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 결심 목록 항목 매핑(record 생성자 기반). day_statuses 는 day_index 순 체크 상태를 콤마 결합한 텍스트. -->
+    <resultMap id="resolutionListItemMap" type="com.recordapp.domain.resolution.dto.ResolutionListItem">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="start_date" javaType="java.time.LocalDate"/>
+            <arg column="end_date" javaType="java.time.LocalDate"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="streak_seq" javaType="java.lang.Short"/>
+            <arg column="day_statuses" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 일별 체크 뷰 매핑(record 생성자 기반). completed_at 은 nullable(DONE 일 때만 값). -->
+    <resultMap id="resolutionCheckViewMap" type="com.recordapp.domain.resolution.dto.ResolutionCheckView">
+        <constructor>
+            <arg column="check_date" javaType="java.time.LocalDate"/>
+            <arg column="day_index" javaType="java.lang.Short"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="completed_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 캘린더 항목 매핑(record 생성자 기반). (날짜, 결심)당 1행. -->
+    <resultMap id="resolutionCalendarDayMap" type="com.recordapp.domain.resolution.dto.ResolutionCalendarDay">
+        <constructor>
+            <arg column="date" javaType="java.time.LocalDate"/>
+            <idArg column="resolution_id" javaType="java.lang.Long"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="resolution_status" javaType="java.lang.String"/>
+            <arg column="check_status" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 결심 1건 INSERT. streak_group_id 가 null 이면 gen_random_uuid() 로 새 체인 생성, 있으면 그 체인에 이어 붙인다.
+         RETURNING id 를 useGeneratedKeys 로 회수한다. end_date 는 서비스가 start_date+2 로 계산해 넘긴다(DB span CHECK 와 일치). -->
+    <insert id="insertResolution"
+            parameterType="com.recordapp.domain.resolution.dto.ResolutionInsertCommand"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resolutions (user_id, title, start_date, end_date, reminder_time, streak_group_id, streak_seq)
+        VALUES (#{userId}, #{title}, #{startDate}, #{endDate}, #{reminderTime},
+                COALESCE(#{streakGroupId}::uuid, gen_random_uuid()), #{streakSeq})
+        RETURNING id
+    </insert>
+
+    <!-- 일별 체크 3행 프리생성. generate_series(0,2) 로 3일치(day_index 1~3, check_date=start+0/1/2)를 한 번에 INSERT.
+         user_id 는 부모 결심 행에서 승계(캘린더 직접조회용 비정규화 컬럼). -->
+    <insert id="insertChecks">
+        INSERT INTO resolution_checks (resolution_id, user_id, check_date, day_index, status)
+        SELECT r.id,
+               r.user_id,
+               #{startDate}::date + g,
+               (g + 1)::smallint,
+               'PENDING'
+          FROM resolutions r
+         CROSS JOIN generate_series(0, 2) AS g
+         WHERE r.id = #{resolutionId}
+    </insert>
+
+    <!-- 내부 PK+사용자 활성 결심 단건. -->
+    <select id="findByIdAndUser" resultMap="resolutionRowMap">
+        SELECT id,
+               title,
+               start_date,
+               end_date,
+               status,
+               reminder_time,
+               streak_group_id::text AS streak_group_id,
+               streak_seq
+          FROM resolutions
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 내 결심 목록(커서 페이징, id DESC). status 필터 optional, cursor 있으면 id < cursor 인 다음 페이지.
+         day_statuses 는 day_index 순 체크 상태를 콤마 결합(예: 'DONE,PENDING,PENDING') — 3일 진행 도트 렌더용. -->
+    <select id="findList" resultMap="resolutionListItemMap">
+        SELECT r.id         AS id,
+               r.title      AS title,
+               r.start_date AS start_date,
+               r.end_date   AS end_date,
+               r.status     AS status,
+               r.streak_seq AS streak_seq,
+               (SELECT string_agg(c.status, ',' ORDER BY c.day_index)
+                  FROM resolution_checks c
+                 WHERE c.resolution_id = r.id) AS day_statuses
+          FROM resolutions r
+         WHERE r.user_id = #{userId}
+           AND r.deleted_at IS NULL
+        <if test="status != null and status != ''">
+           AND r.status = #{status}
+        </if>
+        <if test="cursor != null">
+           AND r.id &lt; #{cursor}
+        </if>
+         ORDER BY r.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 해당 결심의 일별 체크 목록(day_index 오름차순, 3행). -->
+    <select id="findChecks" resultMap="resolutionCheckViewMap">
+        SELECT check_date,
+               day_index,
+               status,
+               completed_at
+          FROM resolution_checks
+         WHERE resolution_id = #{resolutionId}
+         ORDER BY day_index ASC
+    </select>
+
+    <!-- 월별 캘린더((날짜, 결심)당 1행). 활성 결심의 체크만. user_id·check_date range scan. -->
+    <select id="findCalendar" resultMap="resolutionCalendarDayMap">
+        SELECT c.check_date    AS date,
+               c.resolution_id AS resolution_id,
+               r.title         AS title,
+               r.status        AS resolution_status,
+               c.status        AS check_status
+          FROM resolution_checks c
+          JOIN resolutions r ON r.id = c.resolution_id AND r.deleted_at IS NULL
+         WHERE c.user_id = #{userId}
+           AND to_char(c.check_date, 'YYYY-MM') = #{yearMonth}
+         ORDER BY c.check_date ASC, c.resolution_id ASC
+    </select>
+
+    <!-- 해당 결심의 특정 날짜 체크 단건(완료체크 멱등 판정용). -->
+    <select id="findCheck" resultMap="resolutionCheckViewMap">
+        SELECT check_date,
+               day_index,
+               status,
+               completed_at
+          FROM resolution_checks
+         WHERE resolution_id = #{resolutionId}
+           AND check_date = #{date}
+    </select>
+
+    <!-- 같은 체인에 지정 순번의 결심이 이미 있는지(이중 연장 선검사). -->
+    <select id="existsExtensionInGroup" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM resolutions
+             WHERE streak_group_id = #{streakGroupId}::uuid
+               AND streak_seq = #{streakSeq}
+        )
+    </select>
+
+    <!-- 오늘자 체크 DONE 전이. PENDING 행만 대상이라 이미 DONE/MISSED 면 0행(서비스가 멱등 판정). -->
+    <update id="markCheckDone">
+        UPDATE resolution_checks
+           SET status       = 'DONE',
+               completed_at = now(),
+               updated_at   = now()
+         WHERE resolution_id = #{resolutionId}
+           AND check_date = #{today}
+           AND status = 'PENDING'
+    </update>
+
+    <!-- 3일 모두 DONE 이면 결심 SUCCESS 전이. status='ONGOING' 가드로 정확히 1회만(멱등). -->
+    <update id="markResolutionSuccessIfAllDone">
+        UPDATE resolutions
+           SET status     = 'SUCCESS',
+               updated_at = now()
+         WHERE id = #{id}
+           AND status = 'ONGOING'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM resolution_checks
+                WHERE resolution_id = #{id}
+                  AND status &lt;&gt; 'DONE'
+           )
+    </update>
+
+    <!-- 소프트 삭제(취소). 활성 행만 대상(이미 삭제된 행은 0). -->
+    <update id="softDelete">
+        UPDATE resolutions
+           SET deleted_at = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- ===== 스케줄러(자정 실패 배치 / 오늘 리마인더) 전용 ===== -->
+
+    <!-- 초과 미완료 체크 스냅샷(자정 실패 배치용, 생성자 매핑). map-underscore-to-camel-case 는
+         constructor <arg> 엔 auto-apply 되지 않으므로 컬럼→인자를 명시 매핑한다. -->
+    <resultMap id="overdueCheckMap" type="com.recordapp.domain.resolution.dto.OverdueCheck">
+        <constructor>
+            <idArg column="check_id" javaType="_long"/>
+            <arg column="resolution_id" javaType="_long"/>
+            <arg column="user_id" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 리마인더 발송 대상 매핑(생성자 매핑). RETURNING 컬럼 순서와 무관하게 컬럼명으로 매핑된다. -->
+    <resultMap id="reminderTargetMap" type="com.recordapp.domain.resolution.dto.ReminderTarget">
+        <constructor>
+            <arg column="resolution_id" javaType="_long"/>
+            <arg column="user_id" javaType="_long"/>
+            <arg column="title" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 기한 초과(check_date < today) PENDING 체크를 잠금 선점. 부모 결심이 ONGOING·활성인 것만.
+         FOR UPDATE OF c SKIP LOCKED 로 다중 인스턴스 배치가 같은 행을 중복 처리하지 않는다.
+         짧은 @Transactional 배치가 선점 후 MISSED/FAILED 전이하고 커밋하며 잠금을 푼다. -->
+    <select id="findOverduePendingChecks" resultMap="overdueCheckMap">
+        SELECT c.id            AS check_id,
+               c.resolution_id AS resolution_id,
+               r.user_id       AS user_id
+          FROM resolution_checks c
+          JOIN resolutions r ON r.id = c.resolution_id
+         WHERE c.status = 'PENDING'
+           AND c.check_date &lt; #{today}
+           AND r.status = 'ONGOING'
+           AND r.deleted_at IS NULL
+         ORDER BY c.id
+         LIMIT #{limit}
+         FOR UPDATE OF c SKIP LOCKED
+    </select>
+
+    <!-- 체크 MISSED 전이(PENDING 만 대상, 멱등). -->
+    <update id="markCheckMissed">
+        UPDATE resolution_checks
+           SET status     = 'MISSED',
+               updated_at = now()
+         WHERE id = #{checkId}
+           AND status = 'PENDING'
+    </update>
+
+    <!-- 결심 FAILED 전이. status='ONGOING' 가드로 정확히 1회(같은 결심 다중 체크 초과 시 첫 건만 1행). -->
+    <update id="markResolutionFailed">
+        UPDATE resolutions
+           SET status     = 'FAILED',
+               updated_at = now()
+         WHERE id = #{resolutionId}
+           AND status = 'ONGOING'
+    </update>
+
+    <!-- 오늘 리마인더 원자적 선점+마킹. CTE(due)에서 오늘·PENDING·미발송·시각 도래 체크를
+         FOR UPDATE OF c SKIP LOCKED 로 집고, 이어지는 UPDATE 가 reminded_on=today 로 마킹하며
+         발송 정보(resolution_id, user_id, title)를 RETURNING 한다 — 선점·마킹이 한 문장이라 하루 1회 멱등.
+         reminded_on IS DISTINCT FROM today: NULL(미발송)이면 true 라 최초 발송 허용, 오늘 이미 발송이면 제외.
+         reminder_time IS NULL(알림 없음)은 대상에서 배제. now/today 는 KST 로 애플리케이션이 주입. -->
+    <select id="claimDueReminders" resultMap="reminderTargetMap">
+        WITH due AS (
+            SELECT c.id
+              FROM resolution_checks c
+              JOIN resolutions r ON r.id = c.resolution_id
+             WHERE c.check_date = #{today}
+               AND c.status = 'PENDING'
+               AND r.status = 'ONGOING'
+               AND r.deleted_at IS NULL
+               AND (c.reminded_on IS DISTINCT FROM #{today})
+               AND r.reminder_time IS NOT NULL
+               AND r.reminder_time &lt;= #{now}
+             ORDER BY c.id
+             LIMIT #{limit}
+             FOR UPDATE OF c SKIP LOCKED
+        )
+        UPDATE resolution_checks c
+           SET reminded_on = #{today},
+               updated_at  = now()
+          FROM due, resolutions r
+         WHERE c.id = due.id
+           AND r.id = c.resolution_id
+        RETURNING c.resolution_id AS resolution_id,
+                  r.user_id       AS user_id,
+                  r.title         AS title
+    </select>
+
+</mapper>

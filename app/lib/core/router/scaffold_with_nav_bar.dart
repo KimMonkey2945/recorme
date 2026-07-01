@@ -33,6 +33,11 @@ class ScaffoldWithNavBar extends StatelessWidget {
             selectedIcon: Icon(Icons.list_alt),
             label: '목록',
           ),
+          NavigationDestination(
+            icon: Icon(Icons.flag_outlined),
+            selectedIcon: Icon(Icons.flag),
+            label: '작심삼일',
+          ),
         ],
       ),
     );

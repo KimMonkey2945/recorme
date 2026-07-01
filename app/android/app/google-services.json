@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "801970107085",
+    "project_id": "recorme-c5e1c",
+    "storage_bucket": "recorme-c5e1c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:801970107085:android:eac4cd1774a1d4dcd1ef84",
+        "android_client_info": {
+          "package_name": "com.recorme.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm_GfuvWL2fJOww0HzhQMAs623v0zgNz4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

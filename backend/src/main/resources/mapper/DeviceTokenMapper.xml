@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.device.mapper.DeviceTokenMapper">
+
+    <!-- 기기 토큰 upsert. token 전역 유니크(uq_device_tokens_token) 충돌 시 소유(user_id)·platform 을
+         갱신하고 last_seen_at·updated_at 을 now() 로 되돌린다 — 재로그인/재설치/기기 소유 이전을 흡수한다.
+         created_at 은 최초값을 보존하기 위해 갱신하지 않는다. -->
+    <insert id="upsert">
+        INSERT INTO device_tokens (user_id, token, platform)
+        VALUES (#{userId}, #{token}, #{platform})
+        ON CONFLICT (token) DO UPDATE SET
+            user_id      = EXCLUDED.user_id,
+            platform     = EXCLUDED.platform,
+            last_seen_at = now(),
+            updated_at   = now()
+    </insert>
+
+    <!-- 사용자 소유 토큰 1건 삭제(로그아웃/기기 해제). 소유권은 user_id 로 검증(타인 토큰 삭제 차단). -->
+    <delete id="deleteByToken">
+        DELETE FROM device_tokens
+         WHERE token = #{token}
+           AND user_id = #{userId}
+    </delete>
+
+    <!-- 무효 토큰 일괄 회수(발송 경로에서 UNREGISTERED/INVALID_ARGUMENT 로 판정된 토큰).
+         이미 죽은 토큰이라 소유와 무관하게 token 값으로 삭제한다. 빈 리스트면 WHERE false 로 무동작(문법 안전). -->
+    <delete id="deleteTokens">
+        DELETE FROM device_tokens
+         WHERE token IN
+        <choose>
+            <when test="tokens != null and tokens.size() > 0">
+                <foreach collection="tokens" item="t" open="(" separator="," close=")">
+                    #{t}
+                </foreach>
+            </when>
+            <otherwise>(NULL)</otherwise>
+        </choose>
+    </delete>
+
+    <!-- 유저 팬아웃: user_id 로 등록 토큰 전부 조회(작심삼일 성공/실패/리마인더 멀티캐스트용). -->
+    <select id="findTokensByUserId" resultType="java.lang.String">
+        SELECT token
+          FROM device_tokens
+         WHERE user_id = #{userId}
+    </select>
+
+</mapper>

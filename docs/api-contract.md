@@ -156,6 +156,102 @@
 
 > 댓글 API는 초기 범위에서 제외(공감만 제공).
 
+### 작심삼일 (resolutions)
+
+> 작심삼일 = 시작일 + 할일(`title`) + **3일**. 매일 '완료'를 체크해 3일 완주하면 `SUCCESS`, 하루라도 그 날(KST 자정 전) 미완료면 `FAILED`. 성공하면 '다음 3일'로 **연장**해 연속(streak)을 이어간다. 동시에 여러 개 진행 가능.
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| POST | `/resolutions` | 작심삼일 생성(신규 리소스 → **201**) | ○ |
+| GET | `/resolutions/me?status=&cursor=&size=` | 내 결심 목록(커서 페이징, id DESC). `status` 필터 optional | ○ |
+| GET | `/resolutions/me/calendar?yearMonth=YYYY-MM` | 월별 캘린더((날짜, 결심)당 1행) | ○ |
+| GET | `/resolutions/{id}` | 결심 단건 상세(헤더 + 3일 체크) | ○ |
+| POST | `/resolutions/{id}/checks/today` | 오늘자 완료 체크(**멱등**) | ○ |
+| POST | `/resolutions/{id}/extend` | 성공한 결심을 '다음 3일'로 연장(신규 리소스 → **201**) | ○ |
+| DELETE | `/resolutions/{id}` | 결심 취소(소프트 삭제) | ○ |
+
+```jsonc
+// POST /resolutions  요청
+// startDate: "yyyy-MM-dd"(오늘/미래만, 과거는 400). endDate는 서버가 startDate+2로 파생(요청에 없음).
+// reminderTime: "HH:mm" 또는 "HH:mm:ss"(매일 알림 벽시계 시각, KST). 생략/null이면 알림 없음.
+{ "title": "매일 물 2L 마시기", "startDate": "2026-07-01", "reminderTime": "21:00" }
+// 응답 data (201 Created) = ResolutionDetail
+{ "id": 42, "title": "매일 물 2L 마시기", "startDate": "2026-07-01", "endDate": "2026-07-03",
+  "status": "ONGOING", "reminderTime": "21:00:00", "streakSeq": 1,
+  "checks": [
+    { "checkDate": "2026-07-01", "dayIndex": 1, "status": "PENDING", "completedAt": null },
+    { "checkDate": "2026-07-02", "dayIndex": 2, "status": "PENDING", "completedAt": null },
+    { "checkDate": "2026-07-03", "dayIndex": 3, "status": "PENDING", "completedAt": null } ] }
+// title 1~100자(백엔드 @Size(100)·DB CHECK 동일 상수). status: ONGOING/SUCCESS/FAILED.
+// streakSeq: 연장 체인 내 순번(1부터, "N연속"). checks는 생성 시 3행(day_index 1·2·3) 프리생성.
+
+// GET /resolutions/me?status=ONGOING&cursor=&size=  응답 data (커서 페이징, id DESC, OFFSET 미사용)
+// status(옵션): ONGOING|SUCCESS|FAILED. 항목은 상세의 checks 대신 dayStatuses만 얇게 싣는다.
+// ⚠️ dayStatuses는 배열이 아니라 day_index 순 체크 상태를 콤마로 결합한 "문자열"이다
+//    (예: "DONE,PENDING,PENDING"). 클라이언트가 콤마로 분해해 1·2·3일차 도트로 렌더한다.
+{ "items": [
+    { "id": 42, "title": "매일 물 2L 마시기", "startDate": "2026-07-01", "endDate": "2026-07-03",
+      "status": "ONGOING", "streakSeq": 1, "dayStatuses": "DONE,PENDING,PENDING" } ],
+  "nextCursor": 42, "hasNext": false }
+
+// GET /resolutions/me/calendar?yearMonth=2026-07  응답 data = List<ResolutionCalendarDay>
+// (날짜, 결심)당 1행 — 하루에 여러 결심이 진행될 수 있음. 활성(미삭제) 결심의 체크만.
+// resolutionStatus: 소속 결심 상태(ONGOING/SUCCESS/FAILED), checkStatus: 그 날짜 체크 상태(PENDING/DONE/MISSED).
+[ { "date": "2026-07-01", "resolutionId": 42, "title": "매일 물 2L 마시기",
+    "resolutionStatus": "ONGOING", "checkStatus": "DONE" },
+  { "date": "2026-07-02", "resolutionId": 42, "title": "매일 물 2L 마시기",
+    "resolutionStatus": "ONGOING", "checkStatus": "PENDING" } ]
+
+// GET /resolutions/{id}  응답 data = ResolutionDetail (위 POST 응답과 동일 형태)
+
+// POST /resolutions/{id}/checks/today  (요청 바디 없음)
+// 완료 대상 날짜는 서버가 KST '오늘'로 결정한다(요청에 날짜 인자 없음). 응답 data = 갱신된 ResolutionDetail.
+// 멱등: 오늘 체크를 DONE으로 전이하고, 이미 DONE이면 재요청도 200. 3일 모두 DONE이면 status가 SUCCESS로 전이.
+// 에러: 진행 중(ONGOING)이 아니면 409 RESOLUTION_NOT_ACTIVE / 오늘 체크가 없으면(미래 시작 등) 409 RESOLUTION_CHECK_NOT_TODAY.
+
+// POST /resolutions/{id}/extend  요청
+// reminderTime(옵션): 지정하면 새 결심에 적용, 생략/null이면 이전 결심의 알림 시각을 승계. title·기간은 승계.
+{ "reminderTime": "22:00" }
+// 응답 data (201 Created) = 새 결심의 ResolutionDetail. 같은 streak_group, streakSeq = 이전 + 1.
+// 시작일 = max(이전 endDate + 1, 오늘). 에러: 성공(SUCCESS)이 아니면 409 RESOLUTION_NOT_EXTENDABLE /
+//         이미 연장했으면 409 RESOLUTION_ALREADY_EXTENDED.
+
+// DELETE /resolutions/{id}  응답: success=true (소프트 삭제). 대상 부재/타인 소유 시 404 RESOLUTION_NOT_FOUND.
+```
+
+**에러 코드**
+
+| code | HTTP | 발생 상황 |
+|---|---|---|
+| `RESOLUTION_NOT_FOUND` | 404 | 결심 부재 또는 타인 소유(조회·완료·연장·삭제 공통) |
+| `RESOLUTION_NOT_ACTIVE` | 409 | 진행 중(ONGOING)이 아닌 결심에 오늘 완료 시도 |
+| `RESOLUTION_CHECK_NOT_TODAY` | 409 | 오늘 완료할 체크가 없음(미래 시작·오늘 체크 부재) |
+| `RESOLUTION_NOT_EXTENDABLE` | 409 | 성공(SUCCESS)하지 않은 결심을 연장 시도 |
+| `RESOLUTION_ALREADY_EXTENDED` | 409 | 같은 체인에서 이미 다음 3일로 연장함(이중 연장) |
+
+> **상태 전이**: 생성=`ONGOING`(3일 체크 PENDING 프리생성) → 오늘 체크 `DONE` → 3일 완주 시 `SUCCESS`(조건부 1회, 커밋 후 완주 축하 푸시). 하루라도 그 날 자정을 넘겨 미완료면 `FAILED`(자정 배치가 해당 체크를 `MISSED`로, 결심을 `FAILED`로 전이). `SUCCESS`/`FAILED`는 터미널 상태다. **'예정'(미래 시작)은 별도 상태가 아니라 `start_date > 오늘`로 파생**하며, **취소는 소프트 삭제**다.
+
+> **타임존(KST 서버 권위)**: 모든 날짜 판정(오늘·시작일·자정 실패·리마인더 도래)은 서버 기본 타임존과 무관하게 **KST(Asia/Seoul) 벽시계**로 통일한다. `POST /resolutions/{id}/checks/today`는 **날짜 인자를 받지 않고** 서버가 KST '오늘'로 대상 체크를 정한다 — 클라이언트 시계 신뢰·타임존 조작을 배제한다.
+
+### 기기 토큰 (devices)
+
+> FCM 서버 푸시(작심삼일 리마인더·완주 축하)를 위한 기기 등록 토큰 관리. 등록/해제 모두 **멱등**이라 항상 **200**으로 응답한다.
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| POST | `/devices/tokens` | 기기 토큰 등록/갱신(upsert, 멱등) | ○ |
+| DELETE | `/devices/tokens?token=...` | 기기 토큰 해제(로그아웃 등, 멱등) | ○ |
+
+```jsonc
+// POST /devices/tokens  요청
+// token: FCM 등록 토큰(비어 있을 수 없음). platform: ANDROID/IOS/WEB.
+{ "token": "fcm-registration-token", "platform": "ANDROID" }
+// 응답: success=true. 토큰은 전역 유일 → 재로그인/재설치 시 소유를 현재 사용자로 이전(upsert).
+
+// DELETE /devices/tokens?token=fcm-registration-token
+// 응답: success=true. 본인 소유 토큰만 삭제, 없거나 타인 소유면 무동작(멱등).
+```
+
 ## 4. 가시성(visibility) 규칙
 
 | 값 | 조회 가능 대상 |

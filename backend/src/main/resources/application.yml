@@ -66,6 +66,23 @@ record:
     poll-interval-ms: ${ANALYSIS_POLL_INTERVAL_MS:60000}
     initial-delay-ms: ${ANALYSIS_INITIAL_DELAY_MS:30000}
     batch-size: ${ANALYSIS_BATCH_SIZE:20}
+  # ===== 서버 푸시(FCM) =====
+  # firebase-credentials: 서비스 계정 JSON 파일 경로 또는 Base64 인코딩된 JSON 문자열.
+  #   비어 있으면 PushConfig가 자동으로 StubPushService를 선택(무키 로컬/CI 동작 보장, 실제 발송 없음).
+  #   자격증명은 환경변수(FCM_CREDENTIALS)로만 주입한다(코드·git 평문 금지).
+  push:
+    firebase-credentials: ${FCM_CREDENTIALS:}
+  # ===== 작심삼일 스케줄러(자정 실패 배치 / 오늘 리마인더) =====
+  # 모든 날짜·시각 판정은 애플리케이션이 KST(Asia/Seoul)로 주입하며, cron 도 zone=Asia/Seoul 로 구동된다.
+  # failure-cron: 자정 직후 실패 배치(기본 매일 00:05). 초과 미완료 체크를 MISSED·결심을 FAILED 로 전이.
+  # reminder-cron: 오늘 리마인더(기본 15분마다). reminder_time 도래 시 하루 1회 발송(reminded_on 멱등).
+  # batch-size: 드레인 루프 1회 선점(FOR UPDATE SKIP LOCKED) 최대 건수(두 스케줄러 공용).
+  # failure-notify: true 면 FAILED 전이된 결심 사용자에게 실패 알림 푸시(@Async).
+  resolution:
+    failure-cron: "${RESOLUTION_FAILURE_CRON:0 5 0 * * *}"
+    reminder-cron: "${RESOLUTION_REMINDER_CRON:0 */15 * * * *}"
+    batch-size: ${RESOLUTION_BATCH_SIZE:100}
+    failure-notify: ${RESOLUTION_FAILURE_NOTIFY:true}
 
 # ===== Supabase Auth (ES256/JWKS 검증 전용) =====
 # 백엔드는 자체 JWT를 발급하지 않고 Supabase가 ES256로 서명한 access token을 JWKS로 검증만 한다.

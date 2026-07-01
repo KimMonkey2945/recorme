@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/config/api_config.dart';
+import '../../../core/notifications/notification_permission_prompt.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/profile_avatar.dart';
+import '../../../shared/widgets/write_choice_sheet.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../profile/presentation/providers/profile_providers.dart';
 import '../data/dto/diary_dto.dart';
@@ -32,6 +34,12 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
     super.initState();
     final now = DateTime.now();
     _displayMonth = DateTime(now.year, now.month);
+
+    // 로그인 후 캘린더 첫 진입 시 알림 권한 요청(내부 플래그로 1회만 노출).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeAskNotificationPermission(context, ref);
+    });
   }
 
   /// 'yyyy-MM' (요약 provider 인자).
@@ -68,14 +76,16 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
   /// 표시 월 요약을 다시 불러온다(작성/삭제 후 dot 갱신용).
   void _refreshSummary() => ref.invalidate(monthlySummaryProvider(_yearMonth));
 
-  /// 날짜 탭: 해당 날짜 기록 상태에 따라 상세/에디터로 분기.
+  /// 날짜 탭: 해당 날짜 기록 상태에 따라 상세/작성 선택으로 분기.
   ///
-  /// - 확정 기록(!isDraft): 상세 화면으로 이동.
-  /// - 임시 저장(DRAFT) 또는 없음: 에디터로 이동(DRAFT는 날짜 파라미터로 수정 재진입).
+  /// - 확정 기록(!isDraft): 기존대로 상세 화면으로 이동.
+  /// - 그 외(DRAFT·없음): 작성 선택 시트를 띄운다. 오늘이면 작심삼일 시작 가능,
+  ///   과거 날짜면 시트는 뜨되 작심삼일 카드는 비활성이고 글 작성만 가능하다.
   Future<void> _onDateTap(DateTime date) async {
     // 미래 날짜 방어(캘린더 셀이 이미 막지만 이중 안전).
     final now = DateTime.now();
-    if (date.isAfter(DateTime(now.year, now.month, now.day))) return;
+    final today = DateTime(now.year, now.month, now.day);
+    if (date.isAfter(today)) return;
 
     final diary = await ref.read(diaryRepositoryProvider).getByDate(date);
     if (!mounted) return;
@@ -83,20 +93,47 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
     if (diary != null && !diary.isDraft) {
       // 확정 기록 → 상세 화면
       await context.push('/diary/${diary.id}');
-    } else {
-      // DRAFT이거나 없으면 에디터로 이동(같은 날짜 DRAFT는 에디터에서 프리필).
-      await context.push('/editor?date=${_dateParam(date)}');
+      if (!mounted) return;
+      _refreshSummary();
+      return;
     }
+
+    // DRAFT이거나 없으면 작성 선택 시트. 작심삼일은 오늘 날짜에만 허용.
+    final isToday = _isSameDay(date, today);
+    final choice = await showWriteChoiceSheet(context, allowResolution: isToday);
+    if (!mounted || choice == null) return;
+
+    switch (choice) {
+      case WriteChoice.diary:
+        // 같은 날짜 DRAFT는 에디터에서 프리필된다.
+        await context.push('/editor?date=${_dateParam(date)}');
+      case WriteChoice.resolution:
+        await context.push('/resolution/new?date=${_dateParam(date)}');
+    }
+    if (!mounted) return;
     // 작성/수정/삭제 결과를 캘린더 dot에 반영.
     _refreshSummary();
   }
 
-  /// FAB: 오늘 날짜 에디터로 진입.
+  /// FAB: 작성 선택 시트를 띄워 글 작성/작심삼일 시작으로 분기(모두 오늘 날짜).
   Future<void> _onWriteToday() async {
-    await context.push('/editor?date=${_dateParam(DateTime.now())}');
+    final choice = await showWriteChoiceSheet(context);
+    if (!mounted || choice == null) return;
+
+    final todayParam = _dateParam(DateTime.now());
+    switch (choice) {
+      case WriteChoice.diary:
+        await context.push('/editor?date=$todayParam');
+      case WriteChoice.resolution:
+        await context.push('/resolution/new?date=$todayParam');
+    }
     if (!mounted) return;
     _refreshSummary();
   }
+
+  /// 연·월·일만 비교하는 날짜 동등 비교.
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   @override
   Widget build(BuildContext context) {

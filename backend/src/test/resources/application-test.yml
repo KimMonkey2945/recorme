@@ -4,3 +4,11 @@
 # → 컨텍스트 로드·기동에 네트워크 불필요). 검증기 단위 테스트는 인메모리 EC 키로 decoder를 주입한다.
 supabase:
   url: https://test.supabase.invalid
+
+# 작심삼일 스케줄러(@Scheduled)는 통합 테스트가 배치 메서드를 직접 호출해 결정론적으로 검증하므로,
+# 백그라운드 자동 구동을 끈다. Spring 의 CRON_DISABLED 마커("-")를 주입하면 해당 @Scheduled 가 등록되지 않는다
+# (리마인더 15분 주기 배치가 테스트 데이터와 경합해 비결정성을 유발하는 것을 차단).
+record:
+  resolution:
+    failure-cron: "-"
+    reminder-cron: "-"
