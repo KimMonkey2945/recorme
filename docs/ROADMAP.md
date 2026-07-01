@@ -17,9 +17,9 @@
 
 | 구분 | 스택 |
 |---|---|
-| 모바일(`app/`) | Flutter / Dart 3.10.x, feature-first 구조, Riverpod, go_router, Dio(Supabase 토큰 첨부 인터셉터), flutter_secure_storage, supabase_flutter(Supabase Auth) / google_sign_in, image_picker, **flutter_quill(리치 텍스트 에디터, Delta JSON) + flutter_localizations** |
-| 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`, Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)** |
-| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`, `V9=resolutions+resolution_checks(작심삼일)`, `V10=device_tokens(FCM)`) |
+| 모바일(`app/`) | Flutter / Dart(SDK `^3.10.x`), feature-first 구조, **flutter_riverpod ^3.x**, **go_router ^17.x**, Dio(Supabase 토큰 첨부 인터셉터), **flutter_secure_storage ^10.x**, supabase_flutter(Supabase Auth) / google_sign_in ^7.x, image_picker, **flutter_quill ^11.x(리치 텍스트 에디터, Delta JSON) + flutter_quill_extensions + flutter_localizations**, **video_player(감정 마스코트·러닝 로딩·로그인 영상 연출)**, firebase_core/firebase_messaging ^16.x + flutter_local_notifications ^22.x(FCM). ※ 모델은 freezed 미도입·손 작성(Task 004 비고) |
+| 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`(`auth`·`user`·`diary`·`emotion`·`resolution`·`device`) + `infra.*`(`llm`·`push`·`storage`), Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)**, **멀티모달 감정 분석(`infra.llm` LlmClient 추상화: Claude(`anthropic-java`)·Gemini·Ollama·Stub / `@Async` 전용 풀 + Poller 백스톱)**, firebase-admin(FCM) |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V3=diary_images(→V5에서 제거)`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V6=content_text NOT NULL`, `V7=감정 분석(emotion_types 마스터 + diaries 감정·테마 컬럼)`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`, `V9=resolutions+resolution_checks(작심삼일)`, `V10=device_tokens(FCM)`) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -272,9 +272,11 @@
   - ✅ **앱 수신**: `main.dart` `Firebase.initializeApp`(+백그라운드 핸들러) → Supabase 순서, `core/notifications/NotificationService`(권한 요청 1회 시트·토큰 등록/갱신/삭제·포그라운드 로컬 알림·`onMessageOpenedApp`/`getInitialMessage` 딥링크), Android `POST_NOTIFICATIONS`·core library desugaring. `flutter analyze` 무경고 + `flutter build apk --debug` 성공.
   - ⏳ **잔여(라이브 검증)**: 실기기(Z Flip3)에서 알림 권한 허용 → 토큰 등록 → 리마인더 시각 도래 1회 발송(멱등)·완주 축하·자정 실패 알림·다중 기기 팬아웃·무효 토큰 회수·알림 탭 딥링크 실동작 확인. iOS는 APNs 키·`GoogleService-Info.plist` 별도 필요.
 
-### Phase 4: MVP 이후 (개요)
+### Phase 4: 감정 분석 · 동적 테마 ✅ (음악·공유·배포는 이후 개요)
 
-> 아래 항목은 MVP 범위 밖이며, 상세 Task 분해는 추후 진행한다. 비동기 감정 분석은 트랜잭션 밖에서 `@Async`로 수행하고 실패 시 `NEUTRAL` 폴백한다는 아키텍처 원칙을 따른다.
+기록 **확정(DRAFT→PENDING)** 시 멀티모달 LLM으로 감정을 분석해 **대표 감정 · 테마색(배경/글자/강조) · AI 한 줄 코멘트 · AI 제목 · 무드 이모지 · 감정 점수 분포**를 생성하고, 앱은 이를 **감정 마스코트 영상 · 상세 시네마틱 인트로 · 러닝 로딩 연출 · 감정 기반 동적 테마**로 렌더링한다. 비동기 감정 분석은 트랜잭션 밖에서 `@Async`(전용 풀 `emotionAnalysisExecutor`)로 수행하고, 실패 시 `NEUTRAL` 폴백한다. **감정 6종**(JOY/SADNESS/ANGER/CALM/ANXIETY/NEUTRAL)은 `emotion_types` 마스터로 관리한다. 아래 감정 분석·동적 테마(Task 012·013)는 **구현 완료**이며, 음악(014)·공유/피드(015)·배포(016)는 여전히 MVP 이후 개요다.
+
+> **진행 현황**: 백엔드 감정 분석 엔진(`domain.emotion`: EmotionAnalysisService/Poller/Analyzer + `infra.llm` LlmClient 추상화 Claude/Gemini/Ollama/Stub) + `V6`(content_text NOT NULL)·`V7`(emotion_types 마스터 + diaries 감정·테마 컬럼) + Diary confirm/DRAFT 라이프사이클(`V8`) **구현 완료**. 앱은 draft→확정 2버튼·분석중 3초 폴링·감정 동적 테마(`diary_theme.dart`)·감정 마스코트/러닝 로딩 영상(`emotion_video.dart`·`running_sel.mp4`, `video_player`)·상세 시네마틱 인트로·캘린더 감정색/이모지 표시까지 완료. LLM provider는 설정으로 선택(무키 시 `StubLlmClient` 폴백, 로컬 Ollama 무키). Testcontainers 실행은 배포 전 Docker 일괄(기존 방침). **음악·공유·피드·배포는 아래 개요로 유지.**
 
 - **Task 011-3: 기록 draft→확정 라이프사이클 (감정 분석 선행 작업)** ✅ - 구현 완료(백엔드 Testcontainers Docker 대기)
   - 구현 기능: F003/F006 확장 (Task 012/013 감정 분석·테마의 **선행 작업** — 확정 시점이 분석 트리거가 됨)
@@ -284,12 +286,21 @@
   - **앱**: 에디터 [취소][등록][오늘을 기억하기] 버튼, 확정 전 확인 다이얼로그, 확정 직후 상세에서 "분석 중(약 1분)" 표시 + 폴링 자동 갱신. 캘린더/목록에서 DRAFT는 에디터로·확정은 상세로 분기
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — DRAFT 저장(미분석)·확정(PENDING) 분기, 확정 기록 재upsert/PUT 409, DRAFT 수정 정상, 소프트 삭제 후 재작성, V8 CHECK 제약 동작 / 앱 `flutter test`·`integration_test` — 2버튼 분기·확정 다이얼로그·분석중 폴링
 
-- **Task 012: 감정 분석 (LLM) 개요**
-  - 기록 **확정 시(DRAFT→PENDING)** `@Async`로 외부 LLM 분석 후 `DONE` 갱신, 실패 시 `NEUTRAL` 폴백. **확정 시 1회만 분석**(확정 후 수정 불가 — Task 011-3 라이프사이클 전제). 재분석이 필요하면 삭제 후 재작성·재확정
-  - 확장 포인트 인터페이스 격리: `EmotionAnalyzer` / `LlmClient`(provider 교체 가능)
+- **Task 012: 감정 분석 (멀티모달 LLM) — 백엔드 엔진 + 비동기 파이프라인** ✅ - 완료(Testcontainers Docker 대기)
+  - 구현 기능: F003/F006 확장 (확정 시 1회 감정 분석)
+  - ✅ `V7__add_emotion_analysis.sql`(emotion_types 마스터 6종 시드 + diaries에 `primary_emotion`(FK)·`background_color`/`text_color`/`accent_color`(색 형식 CHECK)·`ai_comment`·`ai_title`·`mood_emoji`·`emotion_scores`(JSONB)·`analyzed_at`, `chk_diaries_done_has_emotion`) 구현. `V6__diary_content_text_not_null.sql`로 content_text NOT NULL 강화.
+  - ✅ `domain.emotion`: `EmotionAnalysisService`(`@Async("emotionAnalysisExecutor")`, 트랜잭션 밖 LLM 호출·낙관적 조건부 UPDATE — 분석 중 수정/삭제 시 stale 폐기)·`EmotionAnalysisPoller`(PENDING 백스톱)·`EmotionAnalyzer`/`LlmEmotionAnalyzer`·`DiaryImagePreparer`(본문 인라인 이미지 → 멀티모달 입력)·`EmotionAnalysisMapper`.
+  - ✅ 확장 포인트 인터페이스 격리 `infra.llm.LlmClient`: `ClaudeLlmClient`(`anthropic-java`)·`GeminiLlmClient`·`OllamaLlmClient`(로컬 무키)·`StubLlmClient`(무키 로컬/CI 폴백). `LlmConfig`가 provider·키 유무로 구현체 프로그램적 선택. LLM 실패는 analyzer가 `NEUTRAL`로 흡수 → FAILED+NEUTRAL 반영(CHECK 통과).
+  - ✅ **확정 시 1회만 분석**(확정 후 수정 불가 — Task 011-3 라이프사이클 전제): DiaryService가 확정 커밋 후 `analyzeAsync(diaryId)` 트리거. 재분석은 삭제 후 재작성·재확정.
+  - ✅ 분석 결과는 `DiaryResponse`·`DiarySummaryDay`(캘린더)로 노출. `DiarySummaryDay`는 DONE 기록만 `primaryEmotion`·`moodEmoji` 값 보유(캘린더 감정색/이모지 렌더).
 
-- **Task 013: 감정 기반 테마 개요**
-  - 감정 결과에 따른 배경(그라데이션 등)·필체(폰트)·텍스트 색상 동적 적용, 앱에서 테마 동적 렌더링
+- **Task 013: 감정 기반 동적 테마 · 마스코트/시네마틱 연출 (앱)** ✅ - 완료
+  - 구현 기능: F003/F005/F006 확장 (감정 표현 계층)
+  - ✅ **감정 동적 테마**: `core/theme/diary_theme.dart`가 `primaryEmotion`(+백엔드 생성 색) 기반 배경/글자/강조 팔레트를 상세·목록에 적용. `core/theme/emotion_assets.dart`가 감정 6종별 PNG·mp4 매핑.
+  - ✅ **감정 마스코트 영상**: `shared/widgets/emotion_video.dart`(감정 코드별 마스코트 mp4 자동재생·무한루프·무음, PNG 폴백, `video_player`).
+  - ✅ **상세 시네마틱 인트로 + 러닝 로딩 연출**: `diary_detail_view.dart`의 `_IntroPhase`(big/settle/rest 3단계 애니메이션) + `_RunningIntroOverlay`(PENDING 진입 시 `assets/videos/running_sel.mp4` 1회 재생 후 페이드아웃) + DONE 시 무드 이모지·AI 제목·AI 코멘트 안착.
+  - ✅ **분석중 폴링**: 확정 직후 상세에서 PENDING이면 3초 간격 폴링(`diaryByIdProvider` invalidate) → DONE 자동 전환. 앱 DTO(`diary_dto.dart`)에 `primaryEmotion`·`moodEmoji`·`aiComment`·`aiTitle`·`backgroundColor`·`textColor`·`accentColor` 완비.
+  - ⚠️ **필체(폰트) 동적 적용**은 미도입(감정별 배경/글자/강조 색 + 이모지·마스코트로 대체). 음악(Task 014)은 미구현.
 
 - **Task 014: 감정 기반 음악 개요**
   - 감정에 매핑된 음악 재생. 음악 소스 미정 흡수를 위한 `MusicSource` + `tracks.source_type` 추상화
