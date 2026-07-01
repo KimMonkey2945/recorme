@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -13,6 +14,9 @@ import 'diary_quill_styles.dart';
 
 /// 분석 진행 중 보조 문구(상수로 분리해 향후 일괄 수정 용이).
 const String kAnalysisEtaText = '곧 이 날의 감정이 기록에 담길 거예요';
+
+/// 전체화면 로딩 영상 에셋(감정 분석 PENDING 진입 시 1회 재생).
+const String kRunningIntroAsset = 'assets/videos/running_sel.mp4';
 
 /// 기록 상세 표현 위젯.
 ///
@@ -125,6 +129,23 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
   /// 측정된 Stack 크기 — BIG 중앙 배치 계산용.
   Size? _stackSize;
 
+  // ── 러닝 로딩 영상 상태 ───────────────────────────────────────
+
+  /// 러닝 로딩 영상을 이번 방문에서 이미 트리거했는지(폴링 리빌드 재시작 방지, 방문당 1회).
+  bool _runningIntroPlayed = false;
+
+  /// 러닝 오버레이 마운트 여부.
+  bool _runningVisible = false;
+
+  /// 러닝 재생중+페이드 진행중(DONE 인트로 조기시작 차단용).
+  bool _runningActive = false;
+
+  /// 러닝 오버레이 불투명도(완료 시 1→0 페이드아웃).
+  double _runningOpacity = 1;
+
+  /// 러닝 페이드아웃 길이.
+  static const Duration _kRunningFade = Duration(milliseconds: 500);
+
   // ── 인트로 튜닝 상수 ──────────────────────────────────────────
   /// BIG 단계 머무는 시간(감정 모션 표출).
   static const Duration _kDwell = Duration(milliseconds: 1800);
@@ -149,8 +170,11 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
     _settleController = AnimationController(vsync: this, duration: _kSettle);
     _curved = CurvedAnimation(parent: _settleController, curve: Curves.easeInOutCubic);
     WidgetsBinding.instance.addObserver(this);
-    // 첫 레이아웃 후 인트로 시작(슬롯 측정·MediaQuery 접근 가능 시점).
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
+    // 첫 레이아웃 후 인트로 및 러닝 영상 시작(슬롯 측정·MediaQuery 접근 가능 시점).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startIntro();
+      _maybeStartRunningIntro();
+    });
   }
 
   @override
@@ -161,7 +185,9 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
       _controller = _buildReadOnlyController(widget.content);
     }
     // PENDING→DONE 등으로 감정이 처음 생기면 인트로 재생.
-    if (!_hasEmotion(oldWidget) && _hasEmotion(widget)) {
+    // 러닝 영상 재생 중 DONE 도착 시 밑에서 인트로가 먼저 시작되지 않도록 가드.
+    // 실제 시작은 _onRunningCompleted가 담당한다.
+    if (!_hasEmotion(oldWidget) && _hasEmotion(widget) && !_runningActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
     }
   }
@@ -329,16 +355,28 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
       ),
     );
 
-    // 감정이 없으면 인트로/오버레이 불필요 — 콘텐츠만.
-    if (!showEmotion) return content;
+    // 감정도 없고 러닝 오버레이도 없으면 콘텐츠만 반환한다.
+    final needsStack = showEmotion || _runningVisible;
+    if (!needsStack) return content;
 
-    // 감정 있을 때: Stack으로 감싸 인트로 오버레이를 콘텐츠 위에 띄운다.
+    // 감정 인트로 또는 러닝 오버레이가 필요할 때 Stack으로 감싼다.
     return Stack(
       key: _stackKey,
       fit: StackFit.expand,
       children: [
         content,
-        if (_phase != _IntroPhase.rest) _buildIntroOverlay(),
+        // DONE 시네마틱 인트로 — showEmotion 가드로 PENDING 때 호출 차단.
+        if (showEmotion && _phase != _IntroPhase.rest) _buildIntroOverlay(),
+        // 러닝 로딩 영상 오버레이 — 완료 시 페이드아웃 후 언마운트.
+        if (_runningVisible)
+          Positioned.fill(
+            child: AnimatedOpacity(
+              opacity: _runningOpacity,
+              duration: _kRunningFade,
+              onEnd: _onRunningFadeEnd,
+              child: _RunningIntroOverlay(onCompleted: _onRunningCompleted),
+            ),
+          ),
       ],
     );
   }
@@ -425,6 +463,43 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
         ),
       ),
     );
+  }
+
+  // ── 러닝 로딩 영상 제어 ──────────────────────────────────────
+
+  /// PENDING으로 진입한 경우, 방문당 1회 러닝 로딩 영상을 시작한다.
+  /// 폴링(3초) 리빌드는 같은 State를 유지하므로 _runningIntroPlayed 고정으로 재시작을 막는다.
+  void _maybeStartRunningIntro() {
+    if (!mounted || _runningIntroPlayed) return;
+    if (widget.analysisStatus != 'PENDING') return;
+    _runningIntroPlayed = true;
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    // 모션 줄이기 설정 시 영상을 생략하고 카드를 즉시 노출한다.
+    if (reduceMotion) return;
+    setState(() {
+      _runningActive = true;
+      _runningVisible = true;
+      _runningOpacity = 1;
+    });
+  }
+
+  /// 러닝 영상 완료 콜백.
+  /// 이 시점에 이미 DONE이면 DONE 시네마틱 인트로로 핸드오프한다.
+  void _onRunningCompleted() {
+    if (!mounted) return;
+    // 영상 재생이 끝난 뒤 이미 분석이 완료된 경우 시네마틱 인트로를 시작한다.
+    if (widget.analysisStatus == 'DONE') _startIntro();
+    // 페이드아웃 시작 — 밑의 카드 또는 인트로가 점차 드러난다.
+    setState(() => _runningOpacity = 0);
+  }
+
+  /// 페이드아웃 종료 시 오버레이를 언마운트한다.
+  void _onRunningFadeEnd() {
+    if (!mounted || _runningOpacity != 0) return;
+    setState(() {
+      _runningVisible = false;
+      _runningActive = false;
+    });
   }
 
   /// DRAFT / FAILED일 때만 상태 배지를 반환한다.
@@ -737,6 +812,109 @@ class _AnalysisPendingCardState extends State<_AnalysisPendingCard>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// 러닝 로딩 영상 오버레이 (PENDING 진입 시 전체화면 1회 재생)
+// ──────────────────────────────────────────────────────────────
+
+/// 감정 분석 PENDING 진입 시 전체화면에 1회 재생되는 로딩 영상 오버레이.
+///
+/// 영상 재생이 완료되면 [onCompleted]를 호출한다. 에셋 로드 실패 시에도
+/// 즉시 [onCompleted]를 호출해 뒤에 있는 카드가 자연스럽게 드러나도록 폴백한다.
+class _RunningIntroOverlay extends StatefulWidget {
+  const _RunningIntroOverlay({required this.onCompleted});
+
+  /// 영상 재생 완료(또는 폴백) 시 호출되는 콜백.
+  final VoidCallback onCompleted;
+
+  @override
+  State<_RunningIntroOverlay> createState() => _RunningIntroOverlayState();
+}
+
+class _RunningIntroOverlayState extends State<_RunningIntroOverlay> {
+  late final VideoPlayerController _controller;
+
+  /// 영상 초기화 완료 여부 — false이면 흰 배경으로 깜빡임 방지.
+  bool _ready = false;
+
+  /// onCompleted 중복 호출 방지 플래그.
+  bool _fired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 음소거: 웹 자동재생 정책 충족 + 배경 소음 방지.
+    // setLooping 미호출 = 1회 재생 후 자동 정지.
+    _controller = VideoPlayerController.asset(kRunningIntroAsset)
+      ..setVolume(0);
+
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      // 완료 감지 리스너 등록 후 재생 시작.
+      _controller.addListener(_checkCompleted);
+      setState(() => _ready = true);
+      _controller.play();
+    }).catchError((Object _) {
+      // 에셋 실패·미존재 시 즉시 완료 폴백 — 뒤의 카드가 바로 드러난다.
+      _fireOnce();
+    });
+  }
+
+  /// 영상 재생 종료 감지.
+  /// isCompleted 플래그 또는 position≥duration+정지 조합으로 완료를 판단한다.
+  void _checkCompleted() {
+    final v = _controller.value;
+    if (!v.isInitialized || _fired) return;
+    if (v.isCompleted ||
+        (v.duration > Duration.zero &&
+            v.position >= v.duration &&
+            !v.isPlaying)) {
+      _fireOnce();
+    }
+  }
+
+  /// 완료 콜백을 정확히 1회만 호출한다.
+  void _fireOnce() {
+    if (_fired) return;
+    _fired = true;
+    widget.onCompleted();
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_checkCompleted);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 초기화 전엔 흰 배경으로 채워 검은 박스 깜빡임을 방지한다.
+    if (!_ready) {
+      return const ColoredBox(
+        color: AppColors.surface,
+        child: SizedBox.expand(),
+      );
+    }
+
+    // 흰 배경 위 마스코트 영상 — cover로 화면을 꽉 채우면 과하게 확대·크롭되어
+    // 어색하므로, contain으로 마스코트 전체가 잘리지 않고 중앙에 자연스러운
+    // 크기로 보이게 한다(배경이 surface와 동일해 여백이 티나지 않는다).
+    return ColoredBox(
+      color: AppColors.surface,
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: _controller.value.size.width,
+            height: _controller.value.size.height,
+            child: VideoPlayer(_controller),
+          ),
         ),
       ),
     );
