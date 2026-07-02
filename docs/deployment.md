@@ -21,6 +21,46 @@ shrimp task 와 1:1 대응한다. **⚠️ 표시는 "가이드 예시와 실제
   기본 **Gemini** 사용(`LlmClient` 추상화라 언제든 전환). 하루 1건이면 무료 등급으로 충분.
 - 저장소: `https://github.com/KimMonkey2945/recorme.git` (branch `main`).
 
+## 🔄 서버 재기동 & 현재 배포 상태 (전원 껐다 켤 때 필독)
+
+### 현재 배포된 것 (2026-07-03 기준)
+- WSL2 Ubuntu + Docker 컨테이너: **`recorme-db`(postgres:18) + `recorme-backend`(:8080) 가동 중**.
+  (Jenkins·ollama는 아직 미구성.)
+- 데이터는 Docker **명명 볼륨에 디스크 영속**: `recorme_pgdata`(일기 DB), `recorme_uploads`(사진).
+- 폰 접속: **Tailscale HTTP** — `API_BASE_URL=http://<서버 Tailscale IP>:8080`.
+- 앱: Z Flip3에 릴리즈 APK 설치(**Impeller off**로 영상 재생 안정화, debug 서명).
+- 클라우드 그대로: Supabase Auth · Gemini · FCM.
+
+### ❓ 전원 꺼도 되나? → 네, 데이터 안전. 셋업 다시 안 해도 됩니다.
+일기·사진·`deploy/.env`·DB는 전부 **디스크(볼륨/파일)에 남습니다.** clone·시크릿 입력·DB 마이그레이션·
+앱 빌드를 **다시 할 필요 없습니다.** 그냥 전원 꺼도 되고, 정중히 내리려면:
+```bash
+cd ~/server/recorme
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml stop
+```
+
+### 전원 켠 뒤 재기동 절차 (⚠️ 자동시작 미구성 상태라 수동 1스텝)
+1. **Ubuntu 터미널을 연다** → WSL 기동 → systemd가 Docker 시작 → `restart: unless-stopped`인
+   `recorme-db`·`recorme-backend`가 **자동 복귀**.
+2. 확인:
+   ```bash
+   docker ps          # recorme-db, recorme-backend 가 (healthy) 인지
+   tailscale status   # 폰·서버 온라인인지. 안 떠 있으면: sudo tailscale up
+   ```
+3. 폰에서 앱 열어 접속 확인.
+
+> ⚠️ **터미널 창을 닫으면 WSL이 몇 초 뒤 꺼져 서버도 내려갑니다.** 서버를 계속 켜두려면 **터미널을
+> 열어둔 채** 두세요. 매번 터미널 안 열고 자동으로 살리려면 아래 **Phase 10(상시화)**를 하면 됩니다.
+
+### 완전 처음부터(새 PC 등) 재구축할 때
+아래 **Phase 1~4** + `deploy/.env` 전송(Phase 3 메모) + 앱 빌드(Phase 8) 순서를 그대로 따르면 됩니다.
+`deploy/.env`는 git에 없으니 **따로 백업**해두세요(POSTGRES_PASSWORD·SUPABASE_URL·LLM_API_KEY·FCM base64).
+
+### 아직 남은 것 / 알려진 이슈
+- ⏳ **푸시 알림(FCM)**: 동작 이슈 있음 — 나중에 손보기로 보류.
+- ⏳ Gemini 간헐 **503(과부하)** → 감정 분석이 가끔 NEUTRAL 폴백. 재시도하면 대개 성공.
+- ⏭️ 미구성(선택): Jenkins 자동배포(Phase 6), 통합테스트(Phase 5), 백업(Phase 11), 상시화(Phase 10).
+
 ## 시작 전 준비 체크리스트 (사용자가 직접 할 일)
 
 Phase 실행과 별개로, **본인이 미리 준비/결정해야 하는 것**을 한곳에 모았다. 오늘 시작 전에 훑을 것:

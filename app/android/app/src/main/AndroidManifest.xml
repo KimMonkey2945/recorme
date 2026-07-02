@@ -8,6 +8,11 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- Impeller 비활성화(Skia 폴백). Flutter 3.38의 Android 기본 Impeller에서
+             video_player 외부 텍스처가 첫 프레임에 멈추는(사진처럼) 문제 회피. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
