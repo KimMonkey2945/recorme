@@ -161,8 +161,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: AppSpacing.lg),
                       _LoginButtons(
                         loading: loading,
-                        onKakaoTap: () =>
-                            _runSocial(controller.signInWithKakao),
+                        // 카카오 로그인 미사용 — 콜백 배선 주석(추후 사용 시 해제).
+                        // onKakaoTap: () =>
+                        //     _runSocial(controller.signInWithKakao),
                         onGoogleTap: () =>
                             _runSocial(controller.signInWithGoogle),
                       ),
@@ -507,12 +508,13 @@ class _OrDivider extends StatelessWidget {
 class _LoginButtons extends StatelessWidget {
   const _LoginButtons({
     required this.loading,
-    required this.onKakaoTap,
+    // 카카오 로그인 미사용 — 추후 사용 시 주석 해제.
+    // required this.onKakaoTap,
     required this.onGoogleTap,
   });
 
   final bool loading;
-  final VoidCallback onKakaoTap;
+  // final VoidCallback onKakaoTap;
   final VoidCallback onGoogleTap;
 
   @override
@@ -521,14 +523,17 @@ class _LoginButtons extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _KakaoButton(onTap: loading ? null : onKakaoTap),
-        const SizedBox(height: AppSpacing.sm),
+        // 카카오 로그인 미사용 — 버튼 숨김(추후 사용 시 아래 두 줄 주석 해제).
+        // _KakaoButton(onTap: loading ? null : onKakaoTap),
+        // const SizedBox(height: AppSpacing.sm),
         _GoogleButton(onTap: loading ? null : onGoogleTap),
       ],
     );
   }
 }
 
+// 카카오 로그인 미사용 — 버튼 위젯 전체 주석(추후 사용 시 아래 블록 주석 해제).
+/*
 /// 카카오 브랜드 버튼.
 ///
 /// 배경 #FEE500, 텍스트 #191600 — Kakao Design System 지정 고정값.
@@ -578,6 +583,7 @@ class _KakaoButton extends StatelessWidget {
     );
   }
 }
+*/
 
 /// 구글 OutlinedButton. 흰 배경 + hairline 테두리 + 공식 멀티컬러 'G' 로고.
 class _GoogleButton extends StatelessWidget {
