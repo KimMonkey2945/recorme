@@ -1,0 +1,124 @@
+# =============================================================================
+# recorme 홈서버 오케스트레이션 (WSL2 Ubuntu + Docker)
+#
+# 실행(레포 루트에서). --env-file 을 명시해 ${...} 치환 시크릿을 확실히 공급:
+#   cp deploy/env.example deploy/.env   # 값 채우기 (절대 커밋 금지)
+#   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build db backend
+#   DEPLOY_DIR=$(pwd)/deploy docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build jenkins
+# 프로젝트명 name: recorme 로 고정 → 볼륨은 recorme_pgdata·recorme_uploads·recorme_jenkins_home.
+#
+# ⚠️ 정합성 주의(이 프로젝트 고유):
+#   - SPRING_PROFILES_ACTIVE=cloud 가 반드시 필요하다(없으면 local 프로파일→기동 실패).
+#   - 데이터소스 env 이름은 DB_URL / DB_USER / DB_PASSWORD 다(SPRING_DATASOURCE_* 아님).
+#   - STORAGE_ROOT 를 아래 바인드 마운트 경로와 일치시켜야 사진이 영속된다.
+# 상세 env 는 deploy/env.example 참고.
+# =============================================================================
+
+# 프로젝트명 고정: 지정하지 않으면 compose 파일이 있는 디렉터리명(deploy)이 프로젝트명이 되어
+# 볼륨/컨테이너 프리픽스가 deploy_* 로 붙는다. recorme 로 고정해 볼륨을 recorme_pgdata·recorme_uploads
+# 로 통일한다(백업 명령·문서와 일치, 실행 위치가 수동/Jenkins로 달라도 프로젝트명이 흔들리지 않음).
+name: recorme
+
+services:
+  db:
+    image: postgres:18
+    container_name: recorme-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-recorme}
+      POSTGRES_USER: ${POSTGRES_USER:-recorme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # ⚠️ postgres:18 은 기본 데이터 경로 레이아웃이 바뀌었다. PGDATA 를 클래식 경로로 명시 고정해
+      #    명명 볼륨(pgdata)에 데이터가 확실히 안착하게 한다(익명 볼륨 유출·백업 공백 방지).
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 5432 포트는 외부 미노출: backend만 내부 네트워크(db:5432)로 접근한다.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-recorme} -d ${POSTGRES_DB:-recorme}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: recorme-backend:latest
+    container_name: recorme-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"   # Tailscale IP:8080 으로 폰이 접속
+    # 저사양 홈서버(i5-2400/14GB)에서 db·jenkins 와 메모리 경합 시 OOM 방지.
+    mem_limit: 1g
+    environment:
+      # 프로파일 강제(필수). local 로 뜨면 application-local.yml 이 이미지에 없어 기동 실패.
+      SPRING_PROFILES_ACTIVE: cloud
+      # 컨테이너 메모리 한도 기준으로 힙 상한 설정(호스트 전체 기준 과할당 방지) + 로그 타임존.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75"
+      TZ: Asia/Seoul
+      # 데이터소스: application-cloud.yml 이 읽는 실제 var 이름.
+      DB_URL: ${DB_URL:-jdbc:postgresql://db:5432/recorme}
+      DB_USER: ${DB_USER:-${POSTGRES_USER:-recorme}}
+      DB_PASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD}}
+      # Supabase Auth(JWKS 검증 전용) — 필수.
+      SUPABASE_URL: ${SUPABASE_URL}
+      # 파일 스토리지: 아래 바인드 마운트 경로와 반드시 일치.
+      STORAGE_ROOT: /app/var/storage
+      # 감정 분석 LLM (기본 Gemini). 무키 시 Stub 폴백.
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash-lite}
+      # FCM: 서비스계정 JSON 의 Base64 문자열(권장) 또는 파일 경로. 무키 시 StubPush 폴백.
+      #  - Base64 를 .env(FCM_CREDENTIALS)로 주입하면 파일 마운트가 불필요해 Jenkins 자동배포가
+      #    실행 위치와 무관하게 동작한다(경로 의존 제거).
+      #  - 파일 경로로 쓰려면 아래 secrets 마운트 주석을 해제하고 FCM_CREDENTIALS=/secrets/fcm.json.
+      FCM_CREDENTIALS: ${FCM_CREDENTIALS:-}
+    volumes:
+      # 사진 영속화. 명명 볼륨이라 compose 실행 위치와 무관(Jenkins 자동배포 안전). STORAGE_ROOT 와 경로 일치.
+      - uploads:/app/var/storage
+      # (파일 방식 FCM 쓸 때만) - ./secrets:/secrets:ro
+
+  jenkins:
+    # 스톡 lts-jdk21 에는 docker CLI·compose 플러그인이 없다. 커스텀 이미지로 빌드해 둘 다 설치한다.
+    # (호스트 /usr/bin/docker 바인드는 라이브러리 의존성으로 깨지고, docker compose 플러그인도 없어 자동배포 실패.)
+    build:
+      context: .
+      dockerfile: jenkins.Dockerfile
+    image: recorme-jenkins:latest
+    container_name: recorme-jenkins
+    restart: unless-stopped
+    user: root                            # docker 소켓 사용 위해 root (홈서버 한정 허용)
+    ports:
+      - "9090:8080"                       # 브라우저 http://localhost:9090
+      - "50000:50000"                     # 에이전트(선택)
+    environment:
+      # Deploy 스테이지가 --env-file 로 참조할 .env 경로(컨테이너 내부). 아래 마운트 경로와 일치.
+      DEPLOY_ENV: /deploy-env/.env
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # 호스트 도커로 build/compose 실행
+      # 서버의 실제 deploy 디렉터리(.env 포함)를 읽기 전용 마운트 → Jenkins 워크스페이스엔 .env 가
+      # 없으므로(gitignored) 시크릿을 여기서 공급한다. 좌측 경로는 서버 실제 경로로 조정.
+      - ${DEPLOY_DIR:-/srv/recorme/deploy}:/deploy-env:ro
+
+  # ---- (보류) 로컬 LLM. i5-2400(AVX2 미지원·GPU 없음)에선 멀티모달 추론이 매우 느림. ----
+  # 실험 시 주석 해제하고 backend 의 LLM_PROVIDER=ollama, OLLAMA_BASE_URL=http://ollama:11434 로 전환.
+  # ollama:
+  #   image: ollama/ollama
+  #   container_name: recorme-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_models:/root/.ollama
+
+volumes:
+  pgdata:
+  uploads:
+  jenkins_home:
+  # ollama_models:

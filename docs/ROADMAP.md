@@ -311,11 +311,13 @@
   - 친구: 요청/수락/거절/목록/삭제(`/friends/*`)
   - 공감(리액션): 1인 1회 추가/취소(`/diaries/{id}/reactions`). 댓글은 범위 외
 
-- **Task 016: 성능 최적화 및 배포 개요**
-  - **별도 관리형/자체호스팅 PostgreSQL 선정·프로비저닝**(RDS/Cloud SQL/자체호스팅 등) — 백엔드와 동일 리전 배치, 백업·커넥션 풀·시크릿(환경변수) 구성. `application-cloud.yml` 환경변수로 연결
-  - 캘린더 summary 캐싱, 커서 페이징 인덱스 튜닝
-  - CI/CD 파이프라인(앱 빌드·백엔드 테스트), 모니터링·로깅 구성
-  - 애플 로그인(Supabase Apple provider) 확장
+- **Task 016: 홈서버 배포** — 상세 절차: **`docs/deployment.md`**, 실행 체크리스트: **shrimp task manager**
+  - **채택 아키텍처**: 집 서버 PC(Windows 10) → WSL2 Ubuntu → Docker(`postgres:18` + backend:8080 + Jenkins pollSCM + 보류 ollama). 폰(Z Flip3)은 **Tailscale VPN**으로 접속(포트포워딩·CGNAT 회피, 외부 미개방). Supabase Auth·FCM·Gemini는 클라우드 그대로.
+  - **자체호스팅 PostgreSQL**: 같은 서버 컨테이너(`recorme` DB), 빈 DB 최초 기동 시 Flyway V1~V10 자동 적용. `application-cloud.yml`은 `DB_URL/DB_USER/DB_PASSWORD` 환경변수로 연결. 백업(pg_dump)·명명 볼륨(`uploads`) 영속화.
+  - **준비된 산출물**(커밋 완료): `backend/Dockerfile`(self-contained 멀티스테이지), `deploy/docker-compose.yml`, `deploy/env.example`, `Jenkinsfile`(pollSCM 5분), 앱 `network_security_config.xml`·릴리즈 서명 config·`build_release` 스크립트.
+  - **정합성 교정**(배포 시 필수): `SPRING_PROFILES_ACTIVE=cloud` / 데이터소스 var 이름 / `STORAGE_ROOT` 볼륨 경로 일치 / 릴리즈 앱 cleartext·서명. (§`docs/deployment.md` 트러블슈팅)
+  - **잔여 검증 실행**(Docker 확보 후): 백엔드 Testcontainers 통합테스트 일괄 실행 ②, 작심삼일 FCM 실기기(Z Flip3) 라이브 검증 ①.
+  - 성능(캘린더 summary 캐싱·인덱스 튜닝), 모니터링·로깅, 애플 로그인(Supabase Apple provider) 확장은 이후.
 
 ## 상태 범례
 

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  네트워크 보안 설정.
+
+  배경: 릴리즈 APK 는 Android 9(API 28)+ 에서 평문 HTTP(cleartext)가 기본 차단된다.
+  이 앱의 백엔드는 Tailscale VPN 상의 http://100.x.y.z:8080 (평문)으로 접속하므로, 이 설정이
+  없으면 릴리즈 앱이 서버에 "조용히" 연결 실패한다.
+
+  결정: 기본적으로 cleartext 를 허용한다.
+   - 근거: Tailscale(WireGuard) 자체가 전송 구간을 암호화하므로, 사설 VPN 내부의 HTTP 는
+     실질적으로 암호화된 터널을 통과한다. Supabase·외부 이미지 URL 은 HTTPS 라 영향 없음.
+   - 더 엄격히 가려면: 아래 base-config 를 cleartextTrafficPermitted="false" 로 바꾸고,
+     주석 처리된 domain-config 에 서버의 Tailscale IP 또는 MagicDNS 호스트명을 넣는다.
+   - 또는 서버에서 `tailscale serve` 로 HTTPS(https://<host>.ts.net)를 제공하면 이 파일 없이도 된다.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- (엄격 모드 예시) 위 base-config 를 false 로 바꾸고 아래를 사용:
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">100.x.y.z</domain>
+        <domain includeSubdomains="true">your-host.your-tailnet.ts.net</domain>
+    </domain-config>
+    -->
+</network-security-config>

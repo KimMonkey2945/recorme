@@ -31,6 +31,16 @@ backend/bin/
 application-local.yml
 application-secret.yml
 
+# ===== 배포(deploy/) — 실제 시크릿·런타임 데이터 (env.example 만 커밋) =====
+deploy/.env
+deploy/secrets/
+deploy/data/
+
+# ===== Android 릴리즈 서명 (절대 커밋 금지, key.properties.example 만 커밋) =====
+app/android/key.properties
+**/*.jks
+**/*.keystore
+
 # ===== MCP / 도구 임시 산출물 =====
 .playwright-mcp/
 record-calendar.png

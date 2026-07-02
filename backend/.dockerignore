@@ -1,0 +1,18 @@
+# 이미지 빌드 컨텍스트에서 제외 (멀티스테이지 build 스테이지는 gradlew/settings/build.gradle/gradle/src만 필요)
+# 빌드 산출물·로컬 캐시
+build/
+.gradle/
+out/
+bin/
+
+# 시크릿·로컬 프로파일 (절대 이미지에 포함 금지)
+*.env
+application-local.yml
+application-secret.yml
+secrets/
+
+# IDE/기타
+.idea/
+*.iml
+*.log
+.DS_Store

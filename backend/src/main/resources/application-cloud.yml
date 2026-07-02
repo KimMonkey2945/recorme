@@ -6,7 +6,7 @@
 # 모든 값은 환경변수/시크릿으로 주입한다(코드·git에 평문 금지).
 #
 # 데이터 DB(런타임 + Flyway 동일 datasource 사용, 별도 포트 분리 불필요):
-#   예) jdbc:postgresql://<db-host>:5432/record
+#   예) jdbc:postgresql://<db-host>:5432/recorme
 #   - 백엔드와 DB는 같은 리전에 배치한다(요청마다 왕복하는 경로).
 spring:
   datasource:
