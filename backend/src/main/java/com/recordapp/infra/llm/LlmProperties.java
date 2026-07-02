@@ -9,10 +9,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * <p>키는 환경변수로만 주입한다(코드·git 금지). apiKey가 비어 있으면 {@code LlmConfig}가
  * 자동으로 {@link StubLlmClient}를 선택해 로컬/CI 무키 동작을 보장한다.
  *
- * @param provider        provider 선택(ollama|gemini|claude|stub). 기본은 ollama(로컬·과금 0).
+ * @param provider        provider 선택(gemini|ollama|claude|stub). 기본은 gemini(LLM_API_KEY 필수).
  * @param apiKey          LLM API 키(비어 있으면 Stub로 폴백. provider=ollama는 키 불필요)
  * @param baseUrl         provider REST 베이스 URL(예: Gemini generativelanguage v1beta)
- * @param model           기본 모델 ID(예: llava:7b, gemini-2.0-flash, claude-haiku-4-5)
+ * @param model           기본 모델 ID(예: gemini-2.5-flash-lite, llava:7b, claude-haiku-4-5)
  * @param maxTokens       최대 출력 토큰
  * @param maxImages       한 요청에 첨부할 최대 이미지 수(상위 호출자가 제한에 사용)
  * @param imageMaxEdgePx  이미지 긴 변 다운스케일 한도(다운스케일은 호출자 책임, 여기선 설정만 보관)
@@ -24,10 +24,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  */
 @ConfigurationProperties(prefix = "record.llm")
 public record LlmProperties(
-		@DefaultValue("ollama") String provider,
+		@DefaultValue("gemini") String provider,
 		String apiKey,
 		@DefaultValue("https://generativelanguage.googleapis.com/v1beta") String baseUrl,
-		@DefaultValue("llava:7b") String model,
+		@DefaultValue("gemini-2.5-flash-lite") String model,
 		@DefaultValue("400") int maxTokens,
 		@DefaultValue("3") int maxImages,
 		@DefaultValue("512") int imageMaxEdgePx,

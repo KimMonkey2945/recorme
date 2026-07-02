@@ -39,17 +39,21 @@ record:
     root: ${STORAGE_ROOT:./var/storage}
     url-path: /files
   # ===== 멀티모달 LLM(감정 분석) =====
-  # provider=ollama(기본): 로컬 Ollama 비전 모델로 과금 0. 키 불필요(키 검사 전에 분기).
-  #   Ollama 서버가 떠 있어야 실제 호출 가능(미기동이어도 빈 생성·기동은 됨, 호출 시에만 연결).
-  # provider=gemini|claude 전환 시 LLM_PROVIDER·LLM_API_KEY·LLM_MODEL을 함께 override.
-  #   api-key가 비어 있으면(ollama 외) LlmConfig가 자동으로 Stub를 선택(무키 로컬/CI 동작 보장).
+  # provider=gemini(기본): Google generativelanguage API로 감정 분석. LLM_API_KEY 필수.
+  #   api-key가 비어 있으면 LlmConfig가 자동으로 Stub를 선택(무키 로컬/CI 동작 보장).
+  #   ⚠️ 개인 일기 본문·첨부 이미지가 외부(Google)로 전송된다(로컬 Ollama와 달리 외부 전송).
+  # 로컬에서 실제 분석하려면: ① LLM_API_KEY 주입(gemini) 또는 ② LLM_PROVIDER=ollama(로컬·무키·과금 0).
+  #   provider=ollama는 키 불필요(키 검사 전에 분기). Ollama 서버가 떠 있어야 실제 호출 가능
+  #   (미기동이어도 빈 생성·기동은 됨, 호출 시에만 연결).
   #   키는 환경변수(LLM_API_KEY)로만 주입한다(코드·git 평문 금지).
-  # ⚠️ gemini 사용 시 gemini-2.5-flash는 thinking 토큰으로 출력이 잘릴 수 있어 2.0-flash 권장.
+  # ⚠️ 모델 선택: gemini-2.0-flash 계열은 무료 등급이 막혀(429) 유료 키에서만 동작.
+  #   기본 gemini-2.5-flash-lite는 thinking 미사용이라 max-tokens(400) 내에서 절단 없이 안정적(무료 등급 가능).
+  #   gemini-2.5-flash는 thinking 토큰이 max-tokens를 잠식해 출력이 잘릴 수 있으니 지양(쓰려면 max-tokens 상향).
   llm:
-    provider: ${LLM_PROVIDER:ollama}
+    provider: ${LLM_PROVIDER:gemini}
     api-key: ${LLM_API_KEY:}
     base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
-    model: ${LLM_MODEL:gemma3:4b}
+    model: ${LLM_MODEL:gemini-2.5-flash-lite}
     ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
     ollama-timeout-ms: 300000
     max-tokens: 400

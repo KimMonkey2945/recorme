@@ -174,7 +174,7 @@ CREATE TABLE emotion_analyses (
     emotion_scores  JSONB,                      -- {"JOY":0.7,"CALM":0.2,...}
     confidence      NUMERIC(4,3),               -- 0.000~1.000
     summary         TEXT,                       -- LLM 한줄 요약
-    llm_provider    VARCHAR(30),                -- CLAUDE/OPENAI
+    llm_provider    VARCHAR(30),                -- GEMINI/CLAUDE/OLLAMA/STUB
     llm_model       VARCHAR(50),
     raw_response    JSONB,                       -- 원본(디버깅/재처리용)
     analyzed_at     TIMESTAMPTZ,

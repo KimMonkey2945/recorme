@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 모바일 | Dart / Flutter (SDK `^3.10.x`, Feature-first, Riverpod ^3, go_router ^17, Dio, flutter_quill, supabase_flutter, firebase_messaging) |
 | 백엔드 | Java 21, Spring Boot 3.5.x, MyBatis |
 | DB | PostgreSQL 18 (Flyway V1~V10) |
-| 감정 분석 | 멀티모달 외부 LLM API (`LlmClient` 추상화: Claude/Gemini/Ollama/Stub) |
+| 감정 분석 | 멀티모달 외부 LLM API (`LlmClient` 추상화: 기본 Gemini / Claude·Ollama·Stub) |
 | 인증 | Supabase Auth(소셜: 카카오/구글, 이메일; 애플 추후) + 백엔드 Supabase JWT(JWKS ES256) 검증 |
 | 푸시 | FCM (작심삼일 리마인더/완주, firebase-admin) |
 
@@ -55,7 +55,7 @@ MVP 핵심 기능이 **구현 완료** 단계다. Phase 1~5(골격·UI·인증·
 - **감정 분석은 비동기 + draft→확정 라이프사이클**: 기록은 `analysis_status=DRAFT`(미확정·수정가능·미분석)로 저장 → **'오늘을 기억하기' 확정 시 `PENDING`** 전이 후, **커밋 밖**에서 `@Async`(전용 풀 `emotionAnalysisExecutor`)로 멀티모달 LLM 분석·감정/테마 매핑 후 `DONE` 갱신. 실패 시 `NEUTRAL` 폴백. **확정 시 1회만 분석**(확정 후 수정 불가 → `DIARY_ALREADY_CONFIRMED`, 재분석은 삭제 후 재작성). 누락분은 `EmotionAnalysisPoller`(PENDING 백스톱)가 보완. (음악 매핑은 MVP 이후.)
 - **하루 1기록 + 수정**: 사용자·날짜당 일기 1개(`uq_diary_user_day` 부분 유니크). 같은 날짜 재작성은 INSERT가 아닌 **UPDATE**.
 - **PK 전략**: 내부 PK는 `BIGINT IDENTITY`, 외부 노출(회원/공유)은 별도 `UUID`(`users.uuid`, `diaries.share_token`).
-- **확장 포인트는 인터페이스로 격리**: `EmotionAnalyzer`/`LlmClient`(LLM provider 교체 — **구현됨**: Claude/Gemini/Ollama/Stub), `PushService`(FCM/Stub 폴백), `StorageService`(로컬 디스크, 향후 S3 교체). `MusicSource` + `tracks.source_type`(음악 소스 미정 흡수)는 **MVP 이후**. (소셜 provider 검증은 Supabase Auth가 담당 — 백엔드 `SocialVerifier` 없음.)
+- **확장 포인트는 인터페이스로 격리**: `EmotionAnalyzer`/`LlmClient`(LLM provider 교체 — **구현됨**: 기본 Gemini / Claude·Ollama·Stub, 무키 시 Stub 폴백), `PushService`(FCM/Stub 폴백), `StorageService`(로컬 디스크, 향후 S3 교체). `MusicSource` + `tracks.source_type`(음악 소스 미정 흡수)는 **MVP 이후**. (소셜 provider 검증은 Supabase Auth가 담당 — 백엔드 `SocialVerifier` 없음.)
 - **API 표준 응답**: `{ success, data, error }` 래퍼 + 목록은 커서 페이징(OFFSET 미사용).
 - **소셜 상호작용은 공감(리액션)만** — 댓글 기능은 범위 외.
 

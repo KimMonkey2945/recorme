@@ -188,23 +188,24 @@ public interface DiaryMapper {
 ## 6. LLM 연동 추상화 (감정 분석)
 
 ```java
-// 추상화: 감정 분석기 — 구현 교체/폴백 용이
+// 추상화: 감정 분석기 — 구현 교체/폴백 용이 (멀티모달: 본문 + 이미지)
 public interface EmotionAnalyzer {
-    EmotionResult analyze(String diaryContent);
+    DiaryAnalysisResult analyze(String contentText, List<LlmImage> images);
 }
 
 // 저수준 LLM 호출 추상화 (provider 교체)
 public interface LlmClient {
-    LlmResponse complete(LlmRequest request);   // 타임아웃/재시도 내장
+    LlmResponse complete(LlmRequest request);
 }
-// 구현: ClaudeLlmClient, OpenAiLlmClient (config의 record.llm.provider 로 선택)
+// 구현: GeminiLlmClient, ClaudeLlmClient, OllamaLlmClient, StubLlmClient
+//   (LlmConfig가 record.llm.provider·api-key 유무로 구현체를 프로그램적 선택)
 ```
 
-- **설정**: `application.yml`의 `record.llm.*`(provider, model, api-key=환경변수, timeout-ms, max-retries). **API 키는 환경변수/시크릿으로 주입(코드·git 금지)**.
+- **설정**: `application.yml`의 `record.llm.*`(provider, model, api-key=환경변수, timeout-ms, max-retries). **기본 provider는 `gemini`**(무키 시 `StubLlmClient` 폴백, `LLM_PROVIDER=ollama`로 로컬 무키 전환 가능). **API 키는 환경변수(`LLM_API_KEY`)/시크릿으로 주입(코드·git 금지)**. ⚠️ 기본 모델은 `gemini-2.5-flash-lite`(thinking 미사용 → max-tokens 내 안정, 무료 등급 가능). `gemini-2.0-flash` 계열은 무료 등급이 막혀(429) 유료 키 전용이고, `gemini-2.5-flash`는 thinking 토큰이 출력을 잠식해 잘릴 수 있어 지양.
 - **프롬프트**: "감정 분류 + 점수 분포 + 한줄 요약"을 **구조화 JSON 출력**으로 강제(파싱 안정성·토큰 절감).
 - **비용 절감**: 입력 길이 상한·요약, 모델 티어 선택, 동일/유사 입력 단기 캐시(옵션).
-- **타임아웃/재시도**: 클라이언트 레벨 타임아웃 + 제한적 재시도. (Resilience4j 서킷브레이커는 트래픽 증가 시 도입 — 초기엔 과함.)
-- **폴백**: 실패 시 `primary_emotion=NEUTRAL`, 기본 테마/음악 적용, `analysis_status=FAILED` 기록 → 추후 재분석 배치 가능.
+- **타임아웃/재시도**: 클라이언트 레벨 타임아웃(`timeout-ms`). 네트워크 재시도는 Claude(Anthropic SDK)만 `max-retries` 적용하고, **Gemini/Ollama는 클라이언트 재시도 없이** 실패 시 폴백 후 `EmotionAnalysisPoller`(PENDING 백스톱)의 주기 재시도에 의존한다. (Resilience4j 서킷브레이커는 트래픽 증가 시 도입 — 초기엔 과함.)
+- **폴백**: 실패 시 `primary_emotion=NEUTRAL`, 기본 테마/음악 적용, `analysis_status=FAILED` 기록 → 폴러가 PENDING을 재시도.
 
 ## 7. 감정 분석 동기 vs 비동기 (트레이드오프)
 

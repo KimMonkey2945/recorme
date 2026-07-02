@@ -290,7 +290,7 @@
   - 구현 기능: F003/F006 확장 (확정 시 1회 감정 분석)
   - ✅ `V7__add_emotion_analysis.sql`(emotion_types 마스터 6종 시드 + diaries에 `primary_emotion`(FK)·`background_color`/`text_color`/`accent_color`(색 형식 CHECK)·`ai_comment`·`ai_title`·`mood_emoji`·`emotion_scores`(JSONB)·`analyzed_at`, `chk_diaries_done_has_emotion`) 구현. `V6__diary_content_text_not_null.sql`로 content_text NOT NULL 강화.
   - ✅ `domain.emotion`: `EmotionAnalysisService`(`@Async("emotionAnalysisExecutor")`, 트랜잭션 밖 LLM 호출·낙관적 조건부 UPDATE — 분석 중 수정/삭제 시 stale 폐기)·`EmotionAnalysisPoller`(PENDING 백스톱)·`EmotionAnalyzer`/`LlmEmotionAnalyzer`·`DiaryImagePreparer`(본문 인라인 이미지 → 멀티모달 입력)·`EmotionAnalysisMapper`.
-  - ✅ 확장 포인트 인터페이스 격리 `infra.llm.LlmClient`: `ClaudeLlmClient`(`anthropic-java`)·`GeminiLlmClient`·`OllamaLlmClient`(로컬 무키)·`StubLlmClient`(무키 로컬/CI 폴백). `LlmConfig`가 provider·키 유무로 구현체 프로그램적 선택. LLM 실패는 analyzer가 `NEUTRAL`로 흡수 → FAILED+NEUTRAL 반영(CHECK 통과).
+  - ✅ 확장 포인트 인터페이스 격리 `infra.llm.LlmClient`: `ClaudeLlmClient`(`anthropic-java`)·`GeminiLlmClient`·`OllamaLlmClient`(로컬 무키)·`StubLlmClient`(무키 로컬/CI 폴백). `LlmConfig`가 provider·키 유무로 구현체 프로그램적 선택(기본 provider=`gemini`, 무키 시 Stub 폴백). LLM 실패는 analyzer가 `NEUTRAL`로 흡수 → FAILED+NEUTRAL 반영(CHECK 통과).
   - ✅ **확정 시 1회만 분석**(확정 후 수정 불가 — Task 011-3 라이프사이클 전제): DiaryService가 확정 커밋 후 `analyzeAsync(diaryId)` 트리거. 재분석은 삭제 후 재작성·재확정.
   - ✅ 분석 결과는 `DiaryResponse`·`DiarySummaryDay`(캘린더)로 노출. `DiarySummaryDay`는 DONE 기록만 `primaryEmotion`·`moodEmoji` 값 보유(캘린더 감정색/이모지 렌더).
 
