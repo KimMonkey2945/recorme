@@ -21,6 +21,26 @@ shrimp task 와 1:1 대응한다. **⚠️ 표시는 "가이드 예시와 실제
   기본 **Gemini** 사용(`LlmClient` 추상화라 언제든 전환). 하루 1건이면 무료 등급으로 충분.
 - 저장소: `https://github.com/KimMonkey2945/recorme.git` (branch `main`).
 
+## 시작 전 준비 체크리스트 (사용자가 직접 할 일)
+
+Phase 실행과 별개로, **본인이 미리 준비/결정해야 하는 것**을 한곳에 모았다. 오늘 시작 전에 훑을 것:
+
+- [ ] **`POSTGRES_PASSWORD`** 로 쓸 강한 비밀번호 하나 정하기(새로 생성). → `deploy/.env` 에 넣음(P3).
+- [ ] **GitHub PAT 발급** — repo 가 private 이면 서버 `git clone`(P3)부터 인증 필요, Jenkins SCM 자격증명(P6)도
+      **같은 PAT 재사용**. GitHub → Settings → Developer settings → Personal access tokens, `repo` 스코프.
+      (repo 가 public 이면 clone·폴링에 토큰 불필요.)
+- [ ] **보유 시크릿 모으기**(이미 갖고 있는 값): `SUPABASE_URL`(app `supabase_config.dart`),
+      `LLM_API_KEY`(`backend/gemini.env`), FCM 서비스계정 JSON → `base64 -w0 fcm.json` 로 인코딩.
+- [ ] **폰(Z Flip3)에 Tailscale 앱** 미리 설치 + 서버와 **동일 계정**으로 로그인 준비(P7).
+- [ ] (HTTPS 접속을 택할 경우) **Tailscale 관리 콘솔에서 MagicDNS + HTTPS Certificates 활성화**
+      (기본 꺼짐 — 안 켜면 `tailscale serve` 가 인증서를 못 받음). login.tailscale.com → DNS 탭(P7).
+- [ ] **offsite 백업 대상 결정**(P11, 중요): 이 서버 HDD 는 15년 됨 → 원본·백업 동반 손실 위험.
+      rclone→Google Drive 또는 개발 PC 주기 복사 중 하나는 꼭 정할 것.
+- [ ] **Windows Update 사용 시간대** 넓게 설정(예고 없는 자동 재부팅 방지, P10).
+- [ ] (선택) **릴리즈 키스토어 생성 여부 결정**(P8): Play Store 미배포 + 항상 같은 PC 빌드면 **debug
+      폴백으로도 충분**(build.gradle.kts 가 `key.properties` 없으면 debug 서명). 다만 PC 교체/키 재생성 시
+      "덮어 설치 업데이트"가 서명 불일치로 실패 → 안심하려면 키스토어 1회 생성·백업.
+
 ## 미리 준비된 산출물 (이 저장소에 커밋됨)
 
 | 파일 | 용도 |
@@ -67,6 +87,9 @@ sudo usermod -aG docker $USER
 
 ## Phase 3 — 저장소 클론 & 시크릿 배치
 
+> **⚠️ private repo 면 clone 부터 인증 필요**: HTTPS clone 시 GitHub 사용자명 + **PAT**(비밀번호 자리)를
+> 입력한다. 이 PAT 를 Phase 6 Jenkins SCM 자격증명에도 그대로 재사용한다. public repo 면 토큰 없이 clone 됨.
+
 ```bash
 mkdir -p ~/server && cd ~/server
 git clone https://github.com/KimMonkey2945/recorme.git
@@ -91,10 +114,18 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d db
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build backend
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backend
 ```
+
+> **⏳ 첫 `--build` 는 오래 걸린다**: i5-2400 에서 멀티스테이지 빌드가 Gradle 의존성
+> (anthropic-java·firebase-admin 등)을 전부 받고 컴파일하므로 **첫 빌드 20~40분**도 정상이다. 멈춘 게
+> 아니니 기다릴 것. 이후 빌드는 BuildKit 캐시로 훨씬 빨라진다.
+
 확인 사항:
 - **⚠️ `SPRING_PROFILES_ACTIVE=cloud` 로 떴는지**(compose 가 강제 주입). local 로 뜨면
   application-local.yml 이 이미지에 없어 기동 실패한다.
 - 로그에 **Flyway 가 V1~V10 을 순서대로 적용**했는지(빈 DB 최초 기동 시).
+- **⚠️ FCM 자격증명 실측**: 로그에 `Push service = FCM` 이 떠야 한다. `Push service = Stub` 이면
+  `FCM_CREDENTIALS`(Base64) 파싱 실패로 폴백된 것 — 값·인코딩 재확인(`base64 -w0` 로 한 줄인지).
+  (백엔드 `PushConfig` 는 파일 경로/Base64 둘 다 지원하므로 Base64 문자열도 정상 처리된다.)
 - 파일 업로드 시 명명 볼륨 `recorme_uploads`(→ `/app/var/storage`)에 저장되는지(**⚠️ STORAGE_ROOT 경로 일치**).
 - **⚠️ 데이터 안착 확인**: `docker exec recorme-db sh -c 'echo $PGDATA'` → `/var/lib/postgresql/data`,
   `docker volume ls | grep recorme` 에 `recorme_pgdata`·`recorme_uploads` 존재.
@@ -108,6 +139,7 @@ sudo apt install -y openjdk-21-jdk
 cd ~/server/recorme/backend
 ./gradlew test
 ```
+> ⏳ 첫 실행은 Testcontainers 가 테스트용 postgres 이미지를 pull 하고 Gradle 의존성을 받으므로 느리다(정상).
 
 ## Phase 6 — Jenkins 구성 & 파이프라인
 
@@ -118,10 +150,15 @@ compose 가 자동으로 빌드한다.
 ```bash
 cd ~/server/recorme
 # jenkins 이미지 빌드 후 기동. DEPLOY_DIR 은 서버의 실제 deploy 디렉터리(.env 포함).
-DEPLOY_DIR=$(pwd)/deploy docker compose -f deploy/docker-compose.yml up -d --build jenkins
+# --env-file 을 붙여 Phase 4 와 통일(compose 는 파일 전체를 보간하므로, 빠지면 미설정 var 경고·빈값이 뜬다).
+DEPLOY_DIR=$(pwd)/deploy docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build jenkins
 docker logs recorme-jenkins   # 초기 관리자 비밀번호
 ```
 브라우저 `http://localhost:9090` → 초기 설정.
+
+> **docker.sock 권한**: jenkins 서비스는 compose 에서 `user: root` 로 돌므로 `/var/run/docker.sock`
+> 접근 권한이 있다(파이프라인의 `docker build`/`docker compose` 정상 동작). 만약 `permission denied on
+> docker.sock` 이 나면 `user: root` 가 유지됐는지 확인.
 
 **시크릿(.env) 접근**: Jenkins 는 `checkout scm` 워크스페이스에 레포를 새로 받는데 `.env` 는
 gitignore 라 거기 없다. 그래서 compose 의 jenkins 서비스가 **서버 deploy 디렉터리를 `/deploy-env`
@@ -159,8 +196,10 @@ tailscale ip -4     # 서버의 Tailscale IP (예: 100.x.y.z)
 **§교정3 접속 방식 결정(택1):**
 - (권장) HTTPS: `sudo tailscale serve --bg 8080` → `https://<host>.<tailnet>.ts.net` 로 접속.
   앱 manifest 손 안 대고 유효 인증서 확보. `API_BASE_URL=https://<host>.<tailnet>.ts.net`.
+  **⚠️ 선행 조건**: Tailscale 관리 콘솔(login.tailscale.com) **DNS 탭에서 MagicDNS + HTTPS
+  Certificates 를 활성화**해야 한다(기본 꺼짐). 안 켜면 `serve` 가 인증서를 발급받지 못한다.
 - (기본) HTTP: `API_BASE_URL=http://100.x.y.z:8080`. 이미 커밋된 network_security_config 가
-  cleartext 를 허용하므로 릴리즈 앱에서도 동작.
+  cleartext 를 허용하므로 릴리즈 앱에서도 동작(콘솔 설정 불필요).
 
 ## Phase 8 — 앱 릴리즈 서명 & 빌드 & 설치
 
@@ -181,7 +220,11 @@ cd app
 cd app && ./scripts/build_release.sh "https://<host>.<tailnet>.ts.net"
 ```
 `build/app/outputs/flutter-apk/app-release.apk` → 폰 전송(카톡/드라이브/USB) → 설치.
-로그인·기록 CRUD·감정분석 E2E 확인. **키스토어·비밀번호는 안전히 백업**(분실 시 업데이트 불가).
+로그인·기록 CRUD·감정분석 E2E 확인. **키스토어·비밀번호는 (서버가 아닌) 다른 곳에도 백업**(분실 시
+같은 앱으로 업데이트 설치가 영영 불가).
+
+> ✅ `recorme-release.jks`·`key.properties` 는 이미 `.gitignore`(`**/*.jks`, `app/android/key.properties`)로
+> 제외돼 커밋되지 않는다. (커밋되는 건 `key.properties.example` 템플릿뿐.)
 
 ## Phase 9 — FCM 실기기 라이브 검증
 
@@ -194,6 +237,11 @@ cd app && ./scripts/build_release.sh "https://<host>.<tailnet>.ts.net"
 - 작업 스케줄러: 로그온 시 `wsl.exe -d Ubuntu -- sleep infinity`(숨김 실행) → 부팅 후 WSL+Docker 자동 기동.
 - netplwiz 자동 로그인 → 정전 후 무인 복구.
 - compose 의 `restart: unless-stopped` 확인.
+- **⚠️ Windows Update 자동 재부팅**: 예고 없이 서버를 내릴 수 있다. 설정 → Windows 업데이트 → **사용
+  시간(Active hours)을 넓게** 잡아 자동 재부팅을 억제한다.
+- **무인 복구 리허설 1회**: 실제로 서버 PC 를 재부팅해 보고, 수동 개입 없이 db·backend·jenkins 가
+  자동 기동되고 폰에서 접속되는지 확인한다(자동 로그인 + 스케줄러 + restart 정책이 맞물리는지). 이 리허설
+  한 번이 정전·업데이트 재부팅 대비의 전부다.
 
 ## Phase 11 — 백업 & 복원
 
@@ -219,7 +267,17 @@ docker compose -f deploy/docker-compose.yml start backend
 > ⚠️ 덤프에는 `flyway_schema_history` 도 포함된다. 빈 새 DB/볼륨에 복원하면 정합적이나, 이미 Flyway 를
 > 돌린 DB 에 겹쳐 복원할 땐 `--clean` 으로 기존 스키마를 먼저 정리해야 충돌이 없다. 백업은 **복원
 > 리허설을 한 번 해봐야** 신뢰할 수 있다.
-- cron 등록 + 로그 로테이션(오래된 백업 정리 포함).
+
+**⭐ offsite 사본 (가장 중요)**: 위 백업은 **원본과 같은 디스크**에 저장된다. 이 서버 HDD 는 15년 된
+물건이라 **디스크가 죽으면 일기 데이터와 백업이 함께 사라진다**. recorme 는 개인 일기라 데이터가 곧
+전부이므로, 덤프를 반드시 **서버 밖**으로 복사한다(3-2-1 까진 아니어도 최소 "2-1").
+```bash
+# 예1) rclone 으로 Google Drive 업로드 (사전 `rclone config` 로 gdrive 리모트 등록)
+rclone copy ~/backups gdrive:recorme-backups --include "*.dump" --include "*.tgz"
+# 예2) 개발 PC 로 주기 복사 (scp/rsync) — 최소한 이거라도
+```
+- 위 백업·offsite 복사를 **cron 등록** + 로그 로테이션(오래된 백업 정리 포함).
+- **복원 리허설 1회**: 위 복원 절차를 실제로 한 번 돌려 데이터가 살아나는지 확인해야 백업을 신뢰할 수 있다.
 
 ## Phase 12 — (보류) Ollama 실험
 
