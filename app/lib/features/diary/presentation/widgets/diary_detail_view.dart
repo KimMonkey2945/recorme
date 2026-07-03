@@ -366,10 +366,18 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
       children: [
         content,
         // DONE 시네마틱 인트로 — showEmotion 가드로 PENDING 때 호출 차단.
-        if (showEmotion && _phase != _IntroPhase.rest) _buildIntroOverlay(),
+        // ValueKey로 element를 고정: PENDING→DONE 전환으로 이 오버레이가 삽입돼도
+        // 뒤따르는 러닝 오버레이의 element가 위치 이동으로 폐기·재생성되지 않게 한다.
+        if (showEmotion && _phase != _IntroPhase.rest)
+          KeyedSubtree(
+            key: const ValueKey('introOverlay'),
+            child: _buildIntroOverlay(),
+          ),
         // 러닝 로딩 영상 오버레이 — 완료 시 페이드아웃 후 언마운트.
+        // ValueKey로 element를 고정해 인트로 오버레이 삽입 시 러닝 영상이 재재생되지 않게 한다.
         if (_runningVisible)
           Positioned.fill(
+            key: const ValueKey('runningOverlay'),
             child: AnimatedOpacity(
               opacity: _runningOpacity,
               duration: _kRunningFade,
@@ -409,7 +417,8 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (widget.aiTitle != null)
+                // 빈 문자열("") 폴백/Stub 값은 렌더하지 않는다(빈 줄 방지).
+                if (widget.aiTitle?.isNotEmpty == true)
                   Text(
                     widget.aiTitle!,
                     style: textTheme.titleMedium?.copyWith(
@@ -419,9 +428,10 @@ class _DiaryDetailViewState extends State<DiaryDetailView>
                     overflow: TextOverflow.ellipsis,
                     maxLines: 2,
                   ),
-                if (widget.aiTitle != null && widget.aiComment != null)
+                if (widget.aiTitle?.isNotEmpty == true &&
+                    widget.aiComment?.isNotEmpty == true)
                   const SizedBox(height: AppSpacing.xs),
-                if (widget.aiComment != null)
+                if (widget.aiComment?.isNotEmpty == true)
                   Text(
                     widget.aiComment!,
                     style: textTheme.bodyMedium?.copyWith(
@@ -902,18 +912,21 @@ class _RunningIntroOverlayState extends State<_RunningIntroOverlay> {
       );
     }
 
-    // 흰 배경 위 마스코트 영상 — cover로 화면을 꽉 채우면 과하게 확대·크롭되어
-    // 어색하므로, contain으로 마스코트 전체가 잘리지 않고 중앙에 자연스러운
-    // 크기로 보이게 한다(배경이 surface와 동일해 여백이 티나지 않는다).
+    // 흰 배경 위 마스코트 영상 — 화면 폭의 일부만 차지하도록 중앙에 작게 배치한다.
+    // contain으로 마스코트 전체가 잘리지 않게 하고, FractionallySizedBox로 렌더
+    // 영역을 좁혀 과하게 크게 보이던 문제를 완화한다(배경이 surface와 동일해 여백이 티나지 않는다).
     return ColoredBox(
       color: AppColors.surface,
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            width: _controller.value.size.width,
-            height: _controller.value.size.height,
-            child: VideoPlayer(_controller),
+      child: Center(
+        child: FractionallySizedBox(
+          widthFactor: 0.55,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: SizedBox(
+              width: _controller.value.size.width,
+              height: _controller.value.size.height,
+              child: VideoPlayer(_controller),
+            ),
           ),
         ),
       ),
