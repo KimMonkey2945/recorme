@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.util.Base64;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -21,6 +23,8 @@ import org.springframework.web.client.RestClient;
  * {@code candidates[0].content.parts[0].text}를 그대로 {@link LlmResponse#text()}에 담는다.
  */
 public class GeminiLlmClient implements LlmClient {
+
+	private static final Logger log = LoggerFactory.getLogger(GeminiLlmClient.class);
 
 	private final RestClient client;
 	private final LlmProperties props;
@@ -87,6 +91,9 @@ public class GeminiLlmClient implements LlmClient {
 		ObjectNode genConfig = body.putObject("generationConfig");
 		genConfig.put("responseMimeType", "application/json");
 		genConfig.put("maxOutputTokens", maxTokens);
+		// thinking 비활성화(예산 0): gemini-2.5 계열이 thinking 토큰으로 maxOutputTokens를
+		// 잠식해 JSON이 뒤에서 잘리는(→파싱 실패→NEUTRAL 폴백) 문제를 막는다.
+		genConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
 		if (request.jsonSchema() != null) {
 			JsonNode schema = objectMapper.valueToTree(request.jsonSchema());
 			stripUnsupportedSchemaKeys(schema);
@@ -120,6 +127,12 @@ public class GeminiLlmClient implements LlmClient {
 		JsonNode candidates = response.path("candidates");
 		if (!candidates.isArray() || candidates.isEmpty()) {
 			throw new IllegalStateException("Gemini 응답에 candidates가 없습니다: " + response);
+		}
+		// finishReason=MAX_TOKENS면 출력이 잘려 JSON 파싱이 실패한다. 진단 가시성을 위해 경고.
+		JsonNode finishReason = candidates.get(0).path("finishReason");
+		if ("MAX_TOKENS".equals(finishReason.asText())) {
+			log.warn("Gemini 응답이 maxOutputTokens에서 절단됨(finishReason=MAX_TOKENS) — "
+					+ "max-tokens 상향 또는 thinking 비활성 확인 필요. usage={}", response.path("usageMetadata"));
 		}
 		JsonNode parts = candidates.get(0).path("content").path("parts");
 		if (!parts.isArray() || parts.isEmpty()) {

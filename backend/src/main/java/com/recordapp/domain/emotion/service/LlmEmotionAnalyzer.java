@@ -99,22 +99,25 @@ public class LlmEmotionAnalyzer implements EmotionAnalyzer {
 	 * 키는 camelCase(DTO·Stub 정합). 모든 필드 required, additionalProperties=false.
 	 */
 	private Map<String, Object> buildJsonSchema() {
+		// 필드 순서 주의: 모델은 이 순서대로 토큰을 생성한다. 절단(MAX_TOKENS) 시 뒤 필드가 잘리므로,
+		// 사용자에게 보이는 텍스트(primaryEmotion·aiTitle·aiComment·moodEmoji)를 앞쪽에 배치해
+		// 색상/scores보다 우선 생성되게 한다(방어적: 잘려도 코멘트가 살아남을 확률↑).
 		Map<String, Object> properties = new LinkedHashMap<>();
 		properties.put("primaryEmotion", Map.of("type", "string", "enum", EMOTION_CODES));
-		properties.put("scores", scoresSchema());
-		properties.put("backgroundColor", hexColorSchema());
-		properties.put("textColor", hexColorSchema());
-		properties.put("accentColor", hexColorSchema());
 		properties.put("aiComment", Map.of("type", "string", "maxLength", COMMENT_MAX));
 		properties.put("aiTitle", Map.of("type", "string", "maxLength", TITLE_MAX));
 		properties.put("moodEmoji", Map.of("type", "string"));
+		properties.put("backgroundColor", hexColorSchema());
+		properties.put("textColor", hexColorSchema());
+		properties.put("accentColor", hexColorSchema());
+		properties.put("scores", scoresSchema());
 
 		Map<String, Object> schema = new LinkedHashMap<>();
 		schema.put("type", "object");
 		schema.put("properties", properties);
 		schema.put("required", List.of(
-				"primaryEmotion", "scores", "backgroundColor", "textColor",
-				"accentColor", "aiComment", "aiTitle", "moodEmoji"));
+				"primaryEmotion", "aiComment", "aiTitle", "moodEmoji",
+				"backgroundColor", "textColor", "accentColor", "scores"));
 		schema.put("additionalProperties", false);
 		return schema;
 	}

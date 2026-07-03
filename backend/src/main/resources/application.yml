@@ -47,8 +47,9 @@ record:
   #   (미기동이어도 빈 생성·기동은 됨, 호출 시에만 연결).
   #   키는 환경변수(LLM_API_KEY)로만 주입한다(코드·git 평문 금지).
   # ⚠️ 모델 선택: gemini-2.0-flash 계열은 무료 등급이 막혀(429) 유료 키에서만 동작.
-  #   기본 gemini-2.5-flash-lite는 thinking 미사용이라 max-tokens(400) 내에서 절단 없이 안정적(무료 등급 가능).
-  #   gemini-2.5-flash는 thinking 토큰이 max-tokens를 잠식해 출력이 잘릴 수 있으니 지양(쓰려면 max-tokens 상향).
+  #   gemini-2.5 계열(flash-lite 포함)은 thinking이 켜지면 그 토큰이 max-tokens를 잠식해
+  #   출력(JSON)이 뒤에서 잘려 파싱 실패→NEUTRAL 폴백(빈 코멘트)이 난다. 이를 막기 위해
+  #   ① max-tokens를 넉넉히(1024) 잡고 ② GeminiLlmClient가 thinkingBudget=0으로 thinking을 끈다.
   llm:
     provider: ${LLM_PROVIDER:gemini}
     api-key: ${LLM_API_KEY:}
@@ -56,7 +57,7 @@ record:
     model: ${LLM_MODEL:gemini-2.5-flash-lite}
     ollama-base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
     ollama-timeout-ms: 300000
-    max-tokens: 400
+    max-tokens: 1024
     max-images: 3
     image-max-edge-px: 512
     mode: ${LLM_MODE:immediate}
