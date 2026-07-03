@@ -15,6 +15,7 @@ import '../../features/diary/presentation/main_calendar_page.dart';
 import '../../features/profile/presentation/profile_edit_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resolution/presentation/resolution_detail_page.dart';
+import '../../features/resolution/presentation/resolution_edit_page.dart';
 import '../../features/resolution/presentation/resolution_new_page.dart';
 import '../../features/resolution/presentation/resolution_tab_page.dart';
 import 'scaffold_with_nav_bar.dart';
@@ -141,6 +142,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             ResolutionNewPage(date: state.uri.queryParameters['date']),
+      ),
+      GoRoute(
+        path: '/resolution/:id/edit',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => ResolutionEditPage(
+          id: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+        ),
       ),
       GoRoute(
         path: '/resolution/:id',

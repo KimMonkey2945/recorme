@@ -9,6 +9,7 @@ import com.recordapp.domain.resolution.dto.ResolutionDetailResponse;
 import com.recordapp.domain.resolution.dto.ResolutionInsertCommand;
 import com.recordapp.domain.resolution.dto.ResolutionListItem;
 import com.recordapp.domain.resolution.dto.ResolutionRow;
+import com.recordapp.domain.resolution.dto.UpdateResolutionRequest;
 import com.recordapp.domain.resolution.mapper.ResolutionMapper;
 import com.recordapp.domain.resolution.vo.CheckStatus;
 import com.recordapp.domain.resolution.vo.ResolutionStatus;
@@ -191,6 +192,28 @@ public class ResolutionService {
 		}
 		resolutionMapper.insertChecks(cmd.getId(), newStart);
 		return buildDetail(userId, cmd.getId());
+	}
+
+	/**
+	 * 수정. 진행 중(ONGOING) 결심의 제목·알림 시각만 갱신한다(시작일 변경은 미지원 — 삭제 후 재작성으로 유도).
+	 * 대상 부재/타인 소유면 RESOLUTION_NOT_FOUND, 성공/실패 등 진행 중이 아니면 RESOLUTION_NOT_ACTIVE.
+	 */
+	@Transactional
+	public ResolutionDetailResponse update(Long userId, Long id, UpdateResolutionRequest req) {
+		ResolutionRow row = resolutionMapper.findByIdAndUser(id, userId);
+		if (row == null) {
+			throw new BusinessException(ErrorCode.RESOLUTION_NOT_FOUND);
+		}
+		if (!ResolutionStatus.ONGOING.name().equals(row.status())) {
+			throw new BusinessException(ErrorCode.RESOLUTION_NOT_ACTIVE);
+		}
+		// 0행이면 선검증과 write 사이에 상태가 바뀐 것(예: 경합하는 completeToday 로 SUCCESS 전이).
+		// 매퍼의 status='ONGOING' 가드로 조용히 스킵되므로, completeToday/cancel 과 동일하게 실패로 알린다.
+		int updated = resolutionMapper.updateResolution(id, userId, req.title(), req.reminderTime());
+		if (updated == 0) {
+			throw new BusinessException(ErrorCode.RESOLUTION_NOT_ACTIVE);
+		}
+		return buildDetail(userId, id);
 	}
 
 	/** 취소(소프트 삭제). 0행이면 대상 부재/타인 소유 → RESOLUTION_NOT_FOUND. */

@@ -284,6 +284,35 @@ class FakeResolutionRepository implements ResolutionRepository {
   }
 
   @override
+  Future<Resolution> update(
+    int id, {
+    required String title,
+    String? reminderTime,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final r = _resolutions[id];
+    if (r == null) {
+      throw const Failure('RESOLUTION_NOT_FOUND', '결심을 찾을 수 없습니다.');
+    }
+    if (r.status != ResolutionStatus.ongoing) {
+      throw const Failure('RESOLUTION_NOT_ACTIVE', '진행 중인 결심이 아니에요.');
+    }
+    // 제목·알림 시각만 갱신한다(시작일·체크는 그대로 유지).
+    final updated = Resolution(
+      id: r.id,
+      title: title,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      status: r.status,
+      streakSeq: r.streakSeq,
+      reminderTime: reminderTime,
+      checks: r.checks,
+    );
+    _resolutions[id] = updated;
+    return updated;
+  }
+
+  @override
   Future<void> cancel(int id) async {
     await Future<void>.delayed(_latency);
     // 소프트 삭제 시뮬레이션: 활성 저장소에서 제거한다.

@@ -92,6 +92,17 @@ class ResolutionDto {
         'reminderTime': reminderTime,
       };
 
+  /// PUT /resolutions/{id} 요청 바디(제목·알림 시각 수정).
+  /// [reminderTime]은 'HH:mm[:ss]' 문자열(없으면 null → 알림 해제).
+  static Map<String, dynamic> updateRequest({
+    required String title,
+    String? reminderTime,
+  }) =>
+      {
+        'title': title,
+        'reminderTime': reminderTime,
+      };
+
   // ── 유틸 ────────────────────────────────────────────────────
 
   /// 콤마 문자열("DONE,PENDING,PENDING")을 [CheckStatus] 리스트로 분해한다.

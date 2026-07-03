@@ -5,6 +5,7 @@ import com.recordapp.domain.resolution.dto.ExtendResolutionRequest;
 import com.recordapp.domain.resolution.dto.ResolutionCalendarDay;
 import com.recordapp.domain.resolution.dto.ResolutionDetailResponse;
 import com.recordapp.domain.resolution.dto.ResolutionListItem;
+import com.recordapp.domain.resolution.dto.UpdateResolutionRequest;
 import com.recordapp.domain.resolution.service.ResolutionService;
 import com.recordapp.global.common.ApiResponse;
 import com.recordapp.global.common.CursorRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -95,6 +97,15 @@ public class ResolutionController {
 			@RequestBody ExtendResolutionRequest request) {
 		ResolutionDetailResponse data = resolutionService.extend(principal.userId(), id, request);
 		return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(data));
+	}
+
+	/** PUT /resolutions/{id} — 진행 중 결심의 제목·알림 시각 수정(시작일은 수정 불가). */
+	@PutMapping("/{id}")
+	public ApiResponse<ResolutionDetailResponse> update(
+			@AuthenticationPrincipal SecurityUser principal,
+			@PathVariable Long id,
+			@Valid @RequestBody UpdateResolutionRequest request) {
+		return ApiResponse.ok(resolutionService.update(principal.userId(), id, request));
 	}
 
 	/** DELETE /resolutions/{id} — 결심 취소(소프트 삭제). */

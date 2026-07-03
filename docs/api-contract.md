@@ -168,6 +168,7 @@
 | GET | `/resolutions/{id}` | 결심 단건 상세(헤더 + 3일 체크) | ○ |
 | POST | `/resolutions/{id}/checks/today` | 오늘자 완료 체크(**멱등**) | ○ |
 | POST | `/resolutions/{id}/extend` | 성공한 결심을 '다음 3일'로 연장(신규 리소스 → **201**) | ○ |
+| PUT | `/resolutions/{id}` | 진행 중(ONGOING) 결심의 제목·알림 시각 수정(시작일은 수정 불가) | ○ |
 | DELETE | `/resolutions/{id}` | 결심 취소(소프트 삭제) | ○ |
 
 ```jsonc
@@ -215,6 +216,11 @@
 // 응답 data (201 Created) = 새 결심의 ResolutionDetail. 같은 streak_group, streakSeq = 이전 + 1.
 // 시작일 = max(이전 endDate + 1, 오늘). 에러: 성공(SUCCESS)이 아니면 409 RESOLUTION_NOT_EXTENDABLE /
 //         이미 연장했으면 409 RESOLUTION_ALREADY_EXTENDED.
+
+// PUT /resolutions/{id}  요청 (제목·알림 시각만 수정, 시작일 변경 미지원)
+{ "title": "매일 아침 10분 스트레칭", "reminderTime": "07:30" }  // reminderTime=null이면 알림 해제
+// 응답 data = ResolutionDetail (위 POST 응답과 동일 형태).
+// 진행 중이 아니면 409 RESOLUTION_NOT_ACTIVE, 대상 부재/타인 소유 시 404 RESOLUTION_NOT_FOUND.
 
 // DELETE /resolutions/{id}  응답: success=true (소프트 삭제). 대상 부재/타인 소유 시 404 RESOLUTION_NOT_FOUND.
 ```

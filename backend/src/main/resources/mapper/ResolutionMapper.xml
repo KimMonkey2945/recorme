@@ -191,6 +191,18 @@
            )
     </update>
 
+    <!-- 진행 중 결심의 제목·알림 시각 수정. status='ONGOING' 가드로 성공/실패 결심은 제외(서비스 선검증 이중 방어). -->
+    <update id="updateResolution">
+        UPDATE resolutions
+           SET title         = #{title},
+               reminder_time = #{reminderTime},
+               updated_at    = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+           AND status = 'ONGOING'
+    </update>
+
     <!-- 소프트 삭제(취소). 활성 행만 대상(이미 삭제된 행은 0). -->
     <update id="softDelete">
         UPDATE resolutions

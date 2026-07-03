@@ -43,6 +43,16 @@ abstract class ResolutionRepository {
   /// POST /resolutions/{id}/extend → 201 ResolutionDetail
   Future<Resolution> extend(int id, {String? reminderTime});
 
+  /// 진행 중(ONGOING) 결심의 제목·알림 시각 수정. 갱신된 상세를 돌려준다.
+  /// 시작일은 수정 대상이 아니다(삭제 후 재작성으로 유도). [reminderTime]이 null이면 알림 해제.
+  /// 진행 중이 아니면 [Failure]('RESOLUTION_NOT_ACTIVE').
+  /// PUT /resolutions/{id}
+  Future<Resolution> update(
+    int id, {
+    required String title,
+    String? reminderTime,
+  });
+
   /// 결심 취소(소프트 삭제).
   /// DELETE /resolutions/{id}
   Future<void> cancel(int id);

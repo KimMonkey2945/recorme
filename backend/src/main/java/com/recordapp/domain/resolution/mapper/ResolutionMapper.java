@@ -78,6 +78,17 @@ public interface ResolutionMapper {
 	int markResolutionSuccessIfAllDone(@Param("id") Long id);
 
 	/**
+	 * 진행 중(ONGOING) 결심의 제목·알림 시각 수정. {@code status='ONGOING'} 가드로 성공/실패 결심은 대상에서 제외한다.
+	 * 활성 행(deleted_at IS NULL)·본인 소유만 대상. updated_at 은 now() 로 갱신한다.
+	 *
+	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/진행 중 아님)
+	 */
+	int updateResolution(@Param("id") Long id,
+			@Param("userId") Long userId,
+			@Param("title") String title,
+			@Param("reminderTime") LocalTime reminderTime);
+
+	/**
 	 * 내부 PK+사용자 기준 소프트 삭제(deleted_at=now()). 활성 행만 대상.
 	 *
 	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/이미 삭제됨)

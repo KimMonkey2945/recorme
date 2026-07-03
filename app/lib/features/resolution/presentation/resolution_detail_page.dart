@@ -130,6 +130,8 @@ class ResolutionDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(resolutionByIdProvider(id));
+    // 진행 중(ONGOING) 결심에만 수정 버튼을 노출한다(성공/실패 결심은 확정 기록이라 편집 불가).
+    final canEdit = async.asData?.value.isOngoing ?? false;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -138,6 +140,12 @@ class ResolutionDetailPage extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         actions: [
+          if (canEdit)
+            IconButton(
+              tooltip: '수정',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => context.push('/resolution/$id/edit'),
+            ),
           IconButton(
             tooltip: '삭제',
             icon: const Icon(Icons.delete_outline),

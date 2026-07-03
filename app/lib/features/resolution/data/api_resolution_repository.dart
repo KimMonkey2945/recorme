@@ -137,6 +137,30 @@ class ApiResolutionRepository implements ResolutionRepository {
   }
 
   @override
+  Future<Resolution> update(
+    int id, {
+    required String title,
+    String? reminderTime,
+  }) async {
+    try {
+      final res = await _dio.put(
+        '/resolutions/$id',
+        data: ResolutionDto.updateRequest(
+          title: title,
+          reminderTime: reminderTime,
+        ),
+      );
+      return _unwrap(
+        res.data,
+        (json) => ResolutionDto.fromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      // 404: NOT_FOUND(부재/남의 결심), 409: RESOLUTION_NOT_ACTIVE(진행 중 아님) 등.
+      throw _toFailure(e);
+    }
+  }
+
+  @override
   Future<void> cancel(int id) async {
     try {
       final res = await _dio.delete('/resolutions/$id');

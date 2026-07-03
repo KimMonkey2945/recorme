@@ -136,7 +136,7 @@ class _ResolutionNewPageState extends ConsumerState<ResolutionNewPage> {
               const SizedBox(height: AppSpacing.sm),
               TextFormField(
                 controller: _titleController,
-                maxLength: 30,
+                maxLength: 100,
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(
                   hintText: '예: 매일 아침 10분 스트레칭',

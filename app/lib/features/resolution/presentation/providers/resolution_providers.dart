@@ -130,3 +130,38 @@ class ExtendController extends AsyncNotifier<void> {
 
 final extendControllerProvider =
     AsyncNotifierProvider<ExtendController, void>(ExtendController.new);
+
+/// 결심 수정 제출 상태(로딩/에러)를 담당한다(제목·알림 시각 편집).
+class UpdateResolutionController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  /// 결심 수정 제출. 성공 시 갱신된 [Resolution]을 돌려준다.
+  Future<Resolution> submit(
+    int id, {
+    required String title,
+    String? reminderTime,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final updated = await ref.read(resolutionRepositoryProvider).update(
+            id,
+            title: title,
+            reminderTime: reminderTime,
+          );
+      state = const AsyncData(null);
+      // 상세·목록·캘린더를 갱신한다(제목이 캘린더/목록에도 반영되도록).
+      ref.invalidate(resolutionByIdProvider(id));
+      ref.invalidate(resolutionListProvider);
+      ref.invalidate(resolutionCalendarProvider);
+      return updated;
+    } on Object catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+}
+
+final updateResolutionControllerProvider =
+    AsyncNotifierProvider<UpdateResolutionController, void>(
+        UpdateResolutionController.new);
