@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -40,9 +38,10 @@ class NotificationService {
   bool _initialized = false;
 
   /// 현재 실행 플랫폼 코드(백엔드 계약: ANDROID|IOS|WEB).
+  /// dart:io Platform 대신 defaultTargetPlatform을 써서 웹에서도 컴파일된다.
   String get _platform {
     if (kIsWeb) return 'WEB';
-    return Platform.isIOS ? 'IOS' : 'ANDROID';
+    return defaultTargetPlatform == TargetPlatform.iOS ? 'IOS' : 'ANDROID';
   }
 
   /// Firebase가 초기화됐는지(초기화 실패 시 false). 메시징 API 호출 전 가드용.
@@ -54,6 +53,9 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
+
+    // 웹은 FCM/로컬 알림(flutter_local_notifications 웹 미지원)을 쓰지 않으므로 전체 no-op.
+    if (kIsWeb) return;
 
     // ── 로컬 알림 플러그인 초기화 ──
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -169,7 +171,7 @@ class NotificationService {
     if (notification == null) return;
     // iOS는 setForegroundNotificationPresentationOptions로 시스템이 배너를
     // 표시하므로, 중복 노출을 피하기 위해 안드로이드에서만 수동 표시한다.
-    if (kIsWeb || !Platform.isAndroid) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
 
     await _localNotifications.show(
       id: notification.hashCode,
