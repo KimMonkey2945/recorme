@@ -24,13 +24,15 @@ class EmotionAssets {
   static const String neutral = 'assets/emotions/neutral.png'; // 폴백용
 
   // ─── 영상(mp4) 에셋 경로 상수 ────────────────────────────────
-  // 움직이는 마스코트. PNG는 영상 로딩 전·실패 시 포스터/폴백으로 쓰인다.
-  static const String joyVideo = 'assets/emotions/video/joy.mp4';
-  static const String sadnessVideo = 'assets/emotions/video/sadness.mp4';
-  static const String angerVideo = 'assets/emotions/video/anger.mp4';
-  static const String calmVideo = 'assets/emotions/video/calm.mp4';
-  static const String anxietyVideo = 'assets/emotions/video/anxiety.mp4';
-  static const String neutralVideo = 'assets/emotions/video/neutral.mp4'; // 폴백용
+  // 움직이는 마스코트. 알파 매트 패킹 mp4([좌: 색 | 우: 실루엣 알파], 2:1)로,
+  // 앱 프래그먼트 셰이더가 배경을 투명 처리해 캐릭터만 렌더한다(EmotionVideo).
+  // PNG는 영상 로딩 전·실패 시(및 웹) 포스터/폴백으로 쓰인다.
+  static const String joyVideo = 'assets/emotions/video/packed/joy.mp4';
+  static const String sadnessVideo = 'assets/emotions/video/packed/sadness.mp4';
+  static const String angerVideo = 'assets/emotions/video/packed/anger.mp4';
+  static const String calmVideo = 'assets/emotions/video/packed/calm.mp4';
+  static const String anxietyVideo = 'assets/emotions/video/packed/anxiety.mp4';
+  static const String neutralVideo = 'assets/emotions/video/packed/neutral.mp4'; // 폴백용
 
   // ─── 룩업 맵 ────────────────────────────────────────────────
 
