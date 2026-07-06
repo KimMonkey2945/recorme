@@ -225,6 +225,7 @@ class FakeDiaryRepository implements DiaryRepository {
     required String content,
     required String contentText,
     bool confirm = false,
+    String visibility = 'PRIVATE',
   }) async {
     await Future<void>.delayed(_latency);
     final key = _dateKey(date);
@@ -244,7 +245,7 @@ class FakeDiaryRepository implements DiaryRepository {
           content: content,
           contentText: contentText,
           writtenDate: entry.value.writtenDate,
-          visibility: entry.value.visibility,
+          visibility: visibility,
           // confirm=true → 확정(PENDING, 분석 요청), false → 임시 저장(DRAFT)
           analysisStatus: confirm ? 'PENDING' : 'DRAFT',
           shareToken: entry.value.shareToken,
@@ -261,13 +262,25 @@ class FakeDiaryRepository implements DiaryRepository {
       content: content,
       contentText: contentText,
       writtenDate: DateTime(date.year, date.month, date.day),
-      visibility: 'PRIVATE',
+      visibility: visibility,
       // confirm=true → PENDING, false → DRAFT
       analysisStatus: confirm ? 'PENDING' : 'DRAFT',
       shareToken: 'token-$id',
     );
     _diaries[id] = created;
     return created;
+  }
+
+  @override
+  Future<Diary> changeVisibility(int id, String visibility) async {
+    await Future<void>.delayed(_latency);
+    final existing = _diaries[id];
+    if (existing == null) {
+      throw const Failure('DIARY_NOT_FOUND', '일기를 찾을 수 없습니다.');
+    }
+    final updated = existing.copyWith(visibility: visibility);
+    _diaries[id] = updated;
+    return updated;
   }
 
   @override

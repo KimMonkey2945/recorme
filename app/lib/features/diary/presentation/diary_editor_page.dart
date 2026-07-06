@@ -46,6 +46,9 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   bool _saving = false;
   bool _picking = false;
 
+  /// 공개범위(PRIVATE/FRIENDS/PUBLIC). 기존 기록이 있으면 프리필한다.
+  String _visibility = 'PRIVATE';
+
   /// 기존 기록 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
   bool _prefilled = false;
 
@@ -99,6 +102,7 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     _prefilled = true;
     if (diary != null) {
       _controller.document = documentFromContent(diary.content);
+      _visibility = diary.visibility;
     }
     _lastValidJson = contentJsonFromDocument(_controller.document);
     _lastValidSelection = _controller.selection;
@@ -214,7 +218,12 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
       final repo = ref.read(diaryRepositoryProvider);
       final content = contentJsonFromDocument(_controller.document);
       // 임시 저장: confirm 생략(기본값 false) → analysisStatus: DRAFT
-      await repo.upsert(date: _date, content: content, contentText: plain);
+      await repo.upsert(
+        date: _date,
+        content: content,
+        contentText: plain,
+        visibility: _visibility,
+      );
 
       // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
       _invalidateAll();
@@ -251,6 +260,7 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         content: content,
         contentText: plain,
         confirm: true,
+        visibility: _visibility,
       );
 
       // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
@@ -313,6 +323,8 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         plainLength: _plainLength,
         maxLength: _maxLength,
         saving: _saving,
+        visibility: _visibility,
+        onVisibilityChanged: (v) => setState(() => _visibility = v),
         onRegister: _onRegister,
         onRemember: _onRemember,
         onCancel: () => context.pop(),

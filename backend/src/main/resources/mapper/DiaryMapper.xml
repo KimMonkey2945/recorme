@@ -229,4 +229,184 @@
            AND deleted_at IS NULL
     </update>
 
+    <!-- 공개범위만 수정(본문·analysis_status 미변경) → 확정 기록도 허용(본문 불변성과 분리).
+         updateByIdAndUser 와 달리 analysis_status='DRAFT' 가드가 없다. 활성 소유 행만. -->
+    <update id="updateVisibilityByIdAndUser">
+        UPDATE diaries
+           SET visibility = #{visibility},
+               updated_at = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <!-- 공유 링크 단건 공개 조회(비인증). 작성자(users) 조인.
+         내부 PK·소유자 식별자·공감 정보 미노출 → 작성자 표시명·본문·감정 테마만.
+         PRIVATE·DRAFT·삭제 기록은 제외(링크로도 비공개 기록은 볼 수 없음).
+         ⚠️ constructor 기반 매핑이라 <arg> 순서가 SharedDiaryResponse 생성자와 정확히 일치해야 한다. -->
+    <resultMap id="sharedDiaryResponseMap" type="com.recordapp.domain.diary.dto.SharedDiaryResponse">
+        <constructor>
+            <arg column="author_nickname" javaType="java.lang.String"/>
+            <arg column="author_profile_image_url" javaType="java.lang.String"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="content_text" javaType="java.lang.String"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="background_color" javaType="java.lang.String"/>
+            <arg column="text_color" javaType="java.lang.String"/>
+            <arg column="accent_color" javaType="java.lang.String"/>
+            <arg column="ai_comment" javaType="java.lang.String"/>
+            <arg column="ai_title" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- ============ 피드(Task 015-3) ============ -->
+
+    <!-- viewer 의 수락 친구 user_id 목록(무방향 CASE 정규화). d.user_id IN (...) 로 사용. -->
+    <sql id="acceptedFriendIds">
+        SELECT CASE WHEN f.requester_id = #{viewerId} THEN f.addressee_id ELSE f.requester_id END
+          FROM friendships f
+         WHERE f.status = 'ACCEPTED'
+           AND #{viewerId} IN (f.requester_id, f.addressee_id)
+    </sql>
+
+    <!-- viewer 와 작성자(d.user_id) 사이에 차단(BLOCKED) 관계가 없어야 함(상호 비노출). -->
+    <sql id="notBlockedByPair">
+        NOT EXISTS (
+            SELECT 1 FROM friendships bf
+             WHERE bf.status = 'BLOCKED'
+               AND LEAST(bf.requester_id, bf.addressee_id) = LEAST(#{viewerId}, d.user_id)
+               AND GREATEST(bf.requester_id, bf.addressee_id) = GREATEST(#{viewerId}, d.user_id)
+        )
+    </sql>
+
+    <!-- 피드 카드 항목 매핑. reaction_count/reacted_by_me 는 015-4 전까지 리터럴(0/false).
+         ⚠️ <arg> 순서가 DiaryFeedItem 생성자와 정확히 일치해야 한다. -->
+    <resultMap id="diaryFeedItemMap" type="com.recordapp.domain.diary.dto.DiaryFeedItem">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="author_uuid" javaType="java.lang.String"/>
+            <arg column="author_nickname" javaType="java.lang.String"/>
+            <arg column="author_profile_image_url" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
+            <arg column="ai_title" javaType="java.lang.String"/>
+            <arg column="preview" javaType="java.lang.String"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+            <arg column="visibility" javaType="java.lang.String"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="background_color" javaType="java.lang.String"/>
+            <arg column="accent_color" javaType="java.lang.String"/>
+            <arg column="reaction_count" javaType="_int"/>
+            <arg column="reacted_by_me" javaType="_boolean"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 피드 목록: 본인 OR PUBLIC OR (FRIENDS AND 수락친구), DONE·활성·비차단, id DESC 커서. -->
+    <select id="findFeed" resultMap="diaryFeedItemMap">
+        SELECT d.id                  AS id,
+               u.uuid::text          AS author_uuid,
+               u.nickname            AS author_nickname,
+               u.profile_image_url   AS author_profile_image_url,
+               d.mood_emoji          AS mood_emoji,
+               d.ai_title            AS ai_title,
+               left(d.content_text, 120) AS preview,
+               d.written_date        AS written_date,
+               d.visibility          AS visibility,
+               d.primary_emotion     AS primary_emotion,
+               d.background_color    AS background_color,
+               d.accent_color        AS accent_color,
+               d.reaction_count      AS reaction_count,
+               EXISTS(SELECT 1 FROM diary_reactions r
+                       WHERE r.diary_id = d.id AND r.user_id = #{viewerId}) AS reacted_by_me
+          FROM diaries d
+          JOIN users u ON u.id = d.user_id
+         WHERE d.deleted_at IS NULL
+           AND d.analysis_status = 'DONE'
+           AND ( d.user_id = #{viewerId}
+              OR d.visibility = 'PUBLIC'
+              OR (d.visibility = 'FRIENDS' AND d.user_id IN (<include refid="acceptedFriendIds"/>)) )
+           AND <include refid="notBlockedByPair"/>
+        <if test="cursor != null">
+           AND d.id &lt; #{cursor}
+        </if>
+         ORDER BY d.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 피드 전문(viewer-aware). 본인은 상태 무관, 그 외는 확정·볼 수 있는 글만. reaction 은 015-4 전 0/false.
+         ⚠️ <arg> 순서가 FeedDetailResponse 생성자와 정확히 일치해야 한다. -->
+    <resultMap id="feedDetailResponseMap" type="com.recordapp.domain.diary.dto.FeedDetailResponse">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="author_uuid" javaType="java.lang.String"/>
+            <arg column="author_nickname" javaType="java.lang.String"/>
+            <arg column="author_profile_image_url" javaType="java.lang.String"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="content_text" javaType="java.lang.String"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+            <arg column="visibility" javaType="java.lang.String"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="background_color" javaType="java.lang.String"/>
+            <arg column="text_color" javaType="java.lang.String"/>
+            <arg column="accent_color" javaType="java.lang.String"/>
+            <arg column="ai_comment" javaType="java.lang.String"/>
+            <arg column="ai_title" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
+            <arg column="reaction_count" javaType="_int"/>
+            <arg column="reacted_by_me" javaType="_boolean"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findViewableById" resultMap="feedDetailResponseMap">
+        SELECT d.id                  AS id,
+               u.uuid::text          AS author_uuid,
+               u.nickname            AS author_nickname,
+               u.profile_image_url   AS author_profile_image_url,
+               d.content             AS content,
+               d.content_text        AS content_text,
+               d.written_date        AS written_date,
+               d.visibility          AS visibility,
+               d.primary_emotion     AS primary_emotion,
+               d.background_color    AS background_color,
+               d.text_color          AS text_color,
+               d.accent_color        AS accent_color,
+               d.ai_comment          AS ai_comment,
+               d.ai_title            AS ai_title,
+               d.mood_emoji          AS mood_emoji,
+               d.reaction_count      AS reaction_count,
+               EXISTS(SELECT 1 FROM diary_reactions r
+                       WHERE r.diary_id = d.id AND r.user_id = #{viewerId}) AS reacted_by_me
+          FROM diaries d
+          JOIN users u ON u.id = d.user_id
+         WHERE d.id = #{id}
+           AND d.deleted_at IS NULL
+           AND ( d.user_id = #{viewerId}
+              OR ( d.analysis_status &lt;&gt; 'DRAFT'
+                   AND ( d.visibility = 'PUBLIC'
+                      OR (d.visibility = 'FRIENDS' AND d.user_id IN (<include refid="acceptedFriendIds"/>)) ) ) )
+           AND <include refid="notBlockedByPair"/>
+    </select>
+
+    <select id="findByShareToken" resultMap="sharedDiaryResponseMap">
+        SELECT u.nickname          AS author_nickname,
+               u.profile_image_url AS author_profile_image_url,
+               d.content           AS content,
+               d.content_text      AS content_text,
+               d.written_date      AS written_date,
+               d.primary_emotion   AS primary_emotion,
+               d.background_color  AS background_color,
+               d.text_color        AS text_color,
+               d.accent_color      AS accent_color,
+               d.ai_comment        AS ai_comment,
+               d.ai_title          AS ai_title,
+               d.mood_emoji        AS mood_emoji
+          FROM diaries d
+          JOIN users u ON u.id = d.user_id
+         WHERE d.share_token = #{shareToken}::uuid
+           AND d.deleted_at IS NULL
+           AND d.analysis_status &lt;&gt; 'DRAFT'
+           AND d.visibility &lt;&gt; 'PRIVATE'
+    </select>
+
 </mapper>

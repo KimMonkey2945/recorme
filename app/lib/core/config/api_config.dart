@@ -30,4 +30,7 @@ class ApiConfig {
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     return '$apiBaseUrl$path';
   }
+
+  /// 공유 링크 절대 URL. 링크 소지자는 GET /diaries/shared/{shareToken}로 단건 조회한다.
+  static String sharedUrl(String shareToken) => '$apiBaseUrl/diaries/shared/$shareToken';
 }

@@ -11,7 +11,9 @@ import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiarySummaryResponse;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
+import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
+import com.recordapp.domain.diary.dto.UpdateVisibilityRequest;
 import com.recordapp.domain.emotion.mapper.EmotionAnalysisMapper;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
@@ -703,5 +705,101 @@ class DiaryServiceTest {
 		assertThatThrownBy(() -> diaryService.upsert(userId,
 				register(deltaOf("x"), tooLong, LocalDate.of(2026, 9, 7), "PRIVATE")))
 				.isInstanceOf(DataAccessException.class);
+	}
+
+	// ===== 공개범위 변경(PATCH) — Task 015-2 =====
+
+	@Test
+	void changeVisibility_onDraft_updatesOnlyVisibility() {
+		long userId = newUser();
+		DiaryUpsertResult saved = diaryService.upsert(userId,
+				register(deltaOf("일기"), "일기", LocalDate.of(2026, 10, 1), "PRIVATE"));
+		long id = saved.diary().id();
+
+		DiaryResponse res = diaryService.changeVisibility(userId, id,
+				new UpdateVisibilityRequest("FRIENDS"));
+
+		assertThat(res.visibility()).isEqualTo("FRIENDS");
+		// 본문·상태는 그대로.
+		assertThat(res.contentText()).isEqualTo("일기");
+		assertThat(res.analysisStatus()).isEqualTo("DRAFT");
+	}
+
+	@Test
+	void changeVisibility_onConfirmed_allowed() {
+		long userId = newUser();
+		// 확정(PENDING/DONE) 기록도 공개범위만은 변경 가능(본문 불변과 분리).
+		DiaryUpsertResult saved = diaryService.upsert(userId,
+				confirmReq(deltaOf("확정본"), "확정본", LocalDate.of(2026, 10, 2), "PRIVATE"));
+		long id = saved.diary().id();
+
+		DiaryResponse res = diaryService.changeVisibility(userId, id,
+				new UpdateVisibilityRequest("PUBLIC"));
+		assertThat(res.visibility()).isEqualTo("PUBLIC");
+		assertThat(res.contentText()).isEqualTo("확정본"); // 본문 불변
+	}
+
+	@Test
+	void changeVisibility_invalidEnum_rejected() {
+		long userId = newUser();
+		long id = diaryService.upsert(userId,
+				register(deltaOf("x"), "x", LocalDate.of(2026, 10, 3), "PRIVATE")).diary().id();
+
+		assertThatThrownBy(() -> diaryService.changeVisibility(userId, id,
+				new UpdateVisibilityRequest("PUBIC"))) // 오타
+				.isInstanceOf(BusinessException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.VALIDATION_ERROR);
+	}
+
+	@Test
+	void changeVisibility_otherUser_notFound() {
+		long owner = newUser();
+		long stranger = newUser();
+		long id = diaryService.upsert(owner,
+				register(deltaOf("x"), "x", LocalDate.of(2026, 10, 4), "PRIVATE")).diary().id();
+
+		assertThatThrownBy(() -> diaryService.changeVisibility(stranger, id,
+				new UpdateVisibilityRequest("PUBLIC")))
+				.isInstanceOf(BusinessException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.DIARY_NOT_FOUND);
+	}
+
+	// ===== 공유 링크(getShared) — Task 015-2 =====
+
+	@Test
+	void getShared_publicConfirmed_returnsAuthorAndContent() {
+		long userId = newUser();
+		DiaryUpsertResult saved = diaryService.upsert(userId,
+				confirmReq(deltaOf("공유글"), "공유글", LocalDate.of(2026, 10, 5), "PUBLIC"));
+		String token = saved.diary().shareToken();
+
+		SharedDiaryResponse shared = diaryService.getShared(token);
+		assertThat(shared.contentText()).isEqualTo("공유글");
+		assertThat(shared.authorNickname()).isNotBlank();
+	}
+
+	@Test
+	void getShared_private_notFound() {
+		long userId = newUser();
+		DiaryUpsertResult saved = diaryService.upsert(userId,
+				confirmReq(deltaOf("비공개"), "비공개", LocalDate.of(2026, 10, 6), "PRIVATE"));
+		String token = saved.diary().shareToken();
+
+		assertThatThrownBy(() -> diaryService.getShared(token))
+				.isInstanceOf(BusinessException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.DIARY_NOT_FOUND);
+	}
+
+	@Test
+	void getShared_draft_notFound() {
+		long userId = newUser();
+		// 미확정(DRAFT)은 PUBLIC 이어도 공유 링크로 조회 불가.
+		DiaryUpsertResult saved = diaryService.upsert(userId,
+				register(deltaOf("초안"), "초안", LocalDate.of(2026, 10, 7), "PUBLIC"));
+		String token = saved.diary().shareToken();
+
+		assertThatThrownBy(() -> diaryService.getShared(token))
+				.isInstanceOf(BusinessException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.DIARY_NOT_FOUND);
 	}
 }

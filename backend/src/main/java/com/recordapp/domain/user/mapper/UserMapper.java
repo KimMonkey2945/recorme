@@ -14,6 +14,12 @@ public interface UserMapper {
 	/** supabase_uid로 내부 PK 조회(없으면 null). 탈퇴 여부와 무관하게 매핑 키로 조회. */
 	Long findIdBySupabaseUid(@Param("supabaseUid") String supabaseUid);
 
+	/** 외부 노출 uuid로 활성 회원의 내부 PK 조회(없으면 null). 친구 대상 지정용. */
+	Long findIdByUuid(@Param("uuid") String uuid);
+
+	/** 친구코드(대소문자 무시)로 활성 회원의 내부 PK 조회(없으면 null). 친구 추가 정확검색용. */
+	Long findIdByFriendCode(@Param("friendCode") String friendCode);
+
 	/**
 	 * 해당 이메일로 가입한 활성 회원이 있는지(대소문자 무시). 비밀번호 재설정 사전 확인용.
 	 * uq_users_email_active(lower(email), deleted_at IS NULL) 인덱스와 동일 조건으로 조회.

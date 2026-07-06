@@ -305,7 +305,37 @@
 - **Task 014: 감정 기반 음악 개요**
   - 감정에 매핑된 음악 재생. 음악 소스 미정 흡수를 위한 `MusicSource` + `tracks.source_type` 추상화
 
-- **Task 015: 공유·피드·친구·공감 개요**
+### Phase 6: 소셜(친구·공유·피드·공감) ✅ (Testcontainers Docker 대기)
+
+기록장에 **소셜 계층**을 추가한다. 단계적 4개 Task로 분할했고, 목표 스키마·API 계약이 `docs/`에 이미 확정돼 있어 구현 작업으로 진행했다. Flyway `V11~V14`, 백엔드 신규 `domain.{social,feed}` + `domain.diary` 확장, 앱 `features/{friend,feed}` + 4번째 탭(피드). 감정 상호작용은 **공감(EMPATHY)만**(댓글 범위 외), 외부 노출은 UUID/친구코드. F020~F025.
+
+> **진행 현황**: 백엔드 compileJava/compileTestJava 통과 + 슬라이스 테스트(@WebMvcTest: Friend/Feed/Reaction/Diary Controller) 통과. Testcontainers 통합(FriendServiceTest·FeedServiceTest·ReactionServiceTest·DiaryServiceTest 확장) **작성·컴파일 완료, 실행은 배포 전 Docker 일괄**(기존 007/008 계열 방침). 앱 `flutter analyze` 무경고 + `flutter test` 93건 전체 통과.
+
+- **Task 015-1: 친구 관계 (친구코드+검색·요청·수락·차단)** ✅ - 구현 완료(Testcontainers Docker 대기)
+  - 구현 기능: F020(친구 관계), F021(친구 검색)
+  - DB `V11`: `users.friend_code`(혼동문자 제외 base32 8자, nullable→백필→UNIQUE→NOT NULL), `friendships`(status PENDING/ACCEPTED/BLOCKED·blocker_id). **역방향 중복은 정렬쌍 함수 유니크**(`uq_friendship_pair` LEAST/GREATEST)로 차단(방향 유니크로는 불충분).
+  - 백엔드 `domain.social`: `FriendController`(`POST /friends/requests`·`/requests/{id}/accept|reject`·`GET /friends`·`GET /friends/requests?direction=`·`GET /friends/search?query=`·`DELETE /friends/{userUuid}?block=`), `FriendService`(대상 친구코드/uuid 해석, 역방향 PENDING 자동수락, 소유권 가드 404 은닉), `FriendCodeGenerator`, `UserProvisioningService` 친구코드 발급, `GET /users/me`에 `friendCode`. ErrorCode `FRIEND_*` 5종.
+  - 앱 `features/friend`: `/friends`(목록·요청함 배지)·`/friends/requests`(받은/보낸)·`/friends/add`(친구코드 카드·코드입력·닉네임 검색). 프로필에서 진입.
+
+- **Task 015-2: 공개범위 변경 + 공유 링크** ✅ - 구현 완료(Testcontainers Docker 대기)
+  - 구현 기능: F022(공개범위·확정 후 변경), F023(공유 링크)
+  - DB `V12`: `chk_diaries_visibility` CHECK. (`share_token`·`visibility`는 V2에 존재)
+  - 백엔드: `PATCH /diaries/{id}/visibility`(확정 기록도 허용 — 본문 불변과 분리한 전용 UPDATE), `GET /diaries/shared/{shareToken}`(비인증, 활성·확정·**PRIVATE 아님**만 — PRIVATE은 링크로도 차단), `SecurityConfig` CORS에 PATCH 추가.
+  - 앱: 에디터 공개범위 선택(`VisibilitySegment`), 상세 AppBar 공개범위 변경 시트+공유 시트(`share_plus`, PRIVATE이면 공유 비활성).
+
+- **Task 015-3: 피드 (감정 카드→전문)** ✅ - 구현 완료(Testcontainers Docker 대기)
+  - 구현 기능: F024
+  - DB `V13`: 피드용 부분 인덱스(`idx_diaries_public_feed`·`idx_diaries_friends_feed`, 정렬키 id DESC).
+  - 백엔드 `domain.feed`: `GET /feed`(본인+PUBLIC+수락친구 FRIENDS·DONE·비차단, id DESC 커서, 감정 카드 DTO), `GET /feed/{id}`(viewer-aware 전문, 볼 수 없으면 404). `DiaryMapper.findFeed`/`findViewableById` + 공용 가시성 SQL fragment. 기존 owner-only `GET /diaries/{id}` 유지.
+  - 앱: 하단 탭 3→4개(피드, 브랜치 맨 뒤 append), `FeedNotifier`(무한 스크롤·새로고침), 감정 파스텔 카드→`/feed/diary/:id` 전문.
+
+- **Task 015-4: 공감 (리액션)** ✅ - 구현 완료(Testcontainers Docker 대기)
+  - 구현 기능: F025
+  - DB `V14`: `diary_reactions`(1인 1회 `uq_reaction_once`) + `diaries.reaction_count`(비정규화 캐시, 서비스 원자 증감).
+  - 백엔드 `domain.social`: `POST/DELETE /diaries/{id}/reactions`(멱등, `ReactionResponse{reactionCount,reacted}`), `ReactionService`(볼 수 없는 글 공감 시 404, 가시성 술어는 findFeed와 공유). findFeed/findViewableById의 공감 리터럴을 실제 값(캐시 + EXISTS)으로 교체.
+  - 앱: 공용 `ReactionButton`(바운스 애니메이션·낙관적 갱신), 피드 카드·전문에 배선.
+
+- **Task 015(구): 공유·피드·친구·공감 개요** — 위 015-1~4로 분해·구현됨(원 개요 보존)
   - 공유: visibility(PRIVATE/FRIENDS/PUBLIC) + `share_token` 공유 링크 단건 조회
   - 피드: 본인 + PUBLIC + FRIENDS 기록 커서 페이징(`GET /feed`)
   - 친구: 요청/수락/거절/목록/삭제(`/friends/*`)

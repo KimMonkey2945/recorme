@@ -36,8 +36,10 @@ com.recordapp
 │  │  ├─ service/    (MusicService, MusicSource(if))
 │  │  ├─ mapper/     (TrackMapper)
 │  │  └─ dto/
-│  └─ social         (friendship + reaction)
-│     └─ controller/ service/ mapper/ dto/
+│  ├─ social         (friendship + reaction) — Phase 6 구현본
+│  │     └─ controller(FriendController·ReactionController)/ service(FriendService·ReactionService)/
+│  │        mapper(FriendshipMapper·ReactionMapper)/ dto/ (+ FriendCodeGenerator)
+│  └─ feed            (FeedController·FeedService) — 조회 대상은 diaries라 DiaryMapper 재사용
 └─ infra
    ├─ llm/           (LlmClient(if), ClaudeLlmClient, OpenAiLlmClient, prompt/)
    ├─ music/         (LocalFileMusicSource, SpotifyMusicSource ... 추후)
@@ -124,7 +126,14 @@ public interface DiaryMapper {
     RETURNING id
   </insert>
 
-  <!-- 친구(FRIENDS)·공개(PUBLIC)·본인 글을 커서 페이징으로 조회 -->
+  <!-- ⚠️ 정정(Phase 6 구현): 아래 예시는 존재하지 않는 emotion_analyses 테이블·theme_id/track_id 를
+       참조하는 옛 설계다. 실제 스키마는 감정 산출물이 diaries 인라인 컬럼(primary_emotion·mood_emoji·
+       ai_title·background_color·accent_color)이고 본문은 content(Delta)+content_text 다. 실제 findFeed 는
+       diaries+users 인라인 기준으로 재작성했고(전문 미포함·감정 카드 요약), 정렬/커서는 id DESC,
+       공감수는 diaries.reaction_count 캐시·reacted_by_me 는 EXISTS(diary_reactions), 가시성은
+       본인 OR PUBLIC OR (FRIENDS AND 수락친구) AND 비차단 이다. 가시성 절은 공용 SQL fragment
+       (acceptedFriendIds·notBlockedByPair)로 findViewableById·ReactionMapper.isViewable 과 공유한다. -->
+  <!-- 친구(FRIENDS)·공개(PUBLIC)·본인 글을 커서 페이징으로 조회 (옛 예시 — 위 정정 참조) -->
   <select id="findFeed" resultType="com.recordapp.domain.diary.dto.DiaryFeedItem">
     SELECT d.id, d.user_id, u.nickname, d.content, d.written_date,
            d.visibility, ea.primary_emotion, d.theme_id, d.track_id, d.created_at

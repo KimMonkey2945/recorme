@@ -131,6 +131,21 @@ class _ProfileBody extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: AppSpacing.md),
+          // 친구 진입 — 친구 목록·요청·추가 화면으로.
+          OutlinedButton.icon(
+            onPressed: () => context.push('/friends'),
+            icon: const Icon(Icons.people_alt_outlined, size: 18),
+            label: const Text('친구'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.inkAlt,
+              minimumSize: const Size(double.infinity, 52),
+              side: const BorderSide(color: AppColors.hairline, width: 1.5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.button),
+              ),
+            ),
+          ),
         ],
       ),
     );

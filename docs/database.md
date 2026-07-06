@@ -150,8 +150,9 @@ CREATE TABLE diaries (
 CREATE UNIQUE INDEX uq_diary_user_day ON diaries(user_id, written_date) WHERE deleted_at IS NULL;
 -- 내 기록 목록(최신순)
 CREATE INDEX idx_diaries_user_date ON diaries(user_id, written_date DESC) WHERE deleted_at IS NULL;
--- 공개 피드 [Phase 4] (friendships 등장 시점에 추가 — V2 미포함)
-CREATE INDEX idx_diaries_visibility_created ON diaries(visibility, created_at DESC) WHERE deleted_at IS NULL;
+-- 공개 피드 인덱스 — ⚠️ 정정: 실제 구현(V13)은 커서 정렬키(id DESC)에 맞춘 브랜치별 부분 인덱스를 쓴다
+--   (아래 목표안의 (visibility, created_at DESC) 대신). 소셜 섹션(친구/공감 아래)의 V13 주석 참조.
+--   idx_diaries_public_feed ON diaries(id DESC) WHERE visibility='PUBLIC' AND deleted_at IS NULL 등.
 
 -- ========== 기록 첨부 사진 (diary 1:N) ==========
 -- [V3__add_diary_images.sql] Task 008(사진 첨부)에서 생성. diaries(id) FK라 diaries(V2) 이후 적용.
@@ -182,30 +183,49 @@ CREATE TABLE emotion_analyses (
     CONSTRAINT uq_emotion_analysis_diary UNIQUE (diary_id)
 );
 
--- ========== 친구 관계 ==========
+-- ========== 친구 관계 (V11 구현본) ==========
+-- ⚠️ 구현 정정: 컬럼쌍 UNIQUE(requester_id, addressee_id)는 방향 유니크라 A→B / B→A 역방향
+--   중복을 막지 못한다. 무방향 정렬쌍 함수 유니크(LEAST/GREATEST)로 {A,B} 쌍당 1행을 강제한다.
+--   방향(requester/addressee)은 "누가 신청했나" 의미로 보존, BLOCKED 방향은 blocker_id로 기록.
+-- 친구 추가 경로: users.friend_code(혼동문자 제외 base32 8자, UNIQUE) 정확검색 / 닉네임 부분검색.
 CREATE TABLE friendships (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     requester_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     addressee_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status       VARCHAR(20) NOT NULL DEFAULT 'PENDING',        -- PENDING/ACCEPTED/BLOCKED
+    blocker_id   BIGINT REFERENCES users(id) ON DELETE CASCADE, -- BLOCKED 시 차단 주체(방향 보존)
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     responded_at TIMESTAMPTZ,
-    CONSTRAINT uq_friendship_pair UNIQUE (requester_id, addressee_id),
-    CONSTRAINT chk_no_self_friend CHECK (requester_id <> addressee_id)
+    CONSTRAINT chk_no_self_friend     CHECK (requester_id <> addressee_id),
+    CONSTRAINT chk_friendship_status  CHECK (status IN ('PENDING','ACCEPTED','BLOCKED')),
+    CONSTRAINT chk_friendship_blocker CHECK (status <> 'BLOCKED' OR blocker_id IS NOT NULL)
 );
+-- 무방향 쌍 유일성(역방향 중복 차단).
+CREATE UNIQUE INDEX uq_friendship_pair
+    ON friendships (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
 CREATE INDEX idx_friendships_addressee ON friendships(addressee_id, status);
 CREATE INDEX idx_friendships_requester ON friendships(requester_id, status);
 
--- ========== 공감(리액션) — 댓글 없음 ==========
+-- ========== 공감(리액션) — 댓글 없음 (V14 구현본) ==========
+-- 공감 수는 읽기(피드) 편향이라 diaries.reaction_count(비정규화 캐시)로 두고, 리액션
+-- INSERT/DELETE 와 같은 트랜잭션에서 서비스가 원자 증감(±1)한다. reacted_by_me(뷰어별)는
+-- 캐시 불가라 피드 쿼리에서 EXISTS로 산출한다.
 CREATE TABLE diary_reactions (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     diary_id   BIGINT NOT NULL REFERENCES diaries(id) ON DELETE CASCADE,
     user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     type       VARCHAR(20) NOT NULL DEFAULT 'EMPATHY',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_reaction_once UNIQUE (diary_id, user_id, type)
+    CONSTRAINT chk_reaction_type CHECK (type IN ('EMPATHY')),
+    CONSTRAINT uq_reaction_once  UNIQUE (diary_id, user_id, type)
 );
 CREATE INDEX idx_diary_reactions_diary ON diary_reactions(diary_id);
+-- diaries 확장(V14): reaction_count INT NOT NULL DEFAULT 0 CHECK(>=0).
+-- 피드 인덱스(V13, id DESC 커서 정렬 — created_at 아님):
+--   idx_diaries_public_feed  ON diaries(id DESC) WHERE visibility='PUBLIC'  AND deleted_at IS NULL;
+--   idx_diaries_friends_feed ON diaries(user_id, id DESC) WHERE visibility='FRIENDS' AND deleted_at IS NULL;
+-- visibility CHECK(V12): chk_diaries_visibility CHECK (visibility IN ('PRIVATE','FRIENDS','PUBLIC')).
+-- users 확장(V11): friend_code VARCHAR(8) UNIQUE NOT NULL(대문자 캐노니컬).
 
 -- ========== 작심삼일 (결심) ==========
 -- [V9__add_resolutions.sql] 3일 결심 + 일별 체크 한 세트. users(id) FK라 users(V1) 이후 적용.
@@ -311,6 +331,7 @@ CREATE INDEX idx_device_tokens_user ON device_tokens (user_id);
   - `V9__add_resolutions.sql` — `resolutions` + `resolution_checks` (작심삼일 3일 결심 + 일별 체크 한 세트)
   - `V10__add_device_tokens.sql` — `device_tokens` (FCM 서버 푸시 기기 토큰)
   - 이후 감정/테마/음악/사회 도메인은 구현 시점에 `Vn__*.sql`로 추가(예: `diaries.theme_id`/`track_id`는 Phase 4에서 `ALTER TABLE ADD COLUMN`). 마스터 데이터(`emotion_types`, 초기 `themes`/`tracks`)는 별도 `Vn__seed_*.sql`로 분리.
+  - **소셜(Phase 6) 실제 적용본**: `V11`(users.friend_code + friendships), `V12`(diaries.visibility CHECK), `V13`(피드 부분 인덱스, id DESC), `V14`(diary_reactions + diaries.reaction_count). friendships는 무방향 정렬쌍 유니크 + blocker_id로 목표 DDL을 정정했다(위 소셜 섹션 참조).
   - (참고) 그 사이 마이그레이션: `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V6=content_text NOT NULL`, `V7=emotion_analyses`, `V8=draft→확정 라이프사이클`.
 - **로컬 개발**: 네이티브 PostgreSQL 18(`recorme` DB/롤)에 빈 DB만 준비하면 `./gradlew bootRun` 시 Flyway가 자동 적용. DBeaver는 조회용. 도커는 배포 시점(Task 016)에 사용.
 - 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 신규 버전 마이그레이션으로만(기배포된 Vn은 수정 금지 — 미배포 단계에서만 V1 직접 재작성 허용).

@@ -127,6 +127,26 @@ class Diary {
         'aiComment': aiComment,
         'aiTitle': aiTitle,
       };
+
+  /// 일부 필드만 바꾼 복제본. 공개범위 변경 등 부분 갱신에 사용한다.
+  Diary copyWith({String? visibility}) => Diary(
+        id: id,
+        content: content,
+        contentText: contentText,
+        writtenDate: writtenDate,
+        visibility: visibility ?? this.visibility,
+        analysisStatus: analysisStatus,
+        shareToken: shareToken,
+        thumbnailUrl: thumbnailUrl,
+        imageCount: imageCount,
+        primaryEmotion: primaryEmotion,
+        backgroundColor: backgroundColor,
+        textColor: textColor,
+        accentColor: accentColor,
+        moodEmoji: moodEmoji,
+        aiComment: aiComment,
+        aiTitle: aiTitle,
+      );
 }
 
 /// GET /diaries/me/summary 응답의 날짜별 감정 요약 항목.

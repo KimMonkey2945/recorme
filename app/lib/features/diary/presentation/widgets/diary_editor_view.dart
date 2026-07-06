@@ -6,6 +6,7 @@ import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
 import 'package:record/features/diary/presentation/widgets/diary_image_embed_builder.dart';
 import 'package:record/features/diary/presentation/widgets/diary_quill_styles.dart';
+import 'package:record/shared/widgets/visibility_segment.dart';
 
 /// 기록 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
 ///
@@ -36,6 +37,8 @@ class DiaryEditorView extends StatelessWidget {
     required this.plainLength,
     this.maxLength = 500,
     required this.saving,
+    required this.visibility,
+    required this.onVisibilityChanged,
     required this.onRegister,
     required this.onRemember,
     required this.onCancel,
@@ -60,6 +63,12 @@ class DiaryEditorView extends StatelessWidget {
 
   /// 저장 진행 중이면 true — 버튼을 로딩 상태로 전환.
   final bool saving;
+
+  /// 현재 공개범위(PRIVATE/FRIENDS/PUBLIC).
+  final String visibility;
+
+  /// 공개범위 선택 변경 콜백.
+  final ValueChanged<String> onVisibilityChanged;
 
   /// '등록' 버튼 탭 콜백 — confirm:false로 임시 저장(DRAFT).
   final VoidCallback onRegister;
@@ -86,6 +95,13 @@ class DiaryEditorView extends StatelessWidget {
         children: [
           // ── 날짜 읽기 전용 칩 ────────────────────────────────────
           _DateChip(dateText: dateText),
+          const SizedBox(height: AppSpacing.md),
+
+          // ── 공개범위 선택 (PRIVATE/FRIENDS/PUBLIC) ────────────────
+          VisibilitySegment(
+            value: visibility,
+            onChanged: onVisibilityChanged,
+          ),
           const SizedBox(height: AppSpacing.md),
 
           // ── 서식 툴바 (사진 삽입 custom 버튼 포함) ─────────────────

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.social.mapper.ReactionMapper">
+
+    <!-- 볼 수 있는 활성·DONE 기록인지: 본인 OR PUBLIC OR (FRIENDS AND 수락친구), 비차단.
+         가시성 규칙은 DiaryMapper 의 fragment 를 fully-qualified refid 로 재사용(단일 진실원). -->
+    <select id="isViewable" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1
+              FROM diaries d
+             WHERE d.id = #{diaryId}
+               AND d.deleted_at IS NULL
+               AND d.analysis_status = 'DONE'
+               AND ( d.user_id = #{viewerId}
+                  OR d.visibility = 'PUBLIC'
+                  OR (d.visibility = 'FRIENDS' AND d.user_id IN (
+                        <include refid="com.recordapp.domain.diary.mapper.DiaryMapper.acceptedFriendIds"/>)) )
+               AND <include refid="com.recordapp.domain.diary.mapper.DiaryMapper.notBlockedByPair"/>
+        )
+    </select>
+
+    <!-- 1인 1회 공감(멱등). uq_reaction_once 충돌 시 DO NOTHING → affected=0(이미 공감). -->
+    <insert id="insertIgnore">
+        INSERT INTO diary_reactions (diary_id, user_id, type)
+        VALUES (#{diaryId}, #{userId}, #{type})
+        ON CONFLICT (diary_id, user_id, type) DO NOTHING
+    </insert>
+
+    <delete id="deleteMine">
+        DELETE FROM diary_reactions
+         WHERE diary_id = #{diaryId} AND user_id = #{userId}
+    </delete>
+
+    <!-- 공감 수 캐시 원자 증감(리액션 INSERT/DELETE 와 동일 트랜잭션에서 호출). -->
+    <update id="incrementCount">
+        UPDATE diaries SET reaction_count = reaction_count + 1 WHERE id = #{diaryId}
+    </update>
+
+    <update id="decrementCount">
+        UPDATE diaries SET reaction_count = reaction_count - 1
+         WHERE id = #{diaryId} AND reaction_count > 0
+    </update>
+
+    <select id="countByDiary" resultType="int">
+        SELECT count(*)::int FROM diary_reactions WHERE diary_id = #{diaryId}
+    </select>
+
+</mapper>

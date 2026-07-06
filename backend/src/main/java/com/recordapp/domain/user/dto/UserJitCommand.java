@@ -11,12 +11,15 @@ public class UserJitCommand {
 	private final String nickname;
 	private final String email;            // nullable
 	private final String profileImageUrl;  // nullable
+	private final String friendCode;       // 8자리 친구코드(생성 시 발급, uq_users_friend_code 로 유일)
 
-	public UserJitCommand(String supabaseUid, String nickname, String email, String profileImageUrl) {
+	public UserJitCommand(String supabaseUid, String nickname, String email, String profileImageUrl,
+			String friendCode) {
 		this.supabaseUid = supabaseUid;
 		this.nickname = nickname;
 		this.email = email;
 		this.profileImageUrl = profileImageUrl;
+		this.friendCode = friendCode;
 	}
 
 	public Long getId() {
@@ -41,5 +44,9 @@ public class UserJitCommand {
 
 	public String getProfileImageUrl() {
 		return profileImageUrl;
+	}
+
+	public String getFriendCode() {
+		return friendCode;
 	}
 }

@@ -12,6 +12,11 @@ import '../../features/diary/presentation/diary_detail_page.dart';
 import '../../features/diary/presentation/diary_editor_page.dart';
 import '../../features/diary/presentation/diary_list_page.dart';
 import '../../features/diary/presentation/main_calendar_page.dart';
+import '../../features/feed/presentation/feed_diary_detail_page.dart';
+import '../../features/feed/presentation/feed_page.dart';
+import '../../features/friend/presentation/add_friend_page.dart';
+import '../../features/friend/presentation/friend_requests_page.dart';
+import '../../features/friend/presentation/friends_list_page.dart';
 import '../../features/profile/presentation/profile_edit_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resolution/presentation/resolution_detail_page.dart';
@@ -121,6 +126,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // 4번째 탭: 피드 (기존 인덱스 보존 위해 맨 뒤 append)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/feed',
+                builder: (context, state) => const FeedPage(),
+              ),
+            ],
+          ),
         ],
       ),
       // 셸 밖 전체 화면: 에디터 / 상세
@@ -167,6 +181,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/profile/edit',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const ProfileEditPage(),
+      ),
+      // 셸 밖 전체 화면: 친구 목록 / 요청함 / 추가
+      GoRoute(
+        path: '/friends',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const FriendsListPage(),
+      ),
+      GoRoute(
+        path: '/friends/requests',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const FriendRequestsPage(),
+      ),
+      GoRoute(
+        path: '/friends/add',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AddFriendPage(),
+      ),
+      // 셸 밖 전체 화면: 피드 카드 전문(타인 글 포함, viewer-aware)
+      GoRoute(
+        path: '/feed/diary/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) =>
+            FeedDiaryDetailPage(diaryId: state.pathParameters['id']!),
       ),
     ],
   );

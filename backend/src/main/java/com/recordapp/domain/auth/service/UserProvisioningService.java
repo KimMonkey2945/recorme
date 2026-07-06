@@ -1,5 +1,6 @@
 package com.recordapp.domain.auth.service;
 
+import com.recordapp.domain.social.FriendCodeGenerator;
 import com.recordapp.domain.user.dto.UserJitCommand;
 import com.recordapp.domain.user.mapper.UserMapper;
 import com.recordapp.global.exception.BusinessException;
@@ -50,7 +51,9 @@ public class UserProvisioningService {
 		String avatarUrl = claims.resolveAvatarUrl();
 		String email = claims.resolveEmail();
 
-		Long newId = insertJit(new UserJitCommand(supabaseUid, nickname, email, avatarUrl), supabaseUid);
+		Long newId = insertJit(
+				new UserJitCommand(supabaseUid, nickname, email, avatarUrl, FriendCodeGenerator.generate()),
+				supabaseUid);
 		if (newId != null) {
 			return new SecurityUser(newId, supabaseUid);
 		}
@@ -65,8 +68,13 @@ public class UserProvisioningService {
 	}
 
 	/**
-	 * INSERT 시도. 활성 이메일 부분 유니크(다른 supabase_uid가 같은 email 보유) 충돌 시
-	 * 이메일은 선택 정보이므로 email 없이 1회 재시도해 로그인을 막지 않는다.
+	 * INSERT 시도. 유니크 충돌 시 1회 재시도한다.
+	 * <ul>
+	 *   <li>{@code uq_users_email_active} 충돌(다른 계정이 같은 활성 이메일 보유): 이메일은 선택 정보이므로 email 없이,</li>
+	 *   <li>{@code uq_users_friend_code} 충돌(친구코드 중복, 사실상 희박): 새 친구코드로,</li>
+	 * </ul>
+	 * 두 경우를 구분하지 않고 재시도분은 email 을 비우고 친구코드를 새로 발급해 로그인을 막지 않는다.
+	 * (supabase_uid 충돌은 ON CONFLICT DO NOTHING 이라 예외가 아니라 id=null 로 돌아온다.)
 	 *
 	 * @return 생성된 PK. supabase_uid 충돌로 INSERT가 무시되면 null
 	 */
@@ -75,10 +83,11 @@ public class UserProvisioningService {
 			userMapper.insertOnConflictNothing(command);
 			return command.getId();
 		} catch (DuplicateKeyException e) {
-			// uq_users_email_active 충돌(동일 활성 이메일을 가진 다른 계정 존재)
-			log.warn("JIT 가입 이메일 충돌 → email 없이 재시도: supabaseUid={}", supabaseUid);
+			// email 또는 friend_code 충돌 → email 없이 + 새 친구코드로 1회 재시도.
+			log.warn("JIT 가입 유니크 충돌 → email 제거·친구코드 재발급 후 재시도: supabaseUid={}", supabaseUid);
 			UserJitCommand retry = new UserJitCommand(
-					supabaseUid, command.getNickname(), null, command.getProfileImageUrl());
+					supabaseUid, command.getNickname(), null, command.getProfileImageUrl(),
+					FriendCodeGenerator.generate());
 			userMapper.insertOnConflictNothing(retry);
 			return retry.getId();
 		}

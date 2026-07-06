@@ -39,6 +39,8 @@ Future<void> _pump(
         // 길이는 리스너블로 주입(실제 페이지의 ValueNotifier 흐름과 동일).
         plainLength: ValueNotifier<int>(plainLength),
         saving: saving,
+        visibility: 'PRIVATE',
+        onVisibilityChanged: (_) {},
         onRegister: onRegister ?? () {},
         onRemember: onRemember ?? () {},
         onCancel: () {},

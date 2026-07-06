@@ -29,12 +29,15 @@ lib/
 │  │  ├─ domain/    (diary.dart, diary_repository.dart)
 │  │  └─ presentation/ (diary_write_page.dart, diary_detail_page.dart,
 │  │                     widgets/diary_themed_view.dart, providers/)
-│  ├─ feed/
+│  ├─ feed/          (Phase 6: feed_page[4번째 탭]·feed_diary_detail_page, FeedNotifier 무한스크롤, feed_diary_card)
+│  ├─ friend/        (Phase 6: friends_list·friend_requests·add_friend + 위젯, ApiFriendRepository)
 │  └─ profile/
 └─ shared/
-   ├─ widgets/      (공용 위젯)
+   ├─ widgets/      (공용 위젯 — ReactionButton·VisibilitySegment·visibility_change_sheet·share_options_sheet 등)
    └─ models/       (공통 모델, ApiResponse 래퍼)
 ```
+
+> **Phase 6 소셜**: 하단 탭이 3→4개로 확장(캘린더/목록/작심삼일/**피드**, 브랜치 맨 뒤 append로 기존 IndexedStack 인덱스 보존). 친구는 탭이 아니라 피드 AppBar·프로필에서 진입(셸 밖 `parentNavigatorKey` 라우트 `/friends`·`/friends/requests`·`/friends/add`·`/feed/diary/:id`). 공개범위·공유·공감은 diary/feed 화면에 통합. 앱은 백엔드 REST(`/friends/*`·`/feed`·`/diaries/{id}/reactions`·`PATCH /diaries/{id}/visibility`)만 사용.
 
 ## 3. 계층 분리
 

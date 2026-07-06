@@ -37,13 +37,19 @@ abstract class DiaryRepository {
   ///
   /// [confirm]이 false(기본값)이면 임시 저장(DRAFT, 분석 없음), true이면 확정하여
   /// AI 감정 분석을 요청한다(PENDING → 비동기 분석 → DONE). 확정 후에는 수정 불가.
+  /// [visibility]는 공개범위(PRIVATE/FRIENDS/PUBLIC, 기본 PRIVATE).
   /// POST /diaries
   Future<Diary> upsert({
     required DateTime date,
     required String content,
     required String contentText,
     bool confirm = false,
+    String visibility = 'PRIVATE',
   });
+
+  /// 공개범위만 변경(본문 불변과 분리). 확정 기록도 허용된다.
+  /// PATCH /diaries/{id}/visibility
+  Future<Diary> changeVisibility(int id, String visibility);
 
   /// 소프트 삭제. 삭제 후 같은 날짜 재작성이 허용된다.
   /// DELETE /diaries/{id}

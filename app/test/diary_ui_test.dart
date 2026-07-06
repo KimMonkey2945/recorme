@@ -66,8 +66,13 @@ class _StubRepo implements DiaryRepository {
     required String content,
     required String contentText,
     bool confirm = false,
+    String visibility = 'PRIVATE',
   }) async =>
       items.first;
+
+  @override
+  Future<Diary> changeVisibility(int id, String visibility) async =>
+      items.firstWhere((e) => e.id == id).copyWith(visibility: visibility);
 
   @override
   Future<void> delete(int id) async {}
@@ -229,6 +234,8 @@ void main() {
                 // canSave는 plainLength.value>0 && !saving로 파생 → 길이만 주입.
                 plainLength: ValueNotifier<int>(canSave ? 5 : 0),
                 saving: false,
+                visibility: 'PRIVATE',
+                onVisibilityChanged: (_) {},
                 onRegister: () {},
                 onRemember: () => remembered = true,
                 onCancel: () {},

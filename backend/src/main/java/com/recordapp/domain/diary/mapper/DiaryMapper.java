@@ -1,9 +1,12 @@
 package com.recordapp.domain.diary.mapper;
 
+import com.recordapp.domain.diary.dto.DiaryFeedItem;
 import com.recordapp.domain.diary.dto.DiaryListItem;
 import com.recordapp.domain.diary.dto.DiaryRow;
 import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiaryUpsertCommand;
+import com.recordapp.domain.diary.dto.FeedDetailResponse;
+import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import java.time.LocalDate;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
@@ -75,4 +78,37 @@ public interface DiaryMapper {
 	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/이미 삭제됨)
 	 */
 	int softDeleteByIdAndUser(@Param("id") Long id, @Param("userId") Long userId);
+
+	/**
+	 * 내부 PK+사용자 기준 공개범위(visibility)만 수정. 본문·analysis_status 는 건드리지 않으므로
+	 * 확정(DRAFT 아님) 기록도 대상이 된다(본문 불변성과 분리). 활성 소유 행만.
+	 *
+	 * @return 갱신된 행 수(0이면 대상 부재/타인 소유/삭제됨)
+	 */
+	int updateVisibilityByIdAndUser(@Param("id") Long id,
+			@Param("userId") Long userId,
+			@Param("visibility") String visibility);
+
+	/**
+	 * 공유 토큰으로 공개 조회(비인증). 활성·확정(DRAFT 아님)·PRIVATE 아님 기록만 반환(없으면 null).
+	 * 내부 PK·소유자 식별자·공감 정보는 노출하지 않고 작성자 표시명·본문·감정 테마만 담는다.
+	 */
+	SharedDiaryResponse findByShareToken(@Param("shareToken") String shareToken);
+
+	/**
+	 * 피드 목록(커서 페이징, id DESC). viewer 가 볼 수 있는 DONE 기록만:
+	 * 본인 OR PUBLIC OR (FRIENDS AND 수락 친구). 차단(BLOCKED) 상대 기록은 제외.
+	 * 전문(content) 대신 감정 카드 요약(content_text 미리보기·감정색·공감 요약)만 싣는다.
+	 * <p>hasNext 판정을 위해 서비스가 size+1 을 limit 으로 넘긴다.
+	 */
+	List<DiaryFeedItem> findFeed(@Param("viewerId") long viewerId,
+			@Param("cursor") Long cursor,
+			@Param("limit") int limit);
+
+	/**
+	 * 피드 카드 탭 시 전문 조회(viewer-aware, 없으면 null → 404).
+	 * 본인 글은 상태 무관, 그 외는 확정(DRAFT 아님)·활성·볼 수 있는(PUBLIC 또는 FRIENDS-친구) 글만.
+	 * 차단(BLOCKED) 상대 글은 제외. 작성자 표시 정보 + 본문 + 감정 테마를 담는다.
+	 */
+	FeedDetailResponse findViewableById(@Param("viewerId") long viewerId, @Param("id") long id);
 }

@@ -79,7 +79,8 @@ class UserControllerTest {
 	void uploadAvatar_valid_returns200() throws Exception {
 		// 서비스(저장·검증)는 모킹 — 컨트롤러가 multipart를 받아 서비스로 위임하고 표준 응답을 내는지만 검증.
 		when(userService.updateAvatar(any(), any(MultipartFile.class)))
-				.thenReturn(new UserProfileResponse("u-uuid", "닉", "u@e.com", "/files/avatars/2026/06/x.png", null));
+				.thenReturn(new UserProfileResponse(
+						"u-uuid", "닉", "u@e.com", "/files/avatars/2026/06/x.png", null, "ABCD1234"));
 		MockMultipartFile file = new MockMultipartFile(
 				"file", "a.png", MediaType.IMAGE_PNG_VALUE, new byte[] {1, 2, 3});
 

@@ -13,7 +13,9 @@ import com.recordapp.domain.diary.dto.DiaryUpsertCommand;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
 import com.recordapp.domain.diary.dto.ImageUploadResponse;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
+import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
+import com.recordapp.domain.diary.dto.UpdateVisibilityRequest;
 import com.recordapp.domain.diary.mapper.DiaryMapper;
 import com.recordapp.domain.emotion.service.EmotionAnalysisService;
 import com.recordapp.global.common.CursorRequest;
@@ -226,6 +228,43 @@ public class DiaryService {
 		// triggerAnalysisIfPending 는 스킵된다(확정은 upsert confirm=true 경로에서만 발생). 방어적으로 호출 유지.
 		triggerAnalysisIfPending(after);
 		return toResponse(after);
+	}
+
+	/** 허용 공개범위 값 집합(DB CHECK 와 동일). */
+	private static final List<String> VISIBILITIES = List.of("PRIVATE", "FRIENDS", "PUBLIC");
+
+	/**
+	 * 공개범위(visibility)만 변경한다. 본문·analysis_status 를 건드리지 않으므로 확정 기록도 허용한다
+	 * (본문 불변성과 분리). 잘못된 enum 값은 VALIDATION_ERROR, 대상 부재/타인 소유면 DIARY_NOT_FOUND.
+	 */
+	@Transactional
+	public DiaryResponse changeVisibility(Long userId, Long id, UpdateVisibilityRequest req) {
+		String visibility = req.visibility() == null ? null : req.visibility().trim();
+		if (!VISIBILITIES.contains(visibility)) {
+			throw new BusinessException(ErrorCode.VALIDATION_ERROR, "공개범위 값이 올바르지 않습니다.");
+		}
+		int updated = diaryMapper.updateVisibilityByIdAndUser(id, userId, visibility);
+		if (updated == 0) {
+			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
+		}
+		DiaryRow row = diaryMapper.findByIdAndUser(id, userId);
+		if (row == null) {
+			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
+		}
+		return toResponse(row);
+	}
+
+	/**
+	 * 공유 링크 단건 공개 조회(비인증). 활성·확정·PRIVATE 아님 기록만 반환하며,
+	 * 없거나 조건 미충족(DRAFT/삭제/PRIVATE)이면 DIARY_NOT_FOUND(존재 은닉).
+	 */
+	@Transactional(readOnly = true)
+	public SharedDiaryResponse getShared(String shareToken) {
+		SharedDiaryResponse shared = diaryMapper.findByShareToken(shareToken);
+		if (shared == null) {
+			throw new BusinessException(ErrorCode.DIARY_NOT_FOUND);
+		}
+		return shared;
 	}
 
 	/**

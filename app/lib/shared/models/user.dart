@@ -11,6 +11,7 @@ class User {
     this.email,
     this.profileImageUrl,
     this.bio,
+    this.friendCode,
   });
 
   final String uuid;
@@ -21,12 +22,16 @@ class User {
   /// 자기소개(최대 300자). 미설정 시 null.
   final String? bio;
 
+  /// 친구 추가 시 공유하는 내 고유 코드(8자). 본인 프로필 조회 시에만 제공.
+  final String? friendCode;
+
   factory User.fromJson(Map<String, dynamic> json) => User(
         uuid: json['uuid'] as String,
         nickname: json['nickname'] as String,
         email: json['email'] as String?,
         profileImageUrl: json['profileImageUrl'] as String?,
         bio: json['bio'] as String?,
+        friendCode: json['friendCode'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -35,6 +40,7 @@ class User {
         'email': email,
         'profileImageUrl': profileImageUrl,
         'bio': bio,
+        'friendCode': friendCode,
       };
 
   User copyWith({
@@ -43,6 +49,7 @@ class User {
     String? email,
     String? profileImageUrl,
     String? bio,
+    String? friendCode,
   }) =>
       User(
         uuid: uuid ?? this.uuid,
@@ -50,6 +57,7 @@ class User {
         email: email ?? this.email,
         profileImageUrl: profileImageUrl ?? this.profileImageUrl,
         bio: bio ?? this.bio,
+        friendCode: friendCode ?? this.friendCode,
       );
 
   @override
@@ -59,9 +67,10 @@ class User {
       other.nickname == nickname &&
       other.email == email &&
       other.profileImageUrl == profileImageUrl &&
-      other.bio == bio;
+      other.bio == bio &&
+      other.friendCode == friendCode;
 
   @override
   int get hashCode =>
-      Object.hash(uuid, nickname, email, profileImageUrl, bio);
+      Object.hash(uuid, nickname, email, profileImageUrl, bio, friendCode);
 }

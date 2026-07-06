@@ -22,6 +22,13 @@ public enum ErrorCode {
 	DIARY_ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 기억한 일기는 수정할 수 없어요."),
 	IMAGE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "사진은 일기당 최대 5장까지 첨부할 수 있습니다."),
 
+	// 친구(소셜)
+	FRIEND_SELF(HttpStatus.BAD_REQUEST, "자기 자신에게는 친구 요청할 수 없어요."),
+	FRIEND_ALREADY(HttpStatus.CONFLICT, "이미 친구예요."),
+	FRIEND_REQUEST_ALREADY_SENT(HttpStatus.CONFLICT, "이미 보낸 친구 요청이에요."),
+	FRIEND_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "친구 요청을 찾을 수 없습니다."),
+	FRIEND_BLOCKED(HttpStatus.CONFLICT, "차단된 사용자예요."),
+
 	// 작심삼일(결심)
 	RESOLUTION_NOT_FOUND(HttpStatus.NOT_FOUND, "작심삼일을 찾을 수 없습니다."),
 	RESOLUTION_NOT_ACTIVE(HttpStatus.CONFLICT, "진행 중인 작심삼일이 아니에요."),

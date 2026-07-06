@@ -134,27 +134,40 @@
 
 > **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 기록 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(미분석·수정가능)로 저장하고, `confirm=true`는 `PENDING`으로 **확정해 감정 분석을 1회** 수행한다. **`DRAFT` 상태인 기록만 수정 가능**하며, 확정된 기록에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 기록은 409다.
 
-### 피드 (feed)
+### 피드 (feed) — Phase 6 구현본
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| GET | `/feed?cursor=&size=` | 본인 + 공개(PUBLIC) + 친구(FRIENDS) 기록 피드 | ○ |
+| GET | `/feed?cursor=&size=` | 본인 + PUBLIC + 수락친구 FRIENDS의 **DONE** 기록 감정 카드(id DESC 커서, 차단 상대 제외) | ○ |
+| GET | `/feed/{id}` | 피드 카드 전문(viewer-aware; 볼 수 없으면 404). 기존 owner-only `GET /diaries/{id}`는 유지 | ○ |
 
-### 친구 (friends)
+> **피드 카드 DTO**: `{ id, authorUuid, authorNickname, authorProfileImageUrl, moodEmoji, aiTitle, preview(content_text 발췌), writtenDate, visibility, primaryEmotion, backgroundColor, accentColor, reactionCount, reactedByMe }` — 전문(content)은 싣지 않고 탭 시 `/feed/{id}`로 조회.
+
+### 친구 (friends) — Phase 6 구현본
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/friends/requests` | 친구 요청 | ○ |
-| POST | `/friends/requests/{id}/accept` | 요청 수락 | ○ |
-| POST | `/friends/requests/{id}/reject` | 요청 거절 | ○ |
-| GET | `/friends` | 친구 목록 | ○ |
-| DELETE | `/friends/{userUuid}` | 친구 삭제/차단 | ○ |
+| POST | `/friends/requests` | 친구 요청. 바디 `{friendCode}` 또는 `{targetUuid}`(내부 id 비노출). 역방향 대기요청이면 자동 수락. 신규 201 | ○ |
+| POST | `/friends/requests/{id}/accept` | 요청 수락(수신자 본인만) | ○ |
+| POST | `/friends/requests/{id}/reject` | 요청 거절(행 삭제) | ○ |
+| GET | `/friends/requests?direction=incoming\|outgoing&cursor=&size=` | 받은/보낸 요청 목록(커서) | ○ |
+| GET | `/friends?cursor=&size=` | 친구 목록(수락됨, 커서) | ○ |
+| GET | `/friends/search?query=` | 친구코드 정확 + 닉네임 부분 검색(상한 20, relation 라벨: NONE/REQUESTED/INCOMING/FRIEND/BLOCKED) | ○ |
+| DELETE | `/friends/{userUuid}?block=` | 친구 삭제(block=false) 또는 차단(block=true, 상호 비노출). 멱등 | ○ |
 
-### 공감 리액션 (reactions)
+> `GET /users/me` 응답에 내 `friendCode`(8자) 포함. 신규 에러코드: `FRIEND_SELF`(400)/`FRIEND_ALREADY`·`FRIEND_REQUEST_ALREADY_SENT`·`FRIEND_BLOCKED`(409)/`FRIEND_REQUEST_NOT_FOUND`(404).
+
+### 공개범위·공유 (Phase 6 구현본)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/diaries/{id}/reactions` | 공감 추가(1인 1회) | ○ |
-| DELETE | `/diaries/{id}/reactions` | 공감 취소 | ○ |
+| PATCH | `/diaries/{id}/visibility` | 공개범위만 변경(`{visibility}`). **확정 기록도 허용**(본문 불변과 분리) | ○ |
+| GET | `/diaries/shared/{shareToken}` | 공유 링크 단건 공개 조회(작성자 표시명·본문·테마). 활성·확정·**PRIVATE 아님**만(PRIVATE·DRAFT는 404) | 조건부(비인증 허용) |
 
-> 댓글 API는 초기 범위에서 제외(공감만 제공).
+### 공감 리액션 (reactions) — Phase 6 구현본
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| POST | `/diaries/{id}/reactions` | 공감 추가(1인 1회 EMPATHY, 멱등). 볼 수 없는 글이면 404 | ○ |
+| DELETE | `/diaries/{id}/reactions` | 공감 취소(멱등) | ○ |
+
+> 둘 다 `{ reactionCount, reacted }`를 반환(UI 즉시 동기화). 댓글 API는 범위 제외(공감만 제공).
 
 ### 작심삼일 (resolutions)
 
@@ -266,4 +279,4 @@
 | `FRIENDS` | 본인 + 수락된 친구 |
 | `PUBLIC` | 모든 사용자 (피드 노출) |
 
-공유 링크(`shareToken`)는 가시성과 별개로, 링크 소지자에게 단건 조회를 허용하는 별도 통로다(정책은 구현 시 확정).
+공유 링크(`shareToken`)는 가시성과 별개의 통로지만 **PRIVATE은 링크로도 차단**된다(구현 확정). `GET /diaries/shared/{shareToken}`은 **활성·확정(DRAFT 아님)·`visibility<>'PRIVATE'`** 기록만 반환하고 그 외엔 404다. 차단(BLOCKED) 관계면 피드/전문 조회에서 상호 비노출(PUBLIC 포함).

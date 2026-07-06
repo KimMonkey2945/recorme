@@ -157,6 +157,7 @@ class _E2EDiaryRepository implements DiaryRepository {
     required String content,
     required String contentText,
     bool confirm = false,
+    String visibility = 'PRIVATE',
   }) async {
     final key = _ymd(date);
     for (final entry in _diaries.entries) {
@@ -185,6 +186,13 @@ class _E2EDiaryRepository implements DiaryRepository {
     );
     _diaries[id] = created;
     return created;
+  }
+
+  @override
+  Future<Diary> changeVisibility(int id, String visibility) async {
+    final updated = _diaries[id]!.copyWith(visibility: visibility);
+    _diaries[id] = updated;
+    return updated;
   }
 
   @override

@@ -111,6 +111,7 @@ class ApiDiaryRepository implements DiaryRepository {
     required String content,
     required String contentText,
     bool confirm = false,
+    String visibility = 'PRIVATE',
   }) async {
     try {
       // 신규 201 / 갱신 200 모두 success=true라 동일하게 처리한다.
@@ -122,6 +123,7 @@ class ApiDiaryRepository implements DiaryRepository {
           'contentText': contentText,
           'writtenDate': _yyyyMMdd(date),
           'confirm': confirm,
+          'visibility': visibility,
         },
       );
       return _unwrap(
@@ -146,6 +148,22 @@ class ApiDiaryRepository implements DiaryRepository {
           '이미 기억한 일기는 수정할 수 없어요.',
         );
       }
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<Diary> changeVisibility(int id, String visibility) async {
+    try {
+      final res = await _dio.patch(
+        '/diaries/$id/visibility',
+        data: {'visibility': visibility},
+      );
+      return _unwrap(
+        res.data,
+        (json) => Diary.fromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
       throw _toFailure(e);
     }
   }

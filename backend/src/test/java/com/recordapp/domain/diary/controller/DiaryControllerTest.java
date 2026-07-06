@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.recordapp.domain.diary.dto.DiaryResponse;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
+import com.recordapp.domain.diary.dto.SharedDiaryResponse;
+import com.recordapp.domain.diary.dto.UpdateVisibilityRequest;
 import com.recordapp.domain.diary.service.DiaryService;
 import com.recordapp.global.security.JwtAuthenticationEntryPoint;
 import com.recordapp.global.security.SecurityConfig;
@@ -159,5 +163,48 @@ class DiaryControllerTest {
 		ArgumentCaptor<SaveDiaryRequest> captor = ArgumentCaptor.forClass(SaveDiaryRequest.class);
 		verify(diaryService).upsert(any(), captor.capture());
 		assertThat(captor.getValue().confirm()).as("confirm 미지정 → null").isNull();
+	}
+
+	@Test
+	void changeVisibility_valid_returns200() throws Exception {
+		// 서비스는 모킹 — 컨트롤러가 PATCH 바디를 받아 위임하고 표준 응답을 내는지만 검증.
+		DiaryResponse diary = new DiaryResponse(
+				10L, "share-token", "{\"ops\":[]}", "본문",
+				LocalDate.of(2026, 6, 15), "FRIENDS", "DONE",
+				null, null, null, null, null, null, null);
+		when(diaryService.changeVisibility(any(), any(), any(UpdateVisibilityRequest.class)))
+				.thenReturn(diary);
+
+		mockMvc.perform(patch("/diaries/10/visibility")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"visibility\":\"FRIENDS\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.visibility").value("FRIENDS"));
+	}
+
+	@Test
+	void changeVisibility_blank_returns400() throws Exception {
+		// visibility(@NotBlank) 공백 → 400 VALIDATION_ERROR, 서비스 미호출.
+		mockMvc.perform(patch("/diaries/10/visibility")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"visibility\":\"\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+		verifyNoInteractions(diaryService);
+	}
+
+	@Test
+	void getShared_returns200() throws Exception {
+		// 공유 링크 공개 조회 — 작성자 표시명·본문·테마만 담긴 응답 위임.
+		when(diaryService.getShared(any())).thenReturn(new SharedDiaryResponse(
+				"작성자", null, "{\"ops\":[]}", "본문",
+				LocalDate.of(2026, 6, 15), "JOY", "#fff", "#000", "#abc", "코멘트", "제목", "😊"));
+
+		mockMvc.perform(get("/diaries/shared/some-token"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.authorNickname").value("작성자"))
+				.andExpect(jsonPath("$.data.moodEmoji").value("😊"));
 	}
 }

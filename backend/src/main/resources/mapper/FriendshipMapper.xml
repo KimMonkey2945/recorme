@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.social.mapper.FriendshipMapper">
+
+    <!-- 관계 행 매핑(서비스 판정용). blocker_id 는 nullable.
+         ⚠️ constructor 기반 매핑이라 <arg> 순서가 FriendshipRow 생성자 인자 순서와 정확히 일치해야 한다. -->
+    <resultMap id="friendshipRowMap" type="com.recordapp.domain.social.dto.FriendshipRow">
+        <constructor>
+            <idArg column="id" javaType="java.lang.Long"/>
+            <arg column="requester_id" javaType="java.lang.Long"/>
+            <arg column="addressee_id" javaType="java.lang.Long"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="blocker_id" javaType="java.lang.Long"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="friendItemMap" type="com.recordapp.domain.social.dto.FriendItem">
+        <constructor>
+            <idArg column="friendship_id" javaType="java.lang.Long"/>
+            <arg column="user_uuid" javaType="java.lang.String"/>
+            <arg column="nickname" javaType="java.lang.String"/>
+            <arg column="profile_image_url" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="friendRequestItemMap" type="com.recordapp.domain.social.dto.FriendRequestItem">
+        <constructor>
+            <idArg column="request_id" javaType="java.lang.Long"/>
+            <arg column="user_uuid" javaType="java.lang.String"/>
+            <arg column="nickname" javaType="java.lang.String"/>
+            <arg column="profile_image_url" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="friendSearchItemMap" type="com.recordapp.domain.social.dto.FriendSearchItem">
+        <constructor>
+            <arg column="user_uuid" javaType="java.lang.String"/>
+            <arg column="nickname" javaType="java.lang.String"/>
+            <arg column="profile_image_url" javaType="java.lang.String"/>
+            <arg column="relation" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 무방향 정렬쌍 단건 조회(uq_friendship_pair 로 최대 1행). -->
+    <select id="findRelation" resultMap="friendshipRowMap">
+        SELECT id, requester_id, addressee_id, status, blocker_id
+          FROM friendships
+         WHERE LEAST(requester_id, addressee_id) = LEAST(#{userA}, #{userB})
+           AND GREATEST(requester_id, addressee_id) = GREATEST(#{userA}, #{userB})
+    </select>
+
+    <!-- 친구 관계 INSERT(요청/차단 공용). 생성 PK 회수. -->
+    <insert id="insert"
+            parameterType="com.recordapp.domain.social.dto.FriendshipInsertCommand"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO friendships (requester_id, addressee_id, status, blocker_id, responded_at)
+        VALUES (#{requesterId}, #{addresseeId}, #{status}, #{blockerId},
+                CASE WHEN #{status} = 'PENDING' THEN NULL ELSE now() END)
+        RETURNING id
+    </insert>
+
+    <!-- 받은 요청 수락(PENDING→ACCEPTED). 수신자 소유 가드. -->
+    <update id="acceptRequest">
+        UPDATE friendships
+           SET status = 'ACCEPTED', responded_at = now()
+         WHERE id = #{id}
+           AND addressee_id = #{addresseeId}
+           AND status = 'PENDING'
+    </update>
+
+    <!-- 받은 요청 거절(PENDING 행 삭제). 수신자 소유 가드. -->
+    <delete id="rejectRequest">
+        DELETE FROM friendships
+         WHERE id = #{id}
+           AND addressee_id = #{addresseeId}
+           AND status = 'PENDING'
+    </delete>
+
+    <!-- 두 사용자 관계 삭제(친구 삭제·요청 취소, 상태 무관, 무방향). -->
+    <delete id="deletePair">
+        DELETE FROM friendships
+         WHERE LEAST(requester_id, addressee_id) = LEAST(#{userA}, #{userB})
+           AND GREATEST(requester_id, addressee_id) = GREATEST(#{userA}, #{userB})
+    </delete>
+
+    <!-- 기존 관계 행을 BLOCKED 로 전이(차단 주체 기록, 무방향). 0이면 서비스가 insert 로 폴백. -->
+    <update id="updateToBlocked">
+        UPDATE friendships
+           SET status = 'BLOCKED', blocker_id = #{blockerId}, responded_at = now()
+         WHERE LEAST(requester_id, addressee_id) = LEAST(#{blockerId}, #{otherId})
+           AND GREATEST(requester_id, addressee_id) = GREATEST(#{blockerId}, #{otherId})
+    </update>
+
+    <!-- 수락된 친구 목록. 상대(내가 requester 면 addressee, 아니면 requester)를 users 조인. -->
+    <select id="findAcceptedFriends" resultMap="friendItemMap">
+        SELECT f.id AS friendship_id,
+               u.uuid::text AS user_uuid,
+               u.nickname,
+               u.profile_image_url
+          FROM friendships f
+          JOIN users u
+            ON u.id = CASE WHEN f.requester_id = #{viewerId} THEN f.addressee_id ELSE f.requester_id END
+         WHERE f.status = 'ACCEPTED'
+           AND #{viewerId} IN (f.requester_id, f.addressee_id)
+           AND u.deleted_at IS NULL
+        <if test="cursor != null">
+           AND f.id &lt; #{cursor}
+        </if>
+         ORDER BY f.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 받은 요청(addressee=본인, PENDING). 요청자(requester)를 users 조인. -->
+    <select id="findIncomingRequests" resultMap="friendRequestItemMap">
+        SELECT f.id AS request_id,
+               u.uuid::text AS user_uuid,
+               u.nickname,
+               u.profile_image_url,
+               f.created_at
+          FROM friendships f
+          JOIN users u ON u.id = f.requester_id
+         WHERE f.addressee_id = #{viewerId}
+           AND f.status = 'PENDING'
+           AND u.deleted_at IS NULL
+        <if test="cursor != null">
+           AND f.id &lt; #{cursor}
+        </if>
+         ORDER BY f.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 보낸 요청(requester=본인, PENDING). 수신자(addressee)를 users 조인. -->
+    <select id="findOutgoingRequests" resultMap="friendRequestItemMap">
+        SELECT f.id AS request_id,
+               u.uuid::text AS user_uuid,
+               u.nickname,
+               u.profile_image_url,
+               f.created_at
+          FROM friendships f
+          JOIN users u ON u.id = f.addressee_id
+         WHERE f.requester_id = #{viewerId}
+           AND f.status = 'PENDING'
+           AND u.deleted_at IS NULL
+        <if test="cursor != null">
+           AND f.id &lt; #{cursor}
+        </if>
+         ORDER BY f.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 후보 검색: 친구코드 정확일치(대문자 정규화) 또는 닉네임 부분일치. 본인·탈퇴 제외.
+         relation 은 검색자 관점 관계 라벨. LEFT JOIN 무방향 정렬쌍으로 관계 상태 산출.
+         정확일치(친구코드)를 상위로 정렬. #{query} 는 파라미터 바인딩이라 주입 안전. -->
+    <select id="searchCandidates" resultMap="friendSearchItemMap">
+        SELECT u.uuid::text AS user_uuid,
+               u.nickname,
+               u.profile_image_url,
+               CASE
+                   WHEN f.status = 'ACCEPTED' THEN 'FRIEND'
+                   WHEN f.status = 'BLOCKED'  THEN 'BLOCKED'
+                   WHEN f.status = 'PENDING' AND f.requester_id = #{viewerId} THEN 'REQUESTED'
+                   WHEN f.status = 'PENDING' THEN 'INCOMING'
+                   ELSE 'NONE'
+               END AS relation
+          FROM users u
+          LEFT JOIN friendships f
+            ON LEAST(f.requester_id, f.addressee_id) = LEAST(u.id, #{viewerId})
+           AND GREATEST(f.requester_id, f.addressee_id) = GREATEST(u.id, #{viewerId})
+         WHERE u.id &lt;&gt; #{viewerId}
+           AND u.deleted_at IS NULL
+           AND (u.friend_code = upper(#{query}) OR u.nickname ILIKE '%' || #{query} || '%')
+         ORDER BY (u.friend_code = upper(#{query})) DESC, u.nickname
+         LIMIT #{limit}
+    </select>
+
+</mapper>

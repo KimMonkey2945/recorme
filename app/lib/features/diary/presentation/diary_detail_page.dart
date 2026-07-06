@@ -4,12 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/api_config.dart';
+import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/diary_theme.dart';
 import '../../../shared/widgets/app_snackbar.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
+import '../../../shared/widgets/share_options_sheet.dart';
+import '../../../shared/widgets/visibility_change_sheet.dart';
+import '../../../shared/widgets/visibility_segment.dart';
 import '../data/dto/diary_dto.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/diary_detail_view.dart';
@@ -124,6 +129,51 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     }
   }
 
+  // ── 공개범위 변경 / 공유 ─────────────────────────────────────
+
+  /// 공개범위 변경 시트 → 선택 시 PATCH → 관련 캐시 갱신.
+  Future<void> _changeVisibility(int id, Diary diary) async {
+    final selected =
+        await showVisibilityChangeSheet(context, current: diary.visibility);
+    if (selected == null || selected == diary.visibility || !mounted) return;
+    try {
+      await ref.read(diaryRepositoryProvider).changeVisibility(id, selected);
+      ref.invalidate(diaryByIdProvider(id));
+      ref.invalidate(monthlySummaryProvider);
+      ref.invalidate(monthDiariesProvider);
+      if (mounted) {
+        showAppSnackBar(context, '공개범위를 ${VisibilityAssets.labelOf(selected)}로 바꿨어요');
+      }
+    } on Failure catch (e) {
+      if (mounted) showAppSnackBar(context, e.message, isError: true);
+    }
+  }
+
+  /// 공유 시트(PRIVATE이 아닐 때만 호출됨). 공유 링크 복사/외부 공유.
+  void _share(Diary diary) {
+    final token = diary.shareToken;
+    if (token == null) return;
+    showShareOptionsSheet(context, shareUrl: ApiConfig.sharedUrl(token));
+  }
+
+  /// AppBar 우측 액션(공개범위 변경 + 공유). 데이터 로드 후에만 노출.
+  List<Widget> _actions(int id, Diary? diary) {
+    if (diary == null) return const [];
+    final isPrivate = diary.visibility == 'PRIVATE';
+    return [
+      IconButton(
+        icon: Icon(VisibilityAssets.iconOf(diary.visibility)),
+        tooltip: '공개범위 변경',
+        onPressed: () => _changeVisibility(id, diary),
+      ),
+      IconButton(
+        icon: const Icon(Icons.share_outlined),
+        tooltip: isPrivate ? '친구 공개 이상으로 바꾼 뒤 공유할 수 있어요' : '공유하기',
+        onPressed: isPrivate ? null : () => _share(diary),
+      ),
+    ];
+  }
+
   // ── 빌드 ──────────────────────────────────────────────────────
 
   @override
@@ -164,6 +214,7 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
         backgroundColor: AppColors.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
+        actions: _actions(id, diary),
       ),
       body: SafeArea(
         child: async.when(

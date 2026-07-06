@@ -5,7 +5,9 @@ import com.recordapp.domain.diary.dto.DiarySummaryResponse;
 import com.recordapp.domain.diary.dto.DiaryUpsertResult;
 import com.recordapp.domain.diary.dto.ImageUploadResponse;
 import com.recordapp.domain.diary.dto.SaveDiaryRequest;
+import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
+import com.recordapp.domain.diary.dto.UpdateVisibilityRequest;
 import com.recordapp.domain.diary.service.DiaryService;
 import com.recordapp.global.common.ApiResponse;
 import com.recordapp.global.common.CursorRequest;
@@ -21,6 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -114,6 +117,28 @@ public class DiaryController {
 			@PathVariable Long id,
 			@Valid @RequestBody UpdateDiaryRequest request) {
 		return ApiResponse.ok(diaryService.update(principal.userId(), id, request));
+	}
+
+	/**
+	 * PATCH /diaries/{id}/visibility — 공개범위만 변경(본문 불변과 분리 → 확정 기록도 허용).
+	 * 정적 하위 경로(/{id}/visibility)라 {@code /{id}} 와 충돌하지 않는다.
+	 */
+	@PatchMapping("/{id}/visibility")
+	public ApiResponse<DiaryResponse> changeVisibility(
+			@AuthenticationPrincipal SecurityUser principal,
+			@PathVariable Long id,
+			@Valid @RequestBody UpdateVisibilityRequest request) {
+		return ApiResponse.ok(diaryService.changeVisibility(principal.userId(), id, request));
+	}
+
+	/**
+	 * GET /diaries/shared/{shareToken} — 공유 링크 단건 공개 조회(비인증, SecurityConfig permitAll).
+	 * 활성·확정·PRIVATE 아님 기록만 반환하며 그 외엔 404. principal 을 받지 않는다(공개 통로).
+	 * 정적 프리픽스(/shared/...)라 {@code /{id}} 와 충돌하지 않는다.
+	 */
+	@GetMapping("/shared/{shareToken}")
+	public ApiResponse<SharedDiaryResponse> getShared(@PathVariable String shareToken) {
+		return ApiResponse.ok(diaryService.getShared(shareToken));
 	}
 
 	/** DELETE /diaries/{id} — 기록 소프트 삭제(첨부 사진 회수 포함). */

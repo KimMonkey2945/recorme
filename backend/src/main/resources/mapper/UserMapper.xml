@@ -10,6 +10,22 @@
          WHERE supabase_uid = #{supabaseUid}::uuid
     </select>
 
+    <!-- 외부 노출 uuid → 활성 회원 내부 PK(친구 대상 지정용). -->
+    <select id="findIdByUuid" resultType="long">
+        SELECT id
+          FROM users
+         WHERE uuid = #{uuid}::uuid
+           AND deleted_at IS NULL
+    </select>
+
+    <!-- 친구코드(대소문자 무시) → 활성 회원 내부 PK(친구 추가 정확검색용). 저장은 대문자 캐노니컬. -->
+    <select id="findIdByFriendCode" resultType="long">
+        SELECT id
+          FROM users
+         WHERE friend_code = upper(#{friendCode})
+           AND deleted_at IS NULL
+    </select>
+
     <!-- 활성 회원 이메일 존재 여부(대소문자 무시). 비밀번호 재설정 사전 확인용.
          uq_users_email_active 인덱스(lower(email), deleted_at IS NULL)와 동일 조건. -->
     <select id="existsActiveByEmail" resultType="boolean">
@@ -26,8 +42,8 @@
     <insert id="insertOnConflictNothing"
             parameterType="com.recordapp.domain.user.dto.UserJitCommand"
             useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        INSERT INTO users (supabase_uid, nickname, email, profile_image_url)
-        VALUES (#{supabaseUid}::uuid, #{nickname}, #{email}, #{profileImageUrl})
+        INSERT INTO users (supabase_uid, nickname, email, profile_image_url, friend_code)
+        VALUES (#{supabaseUid}::uuid, #{nickname}, #{email}, #{profileImageUrl}, #{friendCode})
         ON CONFLICT (supabase_uid) DO NOTHING
     </insert>
 
@@ -38,7 +54,8 @@
                nickname,
                email,
                profile_image_url,
-               bio
+               bio,
+               friend_code
           FROM users
          WHERE id = #{userId}
            AND deleted_at IS NULL
