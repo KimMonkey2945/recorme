@@ -1,8 +1,10 @@
 // =============================================================================
 // recorme 백엔드 CI/CD 파이프라인 (Jenkins, 홈서버)
 //
-// 트리거: pollSCM 5분(웹훅 미사용 — 서버를 외부에 열지 않는 Tailscale 구성이라 GitHub 웹훅이
-//         서버로 들어올 수 없으므로 폴링을 쓴다). push 하면 5분 내 자동 빌드·배포.
+// 트리거: 수동(버튼) — Jenkins UI의 "지금 빌드(Build Now)"를 누를 때만 배포한다.
+//         자동 폴링(pollSCM)은 쓰지 않는다. 개인 프로젝트라 "원할 때 한 번 눌러 배포"가
+//         더 예측 가능하고, 서버를 외부에 열지 않는 Tailscale 구성상 웹훅도 못 쓴다.
+//         (나중에 자동 배포를 원하면 pollSCM('H/5 * * * *') triggers 블록을 되살리면 된다.)
 //
 // 설계 포인트:
 //  1) 빌드는 self-contained Dockerfile(backend/Dockerfile) "안"에서 일어난다.
@@ -21,9 +23,7 @@
 pipeline {
   agent any
 
-  triggers {
-    pollSCM('H/5 * * * *')   // 5분마다 git 변경 감지
-  }
+  // 트리거 없음 = 수동 실행 전용. Jenkins UI의 "지금 빌드" 버튼으로만 파이프라인이 돈다.
 
   options {
     timestamps()

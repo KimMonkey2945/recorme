@@ -1,0 +1,31 @@
+# 빌드 컨텍스트 최소화 — 산출물·로컬 캐시·다른 플랫폼·IDE·시크릿 제외.
+# (google-services.json 은 google-services 플러그인에 필요하므로 제외하지 않는다.)
+
+# 빌드 산출물·로컬 캐시
+build/
+.dart_tool/
+.gradle/
+**/build/
+android/.gradle/
+android/.kotlin/
+
+# APK 빌드에 불필요한 다른 플랫폼
+ios/
+macos/
+windows/
+linux/
+web/
+
+# 테스트·IDE·문서
+test/
+integration_test/
+**/*.iml
+.idea/
+.vscode/
+doc/
+
+# 시크릿은 BuildKit secret 으로 주입 → 컨텍스트로 들어오지 않게 제외
+android/key.properties
+**/*.jks
+**/*.keystore
+*.env
