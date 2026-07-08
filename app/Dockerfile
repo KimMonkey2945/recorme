@@ -15,11 +15,13 @@
 #     -t recorme-app-builder ./app
 # APK 추출(scratch 실행 불가라 cp 로): docker create → docker cp → docker rm (Jenkinsfile.app 참고).
 #
-# ⚠️ 베이스 이미지 버전: 앱은 Dart SDK ^3.10.x 를 요구한다. `stable` 태그가 그보다 앞서가 빌드가
-#    깨지면, cirruslabs 의 버전 태그(예: ghcr.io/cirruslabs/flutter:3.38.0)로 고정할 것.
+# ⚠️ 베이스 이미지 버전은 개발 PC와 동일한 Flutter 버전으로 고정한다. `stable` 태그는 최신을 따라가서
+#    Flutter 가 TextInputClient 등 API 를 바꾸면 flutter_quill 11.5.0 이 미구현 멤버로 컴파일이 깨진다
+#    (예: onFocusReceived 미구현). 개발 PC 는 Flutter 3.38.9(Dart 3.10.8)에서 정상 빌드되므로 그 버전으로 고정.
+#    로컬 Flutter 를 올릴 때 이 태그도 함께 맞춘다(`flutter --version`).
 # =============================================================================
 
-FROM ghcr.io/cirruslabs/flutter:stable AS build
+FROM ghcr.io/cirruslabs/flutter:3.38.9 AS build
 WORKDIR /workspace
 
 # 실기기가 붙을 서버 주소(포트까지, /api/v1 없이). 미주입 시 앱 기본값(에뮬레이터 전용)으로 빌드돼
