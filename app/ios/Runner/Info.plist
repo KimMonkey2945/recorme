@@ -48,6 +48,10 @@
 	<!-- 프로필 사진 변경: image_picker 갤러리 접근(미선언 시 iOS 실기기 크래시) -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>프로필 사진을 변경하기 위해 사진 라이브러리에 접근합니다.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<!-- 소셜 OAuth(카카오 등) 콜백 딥링크: app.recordapp://login-callback -->

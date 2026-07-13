@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		APNs(원격 푸시) 환경. App Store/TestFlight 배포(Codemagic 자동 서명 = App Store 배포 프로파일)는
+		production 값이 맞다. 로컬 Xcode 개발 빌드가 필요할 때만 development로 바꾼다.
+		※ 이 엔타이틀먼트가 동작하려면 Apple Developer의 App ID(com.recorme.app)에
+		  Push Notifications capability가 켜져 있어야 한다(Phase A-2).
+	-->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

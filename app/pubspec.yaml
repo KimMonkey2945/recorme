@@ -1,5 +1,5 @@
 name: record
-description: "A new Flutter project."
+description: "recorme — 하루를 글로 기록하면 감정을 분석해 동적 테마와 마스코트 연출을 입히는 개인 기록장."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

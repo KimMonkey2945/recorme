@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+
+// FCM(APNs) 푸시용 엔타이틀먼트 연결 — pbxproj 대신 xcconfig로 세 빌드 구성에 일괄 적용
+CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements
