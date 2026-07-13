@@ -246,7 +246,8 @@
 
 - **Task 020: 백엔드 작심삼일 도메인 (CRUD·완료·연장·캘린더)** ✅ - 완료
   - 구현 기능: F013(결심 생성/조회), F014(완료 체크·성공/실패 전이), F015(연장 streak), F016(월별 캘린더)
-  - ✅ `V9__add_resolutions.sql`(resolutions·resolution_checks + 부분 인덱스·제약), `ResolutionController`(`POST /resolutions`·`GET /resolutions/me`·`/me/calendar`·`/{id}`·`POST /{id}/checks/today`·`POST /{id}/extend`·`DELETE /{id}`), `ResolutionService`(@Transactional, KST 날짜 판정, 소유권 IDOR 차단), `ResolutionMapper`(+XML). 생성/연장은 신규 리소스 201.
+  - ✅ `V9__add_resolutions.sql`(resolutions·resolution_checks + 부분 인덱스·제약), `ResolutionController`(`POST /resolutions`·`GET /resolutions/me`·`/me/calendar`·`/{id}`·`PUT /{id}`·`POST /{id}/checks/today`·`POST /{id}/extend`·`DELETE /{id}`), `ResolutionService`(@Transactional, KST 날짜 판정, 소유권 IDOR 차단), `ResolutionMapper`(+XML). 생성/연장은 신규 리소스 201.
+  - ✅ **수정(F013 확장, 후속 추가)**: `PUT /resolutions/{id}` + `UpdateResolutionRequest`(제목·알림 시각) — 진행 중(ONGOING) 결심만 제목·알림 시각 수정, 시작일 변경은 종료일·체크 재계산 복잡도로 미지원(삭제 후 재작성 유도). 소유·ONGOING 검증 + 영향 행수 검사(경합 시 조용한 실패 방지, `updateResolution` SQL에 `status='ONGOING'` 가드).
   - 상태 전이: 생성=`ONGOING`(3일 체크 PENDING 프리생성) → 오늘 체크 `DONE` → 3일 완주 시 `SUCCESS`(`status='ONGOING'` 가드 1회). '예정'은 `start_date > 오늘` 파생, 취소는 소프트 삭제.
   - 완료 체크(멱등): `POST /{id}/checks/today`가 날짜 인자 없이 KST '오늘' 체크를 `DONE` 전이. 이미 `DONE`이면 재요청 200. 진행 중 아니면 409 `RESOLUTION_NOT_ACTIVE`, 오늘 체크 없으면 409 `RESOLUTION_CHECK_NOT_TODAY`.
   - 연장(streak): 성공한 결심만 `streak_group_id` 복사 + `streak_seq+1`로 신규 생성(시작일 `max(prev.endDate+1, 오늘)`). 성공 아니면 409 `RESOLUTION_NOT_EXTENDABLE`, 이중 연장은 선검사 + `uq(streak_group_id, streak_seq)`로 409 `RESOLUTION_ALREADY_EXTENDED`.
@@ -263,6 +264,7 @@
 - **Task 022: 앱 작심삼일 (데이터·UI)** ✅ - 완료
   - 구현 기능: F013~F016 (모바일)
   - ✅ 작심삼일 데이터 계층(Repository + Dio 실연동, 표준 응답 언랩·커서 페이징)·UI(목록 탭 진행/성공/실패 + 3일 진행 도트[`dayStatuses` 콤마 분해], 생성 폼[제목·시작일·알림시각], 상세[3일 체크·오늘 완료 버튼·연장·취소], 월별 캘린더 배지) 구현.
+  - ✅ **수정 화면(F013 확장, 후속 추가)**: `resolution_edit_page`·`/resolution/:id/edit` 라우트·`UpdateResolutionController`, 상세 AppBar 수정 버튼(ONGOING만 노출) → 제목·알림 시각 수정. `Repository.update`(Api/Fake)·DTO 추가, 제목 maxLength 30→100(백엔드/DB 정합).
   - ✅ **앱 FCM 연동 완료**(Task 023): `firebase_messaging` 토큰 발급 → `POST /devices/tokens` 등록·`onTokenRefresh` 재등록·로그아웃 `DELETE`, 포그라운드 `flutter_local_notifications` 표시, 알림 탭 딥링크(`/resolution/:id`)까지 구현.
 
 - **Task 023: FCM 서버 푸시 연동** ✅ - 완료(실기기 라이브 검증 대기)
@@ -270,6 +272,7 @@
   - ✅ **Firebase 준비**: 프로젝트 `recorme-c5e1c`(Spark) 생성, 앱 `com.recorme.app`(Android/iOS) 등록. `flutterfire configure`로 `lib/firebase_options.dart`·`android/app/google-services.json`·`com.google.gms.google-services` Gradle 플러그인 자동 배선. 서비스계정 키는 `backend/fcm-service-account.json`(gitignore) + 환경변수 `FCM_CREDENTIALS`로 주입(코드·git 금지).
   - ✅ **백엔드 발송**: `infra/push`(`PushService`/`FcmPushService`/`StubPushService`/`PushConfig` 무키 폴백, `firebase-admin`) — 키 주입 시 기동 로그 `Push service = FCM`. `ResolutionPushNotifier`가 대상 토큰 팬아웃 + `sendEachForMulticast` + 무효 토큰(`UNREGISTERED/INVALID_ARGUMENT`) 물리 회수.
   - ✅ **앱 수신**: `main.dart` `Firebase.initializeApp`(+백그라운드 핸들러) → Supabase 순서, `core/notifications/NotificationService`(권한 요청 1회 시트·토큰 등록/갱신/삭제·포그라운드 로컬 알림·`onMessageOpenedApp`/`getInitialMessage` 딥링크), Android `POST_NOTIFICATIONS`·core library desugaring. `flutter analyze` 무경고 + `flutter build apk --debug` 성공.
+  - ✅ **웹 실행 지원(후속 추가)**: `NotificationService`에서 `dart:io` 제거(→ `defaultTargetPlatform`), `init()`에 `kIsWeb` 조기 반환(웹 미지원 FCM·`flutter_local_notifications`를 no-op) → 웹 빌드/개발 실행 복구(모바일 동작 불변).
   - ⏳ **잔여(라이브 검증)**: 실기기(Z Flip3)에서 알림 권한 허용 → 토큰 등록 → 리마인더 시각 도래 1회 발송(멱등)·완주 축하·자정 실패 알림·다중 기기 팬아웃·무효 토큰 회수·알림 탭 딥링크 실동작 확인. iOS는 APNs 키·`GoogleService-Info.plist` 별도 필요.
 
 ### Phase 4: 감정 분석 · 동적 테마 ✅ (음악·공유·배포는 이후 개요)
@@ -298,6 +301,7 @@
   - 구현 기능: F003/F005/F006 확장 (감정 표현 계층)
   - ✅ **감정 동적 테마**: `core/theme/diary_theme.dart`가 `primaryEmotion`(+백엔드 생성 색) 기반 배경/글자/강조 팔레트를 상세·목록에 적용. `core/theme/emotion_assets.dart`가 감정 6종별 PNG·mp4 매핑.
   - ✅ **감정 마스코트 영상**: `shared/widgets/emotion_video.dart`(감정 코드별 마스코트 mp4 자동재생·무한루프·무음, PNG 폴백, `video_player`).
+  - ✅ **마스코트 투명 배경(후속 추가)**: 단일 영상 코덱으로 iOS+Android 동시 네이티브 투명이 불가(H.264=알파 없음, VP9-알파 webm=iOS 미재생)하여, **불투명 H.264에 [좌:색\|우:실루엣 알파]를 2:1로 패킹**하고 `flutter_shaders` `AnimatedSampler` + 프래그먼트 셰이더(`emotion_alpha.frag`)로 premultiplied RGBA 합성 → 배경 투명. 매 프레임 리페인트 티커로 영상 정지 방지. 웹은 셰이더 합성 불가(video_player DOM 오버레이)라 투명 PNG 포스터 폴백. 원본 webm은 `docs/`에 재인코딩 소스로 보관.
   - ✅ **상세 시네마틱 인트로 + 러닝 로딩 연출**: `diary_detail_view.dart`의 `_IntroPhase`(big/settle/rest 3단계 애니메이션) + `_RunningIntroOverlay`(PENDING 진입 시 `assets/videos/running_sel.mp4` 1회 재생 후 페이드아웃) + DONE 시 무드 이모지·AI 제목·AI 코멘트 안착.
   - ✅ **분석중 폴링**: 확정 직후 상세에서 PENDING이면 3초 간격 폴링(`diaryByIdProvider` invalidate) → DONE 자동 전환. 앱 DTO(`diary_dto.dart`)에 `primaryEmotion`·`moodEmoji`·`aiComment`·`aiTitle`·`backgroundColor`·`textColor`·`accentColor` 완비.
   - ⚠️ **필체(폰트) 동적 적용**은 미도입(감정별 배경/글자/강조 색 + 이모지·마스코트로 대체). 음악(Task 014)은 미구현.
