@@ -1,0 +1,71 @@
+# Codemagic CI/CD — recorme iOS 비공개(Unlisted) 배포 파이프라인
+#
+# 목적: Mac 없이(Windows에서) 클라우드 macOS 머신으로 iOS 앱을 빌드·서명·App Store Connect 업로드한다.
+# 모노레포 구조라 Flutter 프로젝트는 app/ 아래에 있어, 각 스크립트에서 app/ 로 이동한다.
+#
+# 사전 준비(Codemagic 웹 UI + Apple):
+#   1) Codemagic → Team settings → Integrations → App Store Connect API 키 등록
+#      (Apple에서 발급한 Issuer ID / Key ID / .p8). 아래 integrations.app_store_connect 의
+#      이름(codemagic_asc_api_key)을 그 등록 이름과 일치시킨다.
+#   2) Apple Developer의 App ID(com.recorme.app)에 Push Notifications capability 활성화.
+#   3) App Store Connect에서 앱 레코드를 먼저 생성해 두어야 업로드가 가능하다.
+#      생성 후 Apple ID(숫자)를 아래 APP_STORE_APPLE_ID 에 채운다.
+
+workflows:
+  ios-unlisted-release:
+    name: recorme iOS Unlisted Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      # Codemagic UI(Team settings → Integrations)에 등록한 App Store Connect API 키 이름과 일치시킬 것
+      app_store_connect: codemagic_asc_api_key
+
+    environment:
+      # 자동 코드 서명: 배포 인증서 + provisioning profile 을 API 키로 Codemagic 이 자동 발급한다(Mac 수동 발급 불필요)
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.recorme.app
+      vars:
+        BUNDLE_ID: "com.recorme.app"
+        # App Store Connect 에서 앱 레코드 생성 후 부여되는 숫자 Apple ID 로 교체할 것(빌드번호 자동 증가에 사용)
+        APP_STORE_APPLE_ID: 0000000000
+        # ⚠️ 백엔드 공개 주소(필수). 앱은 기본값이 에뮬레이터 주소(http://10.0.2.2:8080)라 이 값을 주지 않으면
+        #    실기기·심사관 환경에서 서버에 못 닿는다. Tailscale Funnel 실행 후 나온 https URL 로 교체할 것.
+        #    (context-path /api/v1 은 앱이 자동으로 덧붙이므로 여기엔 호스트까지만 넣는다.)
+        API_BASE_URL: "https://<host>.<tailnet>.ts.net"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Flutter 의존성 설치
+        script: |
+          cd app
+          flutter pub get
+      - name: 코드 서명 프로파일 적용(자동 발급된 프로파일을 Xcode 프로젝트에 주입)
+        script: |
+          xcode-project use-profiles
+      - name: iOS IPA 빌드(빌드번호 자동 증가)
+        script: |
+          cd app
+          # TestFlight 최신 빌드번호 +1 로 자동 증가(동일 빌드번호 재업로드 불가 대응)
+          BUILD_NUMBER=$(($(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID") + 1))
+          flutter build ipa --release \
+            --build-number=$BUILD_NUMBER \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - app/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - app/flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # 먼저 TestFlight 로 올려 실기기 검증한다.
+        submit_to_testflight: true
+        # 비공개(Unlisted) 배포는 App Store Connect 웹에서 심사 메모 작성 후 수동 제출 + 별도 요청 양식이
+        # 필요하므로(계획 Phase D), 여기서 submit_to_app_store 자동 제출은 켜지 않는다.
+        # submit_to_app_store: false
