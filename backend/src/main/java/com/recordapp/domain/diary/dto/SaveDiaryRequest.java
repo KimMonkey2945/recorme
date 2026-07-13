@@ -3,6 +3,7 @@ package com.recordapp.domain.diary.dto;
 import com.recordapp.domain.diary.DiaryConstraints;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
@@ -21,7 +22,7 @@ import java.time.LocalDate;
 public record SaveDiaryRequest(
 		@NotBlank String content,
 		@NotBlank @Size(max = DiaryConstraints.CONTENT_MAX) String contentText,
-		@NotNull LocalDate writtenDate,
+		@NotNull @PastOrPresent LocalDate writtenDate,
 		String visibility,
 		Boolean confirm) {
 }

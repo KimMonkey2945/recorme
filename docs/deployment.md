@@ -289,6 +289,80 @@ tailscale ip -4     # 서버의 Tailscale IP (예: 100.x.y.z)
 - (기본) HTTP: `API_BASE_URL=http://100.x.y.z:8080`. 이미 커밋된 network_security_config 가
   cleartext 를 허용하므로 릴리즈 앱에서도 동작(콘솔 설정 불필요).
 
+> ⚠️ `serve` 는 **Tailnet 내부 전용**(내 기기들만 접근). 위 두 방식 모두 **Tailscale 이 깔린 기기에서만**
+> 닿는다. 낯선 사용자·앱스토어 심사관은 접근 불가 → 아래 Funnel 필요.
+
+## 공개 노출 (Tailscale Funnel) — 앱스토어 배포/외부 사용자용
+
+앱스토어(비공개) 배포 시 **Apple 심사관이 실기기에서 로그인·기능을 직접 테스트**한다. 백엔드가 Tailnet
+내부 전용이면 심사관 폰에서 못 닿아 **로그인 실패 → 리젝**된다. 서버를 옮기지 않고 홈서버를 그대로 둔 채
+**공개 인터넷 HTTPS 로 노출**하려면 `tailscale funnel` 을 쓴다. (`serve`=내부, `funnel`=공개)
+
+**⚠️ 선행: 공개 노출 전 보안 조치를 먼저 완료할 것** — rate limiting(구현됨: `RateLimitFilter`),
+Jenkins 포트 로컬 바인딩(`deploy/docker-compose.yml` — `127.0.0.1:9090`), LLM 비용 상한(구현됨:
+일일 확정 한도·미래/과거 날짜 검증). 상세는 보안 검토 결과 참조.
+
+**F-1. 관리 콘솔(login.tailscale.com):**
+- DNS 탭: **MagicDNS ON + HTTPS Certificates ON**(serve 와 동일 선행 조건).
+- Access Controls(ACL): 서버 노드에 `funnel` 속성 부여.
+  ```json
+  "nodeAttrs": [{ "target": ["<서버-호스트 또는 tag>"], "attr": ["funnel"] }]
+  ```
+
+**F-2. 서버에서 Funnel 켜기**(tailscaled 가 도는 곳 = §교정2 처럼 WSL 안 권장):
+```bash
+tailscale funnel --bg 8080          # https://<host>.<tailnet>.ts.net → http://127.0.0.1:8080
+tailscale funnel status             # 공개 URL·매핑 확인
+```
+- Funnel 은 **공개 포트 443/8443/10000 만** 사용(기본 443 → 로컬 8080 프록시).
+- ⚠️ tailscaled 가 8080(백엔드)에 닿아야 한다. WSL 안에서 tailscaled·docker 를 함께 두면 `127.0.0.1:8080`
+  로 바로 닿는다. tailscaled 가 Windows 호스트면 `tailscale serve --bg --https=443 http://<WSL-IP>:8080`
+  로 대상을 명시한 뒤 `tailscale funnel 443 on`.
+
+**F-3. 외부 검증**(Tailscale 없는 회선, 예: 폰 LTE):
+```bash
+curl https://<host>.<tailnet>.ts.net/api/v1/diaries/shared/<임의토큰>   # 연결됨(404/JSON) 이면 OK
+```
+
+**동반 운영 조치(필수):**
+- 호스트 방화벽에서 **5432 인바운드 차단**(Funnel 은 8080 만 공개). DB 는 컨테이너 내부망 전용.
+- 공개 호스트에서 **`backend/docker-compose.yml` 절대 기동 금지**(5432 를 `record/record/record` 로 여는
+  로컬 개발용 파일). 배포는 `deploy/docker-compose.yml` 만 사용.
+- `deploy/.env` 의 `POSTGRES_PASSWORD` 를 **강한 무작위 값**으로.
+- ⚠️ 서버·컨테이너 **상시 가동 필수** — 특히 **Apple 심사 기간에 서버를 끄면 리젝**된다.
+
+**앱 연결:** iOS 는 `codemagic.yaml` 의 `API_BASE_URL` 을 이 공개 URL 로 교체(`--dart-define` 자동 주입).
+Android 는 `build_release` 스크립트에 같은 URL 을 넘긴다.
+
+## 보안 강화 재배포 체크리스트 (서버 컴퓨터에서 실행)
+
+공개 노출 대비 보안 조치(rate limiting·Jenkins 잠금·LLM 비용 상한)를 **git 저장소 코드/설정**에 반영했다.
+서버가 이를 **다시 받아 재배포**해야 실제로 적용된다. (실행 경로는 예시 — 서버 실제 레포 경로로 조정)
+
+- [ ] **1. 코드 받기**: `cd ~/server/recorme && git pull`
+- [ ] **2. 백엔드 재배포**(rate limit·LLM 상한 적용):
+  ```bash
+  docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build backend
+  ```
+  또는 Jenkins "지금 빌드" 버튼. **DB 마이그레이션 없음**(스키마 무변경, 쿼리만 추가) → 재배포만으로 적용.
+- [ ] **3. Jenkins 재생성**(포트 로컬 바인딩 `127.0.0.1:9090` 적용):
+  ```bash
+  docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d jenkins
+  ```
+  `jenkins_home` 볼륨 유지(설정·잡 보존). ⚠️ 이후 **타 PC 에서 `서버IP:9090` 접속 불가** → SSH 터널로만:
+  `ssh -L 9090:127.0.0.1:9090 <서버>` 후 `http://localhost:9090`.
+- [ ] **4. `deploy/.env` 점검**: `POSTGRES_PASSWORD` 강한 값 권장(⚠️ 이미 초기화된 DB 는 `.env` 만 바꿔도
+  안 바뀜 — 컨테이너에서 `ALTER USER recorme PASSWORD '...';` 후 `.env` 동기화). `SUPABASE_URL`·`LLM_API_KEY`·
+  `FCM_CREDENTIALS` 존재 확인.
+- [ ] **5. 공개 노출**: 위 "공개 노출 (Tailscale Funnel)" 절차(F-1~F-3) 수행 → 공개 URL 확보.
+- [ ] **6. 검증**: Tailscale 없는 회선에서 `curl https://<host>.<tailnet>.ts.net/api/v1/diaries/shared/x` 연결 확인.
+  rate limit 은 무인증 경로 빠른 반복 호출 시 429 확인(정상 사용 무영향).
+- [ ] **7. 방화벽·운영 규율**: 호스트 5432 인바운드 차단, `backend/docker-compose.yml` 기동 금지,
+  **심사 기간 서버 상시 가동**.
+
+> 참고: 앱 코드 변경(있을 경우)은 서버가 아니라 **빌드 파이프라인**(iOS=Codemagic, Android=`build_release`)에서
+> `API_BASE_URL` 을 공개 URL 로 주어 재빌드해야 적용된다(서버 재배포와 별개).
+
 ## Phase 8 — 앱 릴리즈 서명 & 빌드 & 설치
 
 **§교정4 릴리즈 키스토어(개발 PC에서 1회):**

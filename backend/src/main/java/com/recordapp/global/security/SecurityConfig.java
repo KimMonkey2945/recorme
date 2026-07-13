@@ -28,11 +28,14 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
 	private final SupabaseJwtFilter supabaseJwtFilter;
+	private final RateLimitFilter rateLimitFilter;
 	private final JwtAuthenticationEntryPoint authenticationEntryPoint;
 
 	public SecurityConfig(SupabaseJwtFilter supabaseJwtFilter,
+			RateLimitFilter rateLimitFilter,
 			JwtAuthenticationEntryPoint authenticationEntryPoint) {
 		this.supabaseJwtFilter = supabaseJwtFilter;
+		this.rateLimitFilter = rateLimitFilter;
 		this.authenticationEntryPoint = authenticationEntryPoint;
 	}
 
@@ -54,7 +57,9 @@ public class SecurityConfig {
 						.anyRequest().authenticated())
 				.exceptionHandling(handler ->
 						handler.authenticationEntryPoint(authenticationEntryPoint))
-				.addFilterBefore(supabaseJwtFilter, UsernamePasswordAuthenticationFilter.class);
+				.addFilterBefore(supabaseJwtFilter, UsernamePasswordAuthenticationFilter.class)
+				// rate limit 은 인증 이후(userId 식별 가능)·인가 이전에 수행 — 남용/DoS/열거 1차 차단.
+				.addFilterAfter(rateLimitFilter, SupabaseJwtFilter.class);
 		return http.build();
 	}
 

@@ -72,6 +72,10 @@ public class DiaryService {
 	@Transactional
 	public DiaryUpsertResult upsert(Long userId, SaveDiaryRequest req) {
 		validateContentFormat(req.content());
+		// 과도한 과거 소급 차단(미래는 @PastOrPresent 가 차단). 임의 과거 날짜 대량 확정 표면 축소.
+		if (req.writtenDate().isBefore(LocalDate.now().minusDays(DiaryConstraints.MAX_BACKDATE_DAYS))) {
+			throw new BusinessException(ErrorCode.VALIDATION_ERROR, "너무 오래된 날짜의 기록은 저장할 수 없어요.");
+		}
 		List<String> newUrls = extractImageUrls(req.content());
 		if (newUrls.size() > DiaryConstraints.IMAGE_MAX_PER_DIARY) {
 			throw new BusinessException(ErrorCode.IMAGE_LIMIT_EXCEEDED);
@@ -83,6 +87,12 @@ public class DiaryService {
 		// 이미 확정(DRAFT 아님)된 기록은 수정 불가 — DB 변경 전에 조기 차단.
 		if (existing != null && !"DRAFT".equals(existing.analysisStatus())) {
 			throw new BusinessException(ErrorCode.DIARY_ALREADY_CONFIRMED);
+		}
+		// 확정(감정 분석 트리거) 시에만 일일 상한 검사 — LLM(Gemini) 비용 폭탄 방어(공개 노출 대비).
+		// 여기까지 왔다면 대상은 DRAFT/신규라 이번 확정이 실제 신규 분석 1건이 된다.
+		if (Boolean.TRUE.equals(req.confirm())
+				&& diaryMapper.countRecentConfirmations(userId) >= DiaryConstraints.DAILY_CONFIRM_LIMIT) {
+			throw new BusinessException(ErrorCode.DIARY_DAILY_LIMIT);
 		}
 		List<String> oldUrls = existing == null ? List.of() : extractImageUrls(existing.content());
 

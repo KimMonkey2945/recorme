@@ -42,6 +42,10 @@ public enum ErrorCode {
 
 	// 공통
 	VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다."),
+	// 공개 인터넷 노출 대비: 남용/DoS 방어(무인증 엔드포인트·쓰기 경로 rate limit).
+	RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+	// 감정 분석(LLM) 비용 상한: 사용자별 24시간 확정 횟수 초과.
+	DIARY_DAILY_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "오늘 기억할 수 있는 일기 수를 초과했어요. 잠시 후 다시 시도해 주세요."),
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
 
 	private final HttpStatus status;

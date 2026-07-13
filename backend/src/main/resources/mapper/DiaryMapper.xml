@@ -55,6 +55,17 @@
         </constructor>
     </resultMap>
 
+    <!-- 최근 24시간 내 확정(감정 분석 트리거) 횟수. 확정 시 status 가 DRAFT 를 벗어나며 updated_at=now() 로
+         갱신되므로 이 조건으로 확정 횟수를 근사한다. LLM 비용 상한(사용자별 일일 확정 한도) 판정용. -->
+    <select id="countRecentConfirmations" resultType="int">
+        SELECT count(*)::int
+          FROM diaries
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+           AND analysis_status &lt;&gt; 'DRAFT'
+           AND updated_at >= now() - interval '24 hours'
+    </select>
+
     <!-- 하루 1기록 upsert. 부분 유니크(uq_diary_user_day: user_id+written_date WHERE deleted_at IS NULL)
          충돌 시 UPDATE. 신규 INSERT 의 analysis_status 는 confirm 이면 'PENDING'(확정·분석), 아니면 'DRAFT'(미확정).
          DO UPDATE 는 미확정(DRAFT) 행만 수정 가능 — WHERE 가드로 확정 행은 0행 매칭(RETURNING 빔).

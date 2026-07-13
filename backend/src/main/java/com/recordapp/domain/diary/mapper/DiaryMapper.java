@@ -53,6 +53,13 @@ public interface DiaryMapper {
 	boolean existsOwned(@Param("id") Long id, @Param("userId") Long userId);
 
 	/**
+	 * 최근 24시간 내 확정(감정 분석 트리거)된 기록 수. 확정 시 analysis_status 가 DRAFT 를 벗어나고
+	 * updated_at 이 now() 로 갱신되므로, {@code analysis_status <> 'DRAFT' AND updated_at >= now()-24h}
+	 * 로 확정 횟수를 근사한다. LLM 비용 상한(사용자별 일일 확정 한도) 판정에 쓴다.
+	 */
+	int countRecentConfirmations(@Param("userId") Long userId);
+
+	/**
 	 * 해당 월(yearMonth "yyyy-MM")에 활성 기록이 존재하는 날짜별 요약 목록(written_date 오름차순).
 	 * 캘린더 표시용 — 각 항목은 날짜·분석상태와 감정색·무드 이모지용 필드를 담는다.
 	 * 하루 1기록이라 날짜당 1건이며 한 달 ≤31건 → 페이징 없이 한 번에 반환한다.
