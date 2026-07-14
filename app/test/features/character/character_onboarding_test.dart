@@ -154,6 +154,7 @@ Color _dotColor(WidgetTester tester, int index) {
 void main() {
   setUp(() {
     // 무한 idle 애니메이션을 꺼 pumpAndSettle 타임아웃을 방지한다.
+
     IdleCharacterView.debugDisableIdleAnimation = true;
   });
 

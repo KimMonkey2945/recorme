@@ -1,30 +1,29 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import 'idle_character_view.dart';
 
-/// `--dart-define=USE_RIVE=true`면 Rive 렌더러 경로를 켠다(기본 false).
+/// 캐릭터를 올려두는 "무대" — 배경 카드이자 렌더러 배선이다.
 ///
-/// 웹에서는 항상 비-Rive 경로를 쓴다(아래 [CharacterStage] 참고).
-const bool useRive = bool.fromEnvironment('USE_RIVE');
-
-/// 캐릭터를 올려두는 "무대" — **렌더러 스위치**이자 배경 카드다.
+/// ## 렌더러: 통짜 PNG + 메시 워프 ([IdleCharacterView])
 ///
-/// ## 렌더러 스위치
-/// - `USE_RIVE=true` + 네이티브: Rive 아트보드 렌더러(Task 031에서 드롭인).
-/// - 그 외(기본·웹): [IdleCharacterView] — PNG + 절차적 idle 애니메이션.
+/// **파츠 조립과 Rive를 둘 다 시도했다가 되돌아왔다.** 기록을 남긴다:
 ///
-/// 현재 `.riv` 아트보드가 **존재하지 않으므로** Rive 분기는 실제 위젯을 만들지 않고
-/// PNG 렌더러로 폴백한다. `rive` 패키지도 아직 pubspec에 넣지 않는다.
+/// - **Rive**: 메시 변형·IK가 이 캐릭터엔 필요 없고, `.riv` 런타임 export가 유료이며,
+///   리깅이 GUI 수작업이라 코드로 전달되지 않는다 → 미채택.
+/// - **파츠 조립(머리·몸통·팔·다리 낱장을 관절로 엮기)**: 구현은 됐지만 **결과가 조각나 보였다.**
+///   파츠들이 같은 3D 모델을 분해한 게 아니라 **각각 따로 생성된 이미지**라, 눈 간격(101 vs 117),
+///   몸통 색, 팔 소켓과 소매 구멍 크기가 서로 맞지 않는다. 좌표를 고칠 때마다 다른 곳이 틀어졌다.
+///   **이건 코드로 수렴하지 않는다 — 파츠를 다시 그려야 풀리는 문제다.**
 ///
-/// ## 배경 카드 구성 (중요)
-/// 캐릭터 PNG는 현재 **배경이 불투명한 크림색**이다(투명 PNG로 교체 예정).
-/// 그래서 캐릭터를 화면 배경에 그냥 얹지 않고, 크림색과 가까운 [AppColors.paper]
-/// 카드 위에 올려 흰 박스가 튀지 않게 한다. 바닥 그림자(타원)는 이미지 아래쪽
-/// 바깥에 그려 불투명 PNG에 가려지지 않게 배치한다.
-/// → 나중에 투명 PNG로 파일만 교체해도 구도가 그대로 자연스럽게 동작한다.
+/// → 통짜 PNG는 그 자체로 완성돼 있고, 메시 워프로 충분히 살아 움직인다. **눈 깜빡임은 포기했다**
+/// (통짜 이미지로는 눈을 감길 수 없다). 눈 깜빡임 하나를 위해 캐릭터가 조각나 보이는 건 손해다.
+/// 자세한 경위는 `tasks/031-app-parts-character-renderer.md`.
+///
+/// ## 배경 카드 구성
+/// 캐릭터를 화면 배경에 그냥 얹지 않고 [AppColors.paper] 카드 위에 올린다.
+/// 바닥 그림자(타원)는 캐릭터 발밑에 깔아 접지감을 준다.
 class CharacterStage extends StatelessWidget {
   const CharacterStage({
     super.key,
@@ -33,7 +32,7 @@ class CharacterStage extends StatelessWidget {
     this.phase = 0,
   });
 
-  /// 캐릭터 이미지 에셋 경로(서버 thumbnailUrl이 곧 이 경로다).
+  /// 캐릭터 PNG 경로(서버 thumbnailUrl이 곧 이 경로다).
   final String assetPath;
 
   /// idle 애니메이션 재생 여부(캐러셀 중앙 카드만 true).
@@ -94,31 +93,7 @@ class CharacterStage extends StatelessWidget {
     );
   }
 
-  /// 렌더러 선택. 웹이면 무조건 비-Rive 경로다.
   Widget _buildRenderer() {
-    final riveEnabled = useRive && !kIsWeb;
-
-    if (riveEnabled) {
-      // ──────────────────────────────────────────────────────────────
-      // TODO(Task 031): 여기에 Rive 렌더러를 드롭인한다.
-      //
-      //   // pubspec: rive: ^0.14.0-dev.6
-      //   // main(): WidgetsFlutterBinding.ensureInitialized(); await RiveNative.init();
-      //   final file = await File.asset('assets/rive/monkey.riv', riveFactory: Factory.rive);
-      //   final controller = RiveWidgetController(
-      //     file,
-      //     stateMachineSelector: StateMachineSelector.byName('Idle'),
-      //   );
-      //   return RiveWidget(controller: controller, fit: Fit.contain);
-      //
-      // 아트보드명은 MyCharacter.riveArtboard(서버 제공, 예: 'monkey')를 쓴다.
-      // .riv 로드는 비동기라 StatefulWidget + FutureBuilder로 감싸고,
-      // 로드 실패 시에는 아래 PNG 렌더러로 폴백해야 한다.
-      // ──────────────────────────────────────────────────────────────
-      //
-      // 아직 .riv 아트보드가 없으므로 지금은 PNG idle 렌더러로 폴백한다.
-    }
-
     return IdleCharacterView(
       assetPath: assetPath,
       animate: animate,

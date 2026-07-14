@@ -85,7 +85,7 @@ flutter:
     - assets/fonts/
     - assets/images/
     - assets/videos/
-    - assets/characters/  # 캐릭터 base PNG(원숭이·레서판다) — 온보딩 선택·캐릭터 홈 렌더
+    - assets/characters/  # 캐릭터 PNG(원숭이·레서판다) — 온보딩 선택·캐릭터 홈 렌더
     - assets/emotions/  # 감정별 마스코트(레서판다) 표정 PNG (영상 포스터·폴백용)
     - assets/emotions/video/  # 감정별 마스코트 움직이는 영상 mp4
     - assets/emotions/video/packed/  # 알파 매트 패킹 영상([색|알파] 2:1 mp4, 셰이더 합성용)
