@@ -71,14 +71,17 @@ class FlywayMigrationTest {
 	/**
 	 * 테스트용 회원 1명 INSERT.
 	 * supabase_uid 는 NOT NULL 이므로 호출자가 명시한다. email 은 NULL 가능(소셜 미제공 대응).
+	 * friend_code 는 V11 에서 NOT NULL + UNIQUE 가 됐으므로 함께 채운다 — md5 hex 를 대문자로 올리면
+	 * V11 의 친구코드 알파벳(혼동문자 I,L,O,U 제외)에 그대로 들어가고, 8자리라 충돌도 사실상 없다.
 	 */
 	private void insertUser(Connection c, String supabaseUid, String nickname, String email)
 			throws SQLException {
 		String emailLiteral = (email == null) ? "NULL" : "'" + email + "'";
 		try (Statement st = c.createStatement()) {
 			st.executeUpdate(
-					"INSERT INTO users (supabase_uid, nickname, email) VALUES ("
-							+ "'" + supabaseUid + "', '" + nickname + "', " + emailLiteral + ")");
+					"INSERT INTO users (supabase_uid, nickname, email, friend_code) VALUES ("
+							+ "'" + supabaseUid + "', '" + nickname + "', " + emailLiteral
+							+ ", upper(substr(md5(random()::text), 1, 8)))");
 		}
 	}
 
