@@ -1,0 +1,103 @@
+import '../../domain/character.dart';
+import '../../domain/equipment_item.dart';
+import '../../domain/my_character.dart';
+import '../../domain/render_meta.dart';
+
+/// 캐릭터 도메인 모델의 JSON 매핑(파싱/직렬화)을 모아 둔 DTO 계층.
+///
+/// 도메인 모델(`domain/*.dart`)은 순수 타입만 갖고, JSON ↔ 도메인 변환은
+/// 여기 static 매퍼로 격리한다(계층 분리). 서버 응답 컴포넌트명이 곧 JSON 키다.
+class CharacterDto {
+  const CharacterDto._();
+
+  // ── 응답 파싱(JSON → 도메인) ─────────────────────────────────
+
+  /// CharacterListResponse → [CharacterList].
+  /// `{selectedCharacter, items[]}`
+  static CharacterList listFromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List<dynamic>?;
+    return CharacterList(
+      selectedCharacter: json['selectedCharacter'] as String?,
+      items: rawItems == null
+          ? const []
+          : rawItems
+              .map((e) => characterFromJson(e as Map<String, dynamic>))
+              .toList(),
+    );
+  }
+
+  /// CharacterItem → [Character].
+  /// `{code, nameKo, tagline, thumbnailUrl, owned, selected}`
+  static Character characterFromJson(Map<String, dynamic> json) => Character(
+        code: json['code'] as String,
+        nameKo: json['nameKo'] as String? ?? '',
+        tagline: json['tagline'] as String? ?? '',
+        // 로컬 에셋 경로('assets/characters/monkey.png')다. URL이 아니다.
+        thumbnailUrl: json['thumbnailUrl'] as String? ?? '',
+        owned: json['owned'] as bool? ?? false,
+        selected: json['selected'] as bool? ?? false,
+      );
+
+  /// MyCharacterResponse → [MyCharacter].
+  /// `{character, level, exp, expToNext, coinBalance, unackedRewardCount, equipment[]}`
+  /// **`character`는 미선택자면 null이다(온보딩 신호).**
+  static MyCharacter myCharacterFromJson(Map<String, dynamic> json) {
+    final rawCharacter = json['character'] as Map<String, dynamic>?;
+    final rawEquipment = json['equipment'] as List<dynamic>?;
+    return MyCharacter(
+      character:
+          rawCharacter == null ? null : selectedCharacterFromJson(rawCharacter),
+      level: (json['level'] as num?)?.toInt() ?? 1,
+      exp: (json['exp'] as num?)?.toInt() ?? 0,
+      expToNext: (json['expToNext'] as num?)?.toInt() ?? 0,
+      coinBalance: (json['coinBalance'] as num?)?.toInt() ?? 0,
+      unackedRewardCount: (json['unackedRewardCount'] as num?)?.toInt() ?? 0,
+      equipment: rawEquipment == null
+          ? const []
+          : rawEquipment
+              .map((e) => equipmentFromJson(e as Map<String, dynamic>))
+              .toList(),
+    );
+  }
+
+  /// MyCharacterResponse.character → [SelectedCharacter].
+  /// `{code, nameKo, riveArtboard, thumbnailUrl}`
+  static SelectedCharacter selectedCharacterFromJson(Map<String, dynamic> json) =>
+      SelectedCharacter(
+        code: json['code'] as String,
+        nameKo: json['nameKo'] as String? ?? '',
+        thumbnailUrl: json['thumbnailUrl'] as String? ?? '',
+        riveArtboard: json['riveArtboard'] as String?,
+      );
+
+  /// EquipmentView → [EquipmentItem].
+  /// `{slot, slotIndex, groupCode, nameKo, imageUrl, riveSlot, renderMeta}`
+  static EquipmentItem equipmentFromJson(Map<String, dynamic> json) {
+    final rawMeta = json['renderMeta'] as Map<String, dynamic>?;
+    return EquipmentItem(
+      slot: json['slot'] as String? ?? '',
+      slotIndex: (json['slotIndex'] as num?)?.toInt() ?? 0,
+      groupCode: json['groupCode'] as String? ?? '',
+      nameKo: json['nameKo'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String? ?? '',
+      riveSlot: json['riveSlot'] as String?,
+      renderMeta: rawMeta == null ? null : renderMetaFromJson(rawMeta),
+    );
+  }
+
+  /// renderMeta → [RenderMeta].
+  /// `{anchorX, anchorY, scale, z}`
+  static RenderMeta renderMetaFromJson(Map<String, dynamic> json) => RenderMeta(
+        anchorX: (json['anchorX'] as num?)?.toDouble() ?? 0.5,
+        anchorY: (json['anchorY'] as num?)?.toDouble() ?? 0.5,
+        scale: (json['scale'] as num?)?.toDouble() ?? 1,
+        z: (json['z'] as num?)?.toInt() ?? 0,
+      );
+
+  // ── 요청 직렬화(입력 → JSON) ─────────────────────────────────
+
+  /// PUT /characters/me/selection 요청 바디.
+  static Map<String, dynamic> selectionRequest(String characterCode) => {
+        'characterCode': characterCode,
+      };
+}

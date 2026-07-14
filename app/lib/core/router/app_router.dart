@@ -8,6 +8,9 @@ import '../../features/auth/presentation/login_page.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/reset_password_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
+import '../../features/character/domain/my_character.dart';
+import '../../features/character/presentation/character_onboarding_page.dart';
+import '../../features/character/presentation/providers/character_providers.dart';
 import '../../features/diary/presentation/diary_detail_page.dart';
 import '../../features/diary/presentation/diary_editor_page.dart';
 import '../../features/diary/presentation/diary_list_page.dart';
@@ -36,13 +39,50 @@ const _publicRoutes = {
   '/forgot-password',
 };
 
+/// 캐릭터 선택 온보딩 경로(셸 밖 풀스크린).
+const characterOnboardingRoute = '/onboarding/character';
+
+/// 캐릭터 온보딩 가드의 **순수 판정 함수**(redirect에서 async 호출 금지 → 상태만 보고 판단).
+///
+/// [myCharacter]는 `myCharacterProvider`의 현재 값이며 의미는 다음과 같다.
+/// - `null`: 아직 판단 불가(미인증 · 조회 중 · 조회 실패) → **분기 보류**(null 반환).
+///   실패했다고 온보딩에 가두지 않는다.
+/// - `character == null`: 인증됐고 캐릭터 미선택 → 온보딩으로 보낸다.
+///   단, **이미 온보딩에 있으면 null**을 돌려 리다이렉트 루프를 막는다.
+/// - `character != null`: 선택 완료 → 일반 경로는 그대로 두고(리다이렉트 없음),
+///   온보딩에 재진입해 있으면 메인으로 돌려보낸다.
+@visibleForTesting
+String? characterOnboardingRedirect({
+  required MyCharacter? myCharacter,
+  required String location,
+}) {
+  final onOnboarding = location == characterOnboardingRoute;
+
+  // 판단 불가(미인증·로딩·에러): 아무 분기도 하지 않는다.
+  if (myCharacter == null) return null;
+
+  // 미선택: 온보딩으로. (온보딩 자체는 루프 방지를 위해 통과)
+  if (!myCharacter.hasSelection) {
+    return onOnboarding ? null : characterOnboardingRoute;
+  }
+
+  // 선택 완료: 일반 경로는 리다이렉트 없음. 온보딩 재진입만 메인으로.
+  return onOnboarding ? '/' : null;
+}
+
 /// 앱 라우터. 인증 상태에 따라 로그인/메인을 분기하는 redirect 가드를 포함한다.
 final routerProvider = Provider<GoRouter>((ref) {
-  // 인증 상태/비밀번호 복구 플래그 변경 시 redirect를 재평가하도록 브리지.
-  // (둘 중 무엇이 바뀌든 카운터를 증가시켜 GoRouter가 redirect를 다시 돌린다.)
+  // 인증 상태/비밀번호 복구 플래그/내 캐릭터 변경 시 redirect를 재평가하도록 브리지.
+  // (무엇이 바뀌든 카운터를 증가시켜 GoRouter가 redirect를 다시 돌린다.)
   final refresh = ValueNotifier<int>(0);
   ref.listen<AuthStatus>(authControllerProvider, (_, _) => refresh.value++);
   ref.listen<bool>(passwordRecoveryProvider, (_, _) => refresh.value++);
+  // 캐릭터 조회가 끝나면(로딩 → 데이터) 온보딩 가드를 다시 평가한다.
+  // myCharacterProvider는 미인증이면 네트워크 호출 없이 즉시 null을 돌려준다.
+  ref.listen<AsyncValue<MyCharacter?>>(
+    myCharacterProvider,
+    (_, _) => refresh.value++,
+  );
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -72,7 +112,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!authenticated) return onPublic ? null : '/login';
       // 인증됨: 공개(인증) 경로 접근 시 메인으로.
       if (onPublic) return '/';
-      return null;
+
+      // 캐릭터 미선택자는 온보딩으로. 조회 중/실패면 보류(null)한다.
+      // async 호출 없이 provider의 현재 값(AsyncValue)만 읽는다.
+      return characterOnboardingRedirect(
+        // asData: 데이터가 도착한 경우에만 값을 준다(로딩·에러면 null → 보류).
+        myCharacter: ref.read(myCharacterProvider).asData?.value,
+        location: state.matchedLocation,
+      );
     },
     routes: [
       GoRoute(
@@ -95,6 +142,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/reset-password',
         builder: (context, state) => const ResetPasswordPage(),
+      ),
+      // 셸 밖 전체 화면: 캐릭터 선택 온보딩(탭 없이 몰입)
+      GoRoute(
+        path: characterOnboardingRoute,
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const CharacterOnboardingPage(),
       ),
       // 하단 탭 셸: 캘린더 / 목록
       StatefulShellRoute.indexedStack(
