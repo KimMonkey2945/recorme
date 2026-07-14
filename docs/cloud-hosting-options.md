@@ -15,7 +15,7 @@
 | 구성요소 | 현재 위치 | 클라우드 이전 필요? |
 |---|---|---|
 | 백엔드 (Spring Boot, Docker 이미지 존재) | 홈서버(Tailscale) | **O — 공개 HTTPS 필요** |
-| PostgreSQL 18 (Flyway V1~V10) | 홈서버(Docker 볼륨) | **O — 공개 or 관리형** |
+| PostgreSQL 18 (Flyway V1~V17) | 홈서버(Docker 볼륨) | **O — 공개 or 관리형** |
 | Supabase Auth | 이미 클라우드 | X (그대로) |
 | Gemini(LLM) API | 이미 클라우드 | X (그대로) |
 | FCM(푸시) | 이미 클라우드 | X (그대로) |
@@ -58,7 +58,7 @@
 1. **백엔드 공개 HTTPS 노출** — Netlify(HTTPS)/브라우저에서 `http://` 호출은 혼합 콘텐츠로 차단된다.
 2. **CORS 허용 origin 추가** — `backend/.../global/security/SecurityConfig.java`의 `corsConfigurationSource()`가 현재 `http://localhost:*`, `http://127.0.0.1:*`만 허용(`SecurityConfig.java:66~75`). 배포 도메인(예: `https://<site>.netlify.app`)을 추가해야 한다. `allowCredentials(true)`라 **와일드카드 불가 → 명시 도메인** 필요.
 3. **앱 API base URL 주입** — `app/lib/core/config/api_config.dart:10`의 기본값이 에뮬레이터 주소(`http://10.0.2.2:8080`). 빌드 시 `--dart-define=API_BASE_URL=https://<공개-백엔드>` 주입 필요.
-4. **DB 마이그레이션 이관** — Flyway `V1~V10`은 자동 적용되나, 관리형 Postgres(Neon 등)로 옮길 경우 접속 정보(`DB_URL`/`DB_USER`/`DB_PASSWORD`)만 교체하면 된다.
+4. **DB 마이그레이션 이관** — Flyway `V1~V17`은 자동 적용되나, 관리형 Postgres(Neon 등)로 옮길 경우 접속 정보(`DB_URL`/`DB_USER`/`DB_PASSWORD`)만 교체하면 된다.
 5. **(프론트도 배포 시)** SPA 리다이렉트(`_redirects` `/* /index.html 200`) + Supabase/Google/Kakao 콘솔에 배포 origin을 OAuth redirect로 등록.
 
 ## 7. (참고) Netlify 프론트 정적 배포 가능성 요약

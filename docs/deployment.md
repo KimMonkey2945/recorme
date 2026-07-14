@@ -8,7 +8,7 @@ shrimp task 와 1:1 대응한다. **⚠️ 표시는 "가이드 예시와 실제
 
 ```
 [서버 PC: Windows 10] → WSL2 Ubuntu → Docker
-   ├─ postgres:18      (recorme DB, Flyway V1~V10 자동 적용, 포트 외부 미노출)
+   ├─ postgres:18      (recorme DB, Flyway V1~V17 자동 적용, 포트 외부 미노출)
    ├─ backend (Spring) :8080
    ├─ jenkins          :9090  (수동 "지금 빌드" 버튼 → 빌드·배포)
    └─ (ollama)         :11434  ← 보류(하드웨어 한계), Gemini 사용
@@ -176,7 +176,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f backe
 확인 사항:
 - **⚠️ `SPRING_PROFILES_ACTIVE=cloud` 로 떴는지**(compose 가 강제 주입). local 로 뜨면
   application-local.yml 이 이미지에 없어 기동 실패한다.
-- 로그에 **Flyway 가 V1~V10 을 순서대로 적용**했는지(빈 DB 최초 기동 시).
+- 로그에 **Flyway 가 V1~V17 을 순서대로 적용**했는지(빈 DB 최초 기동 시).
 - **⚠️ FCM 자격증명 실측**: 로그에 `Push service = FCM` 이 떠야 한다. `Push service = Stub` 이면
   `FCM_CREDENTIALS`(Base64) 파싱 실패로 폴백된 것 — 값·인코딩 재확인(`base64 -w0` 로 한 줄인지).
   (백엔드 `PushConfig` 는 파일 경로/Base64 둘 다 지원하므로 Base64 문자열도 정상 처리된다.)
@@ -196,6 +196,9 @@ cd ~/server/recorme/backend
 > ⏳ 첫 실행은 Testcontainers 가 테스트용 postgres 이미지를 pull 하고 Gradle 의존성을 받으므로 느리다(정상).
 
 ## Phase 6 — Jenkins 구성 & 파이프라인
+
+> 👉 **클릭·명령 단위로 그대로 따라 하려면 [`deployment-jenkins.md`](./deployment-jenkins.md)** 참조
+> (컨테이너 기동 → UI 초기설정 → 자격증명 → 백엔드·앱 잡 생성까지 실행 가이드). 아래는 설계 요약이다.
 
 Jenkins 컨테이너는 **커스텀 이미지(`deploy/jenkins.Dockerfile`) 필수** — 스톡 `lts-jdk21` 에는
 docker CLI 도 `docker compose`(v2 플러그인)도 없어 자동배포가 실패한다. 이 이미지는 둘 다 설치하며,
