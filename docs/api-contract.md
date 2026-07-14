@@ -72,67 +72,99 @@
 ### 기록 (diary)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 갱신). `confirm=false`→DRAFT 저장, `confirm=true`→확정(PENDING·분석 1회). 확정 기록 재저장 시 409 | ○ |
+| POST | `/diaries` | 하루 기록 저장(**upsert**: 날짜 미존재 시 생성, 존재 시 갱신). `confirm=false`→DRAFT 저장, `confirm=true`→확정. 확정 기록 재저장 시 409 | ○ |
 | PUT | `/diaries/{id}` | id 기반 기록 수정(**DRAFT만 수정 가능**, 확정 기록은 409 `DIARY_ALREADY_CONFIRMED`) | ○ |
-| GET | `/diaries/{id}` | 기록 상세(테마/음악/감정 포함) | ○ |
+| GET | `/diaries/{id}` | 기록 상세 | ○ |
 | GET | `/diaries/me/summary?yearMonth=YYYY-MM` | 월별 기록 존재 요약(캘린더 dot 렌더링용) | ○ |
 | GET | `/diaries/by-date/{date}` | 특정 날짜(YYYY-MM-DD) 내 기록 단건 조회 | ○ |
 | GET | `/diaries/me` | 내 기록 목록(커서 페이징) | ○ |
+| GET | `/diaries/me/emotions/recent` | 최근 사용한 **직접 입력 감정** 목록(작성기 추천 칩용) | ○ |
 | GET | `/diaries/shared/{shareToken}` | 공유 링크로 단건 조회 | 조건부 |
-| DELETE | `/diaries/{id}` | 기록 소프트 삭제(+첨부 사진 행·디스크 파일 즉시 회수) | ○ |
-| POST | `/diaries/{id}/images` | 첨부 사진 업로드(multipart, part명 `files`, 1~N장, 기록당 최대 5장·장당 5MB) | ○ |
-| DELETE | `/diaries/{id}/images/{imageId}` | 첨부 사진 1장 삭제(행·디스크 파일 회수) | ○ |
+| DELETE | `/diaries/{id}` | 기록 소프트 삭제 | ○ |
+| POST | `/diaries/images` | **인라인** 이미지 업로드(multipart, part명 `file`, 1장). 반환된 `url`을 앱이 본문 Delta에 삽입 | ○ |
+
+> ⚠️ **정정(구현 기준)**: 첨부 사진은 **기록에 종속된 1:N 리소스가 아니다**. `diary_images` 테이블은 V5에서 제거됐고, 사진은 본문(`content` = Quill Delta JSON)에 **인라인 임베드**된다. 따라서 **응답에 `images[]` 배열은 없고**, 업로드 경로도 `POST /diaries/{id}/images`(기록 종속)가 아니라 **`POST /diaries/images`**(기록 비종속)이며, 개별 이미지 삭제 엔드포인트(`DELETE /diaries/{id}/images/{imageId}`)도 **존재하지 않는다**(본문에서 지우면 저장 시 반영).
 
 ```jsonc
 // POST /diaries  요청 (날짜 키 기반 upsert)
-// confirm: 생략/false → '등록'(DRAFT 저장, 수정 가능·미분석) / true → '오늘을 기억하기'(확정·감정분석 1회)
-{ "content": "오늘은...", "writtenDate": "2026-06-15", "visibility": "FRIENDS", "confirm": false }
-// 응답 data (분석 전) — 신규 생성은 201 Created, 기존 갱신은 200 OK
-// content는 1~500자(앱 maxLength·백엔드 @Size(500)·DB CHECK 동일 상수). 초과 시 400 VALIDATION_ERROR.
+// confirm: 생략/false → '등록'(DRAFT 저장, 수정 가능) / true → '오늘을 기억하기'(확정)
+// content: Quill Delta JSON 문자열(인라인 이미지 임베드 포함). contentText: 평문 1~500자.
+// emotion / emotionLabel: 둘 다 선택 사항이며 배타적이다(아래 '감정 입력' 참조).
+{ "content": "{\"ops\":[{\"insert\":\"오늘은...\\n\"}]}", "contentText": "오늘은...",
+  "writtenDate": "2026-06-15", "visibility": "FRIENDS", "confirm": false,
+  "emotion": "JOY", "emotionLabel": null }
+// 응답 data — 신규 생성은 201 Created, 기존 갱신은 200 OK
+// contentText는 1~500자(앱 maxLength·백엔드 @Size(500)·DB CHECK 동일 상수). 초과 시 400 VALIDATION_ERROR.
 // 이미 확정된(DRAFT 아닌) 날짜에 재저장 시 409 DIARY_ALREADY_CONFIRMED (삭제 후 재작성만 허용).
-// ⚠️ MVP: theme/track/emotion 필드는 Phase 4. 현재 DiaryResponse는 images 포함, theme/track 미포함.
+
 // 등록(confirm=false) 응답: analysisStatus="DRAFT"
-{ "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
-  "visibility": "FRIENDS", "analysisStatus": "DRAFT", "images": [] }
-// 확정(confirm=true) 응답: analysisStatus="PENDING" → 이후 분석 완료 시 DONE
-{ "id": 10, "shareToken": "...", "content": "오늘은...", "writtenDate": "2026-06-15",
-  "visibility": "FRIENDS", "analysisStatus": "PENDING", "images": [] }
+{ "id": 10, "shareToken": "...", "content": "{\"ops\":[...]}", "contentText": "오늘은...",
+  "writtenDate": "2026-06-15", "visibility": "FRIENDS", "analysisStatus": "DRAFT",
+  "emotion": "JOY", "emotionLabel": null, "reactionCount": 0 }
 
-// GET /diaries/{id}  응답 data (MVP) — analysisStatus: DRAFT/PENDING/DONE/FAILED
-{ "id": 10, "shareToken": "...", "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
-  "analysisStatus": "PENDING",
-  "images": [ { "id": 1, "url": "/files/diaries/2026/06/{uuid}.jpg" },
-              { "id": 2, "url": "/files/diaries/2026/06/{uuid}.jpg" } ] }
-//    (Phase 4에서 emotion/theme/track 필드가 추가될 예정 — analysisStatus=DONE 시 채워짐)
+// 확정(confirm=true) 응답: LLM 감정 분석 flag(record.analysis.enabled)에 따라 갈린다.
+//   flag ON(**현재 기본값 — Task 024 미착수**) → analysisStatus="PENDING" → 비동기 분석 후 DONE.
+//                              AI 필드(색·aiTitle·moodEmoji)와 감정은 분석 완료 시 채워진다.
+//   flag OFF(Task 024 적용 시) → 즉시 analysisStatus="DONE"(PENDING 대기·폴링 없음). 감정은 사용자 입력값.
+{ "id": 10, "shareToken": "...", "content": "{\"ops\":[...]}", "contentText": "오늘은...",
+  "writtenDate": "2026-06-15", "visibility": "FRIENDS", "analysisStatus": "DONE",
+  "emotion": "JOY", "emotionLabel": null, "reactionCount": 0 }
 
-// POST /diaries/{id}/images  요청: multipart/form-data, part명 "files"(여러 장 가능)
-//    응답 data: 갱신된 전체 이미지 목록 [{ id, url }]. 기록당 5장 초과 시 409 IMAGE_LIMIT_EXCEEDED,
-//    비이미지/손상 파일 413·400(INVALID_FILE), 장당 5MB 초과 413(FILE_TOO_LARGE).
-// DELETE /diaries/{id}/images/{imageId}  응답: success=true (행·디스크 파일 회수)
+// GET /diaries/{id}  응답 data — analysisStatus: DRAFT/PENDING/DONE/FAILED
+// images[] 배열은 없다(사진은 content Delta 안에 인라인 임베드).
+{ "id": 10, "shareToken": "...", "content": "{\"ops\":[...]}", "contentText": "...",
+  "writtenDate": "2026-06-15", "visibility": "FRIENDS", "analysisStatus": "DONE",
+  "emotion": "JOY", "emotionLabel": null, "reactionCount": 3 }
+
+// POST /diaries/images  요청: multipart/form-data, part명 "file"(1장)
+//    응답 data: { "url": "/files/diaries/2026/06/{uuid}.jpg" } — 앱이 이 경로를 본문 Delta에 삽입한다.
+//    비이미지/손상 파일 400 INVALID_FILE, 5MB 초과 413 FILE_TOO_LARGE.
 ```
+
+**감정 입력 (Phase 7 — 사용자 직접 입력)**
+
+```jsonc
+// SaveDiaryRequest 의 감정 필드 (POST /diaries · PUT /diaries/{id} 공통)
+//   emotion      : 프리셋 코드(JOY/SADNESS/ANGER/CALM/ANXIETY/NEUTRAL). emotion_types 마스터 참조. nullable
+//   emotionLabel : 직접 입력 감정(자유 텍스트, 최대 20자). nullable
+// ▸ 둘 다 **선택 사항**이다 — 감정을 넣지 않아도 확정(오늘을 기억하기)할 수 있다.
+// ▸ 둘을 **동시에 지정하면 400 EMOTION_CONFLICT** (배타적).
+{ "emotion": "CALM",  "emotionLabel": null }        // 프리셋 선택
+{ "emotion": null,    "emotionLabel": "설레는" }     // 직접 입력(≤20자)
+{ "emotion": null,    "emotionLabel": null }        // 감정 미입력(정상)
+{ "emotion": "CALM",  "emotionLabel": "설레는" }     // ✗ 400 EMOTION_CONFLICT
+
+// GET /diaries/me/emotions/recent  응답 data
+// 내가 최근에 쓴 **직접 입력 감정**을 최신순으로(중복 제거, 상한 10) — 작성기의 '최근 사용' 추천 칩.
+{ "items": ["설레는", "지치는", "뿌듯한"] }
+```
+
+> ⚠️ **위 '감정 입력'은 Task 024(미착수) 설계안이다 — 아직 구현되지 않았다.** 현재 백엔드는 **V7의 LLM 비동기 감정 분석이 그대로 활성**이며(확정 시 1회 분석: `PENDING` → `DONE`), `emotionLabel` 필드도 `GET /diaries/me/emotions/recent`도 아직 없다. Task 024가 적용되면 감정은 **순수 기록 메타데이터**(캘린더 점 색·감정 칩·월간 회고 통계 전용)가 되며, 그때도 **캐릭터 리액션·미션 판정·아이템 해금에는 어디에도 관여하지 않는다**(캐릭터 도메인에 감정 규칙은 없다 — Task 026·027 구현본 기준으로 이미 확정된 사실이다).
 
 ```jsonc
 // GET /diaries/me/summary?yearMonth=2026-06  응답 data
 // 해당 월에 (소프트 삭제되지 않은) 기록이 존재하는 날짜 목록 → 캘린더 dot 표시에 사용
 { "yearMonth": "2026-06", "dates": ["2026-06-01", "2026-06-03", "2026-06-15"] }
 
-// GET /diaries/by-date/2026-06-15  응답 data
+// GET /diaries/by-date/2026-06-15  응답 data (GET /diaries/{id} 와 동일 형태)
 // 해당 날짜 기록이 없으면 404 + error.code = "DIARY_NOT_FOUND"
-{ "id": 10, "shareToken": "...", "content": "...", "writtenDate": "2026-06-15", "visibility": "FRIENDS",
-  "analysisStatus": "DONE", "images": [ /* { id, url } ... */ ] }
+{ "id": 10, "shareToken": "...", "content": "{\"ops\":[...]}", "contentText": "...",
+  "writtenDate": "2026-06-15", "visibility": "FRIENDS", "analysisStatus": "DONE",
+  "emotion": "JOY", "emotionLabel": null, "reactionCount": 3 }
 
 // GET /diaries/me?cursor=&size=  응답 data (커서 페이징, id DESC, OFFSET 미사용)
-// 목록 항목은 N+1 회피를 위해 이미지 전체 대신 대표 1장(thumbnailUrl)·총 개수(imageCount)만 포함.
-{ "items": [ { "id": 12, "content": "...", "writtenDate": "2026-06-16", "analysisStatus": "DONE",
-               "thumbnailUrl": "/files/diaries/2026/06/{uuid}.jpg", "imageCount": 2 } ],
+// 목록 항목은 본문 전체 대신 평문 발췌(preview)와 대표 이미지 1장(thumbnailUrl)만 싣는다.
+{ "items": [ { "id": 12, "preview": "...", "writtenDate": "2026-06-16", "analysisStatus": "DONE",
+               "emotion": "CALM", "emotionLabel": null,
+               "thumbnailUrl": "/files/diaries/2026/06/{uuid}.jpg" } ],
   "nextCursor": 12, "hasNext": true }
 ```
 
 > **캘린더 진입 흐름**: 메인(캘린더) 화면은 `GET /diaries/me/summary`로 점(dot)을 그린다. 사용자가 날짜를 탭하면 `GET /diaries/by-date/{date}`로 단건을 조회해, **있으면 상세 화면, 404면 신규 작성 화면**으로 분기한다. 두 엔드포인트 모두 `(user_id, written_date)` 인덱스로 처리되어 `/diaries/me` 전체 페이징보다 효율적이다.
 
-> `analysisStatus`가 `PENDING`이면(확정 직후) 클라이언트는 상세를 재조회(폴링)해 분석 결과(테마/음악)를 갱신한다. 상세 화면은 "분석 중(약 1분)"을 표시하고 `DONE`이 되면 자동 갱신한다.
+> ⚠️ **확정 후 폴링(현재 동작)**: LLM 감정 분석이 **활성**이므로 `confirm=true` 응답은 `PENDING`이고, 비동기 분석 완료 후 `DONE`이 된다 — 클라이언트는 기존의 "상세 재조회 → `DONE` 시 자동 갱신" 경로를 그대로 쓴다. Task 024로 분석 flag를 끄면 `confirm=true` 응답이 곧 `DONE`이 되어 폴링이 사라지고, 확정 직후 바로 캐릭터 리액션(`GET /characters/me/reaction?diaryId=`, Task 028)으로 넘어가게 된다.
 
-> **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 기록 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(미분석·수정가능)로 저장하고, `confirm=true`는 `PENDING`으로 **확정해 감정 분석을 1회** 수행한다. **`DRAFT` 상태인 기록만 수정 가능**하며, 확정된 기록에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 기록은 409다.
+> **하루 1기록 + draft→확정 정책**: `POST /diaries`는 `(user_id, written_date)` 부분 유니크(`deleted_at IS NULL`)를 충돌 키로 한 upsert다. 같은 날짜로 다시 저장하면 INSERT 대신 기존 행을 UPDATE한다. 덕분에 클라이언트는 기록 `id`를 몰라도 항상 `POST /diaries`(날짜+내용)만 호출하면 되고(신규/수정 분기 불필요), 다중 기기·오프라인 동기화로 인한 **중복 날짜 경쟁 조건(409)도 발생하지 않는다**. `confirm=false`는 `DRAFT`(수정가능)로 저장하고, `confirm=true`는 **확정**한다. **`DRAFT` 상태인 기록만 수정 가능**하며, 확정된 기록에 재저장하면 409 `DIARY_ALREADY_CONFIRMED`다(삭제 후 같은 날짜 재작성은 허용). `PUT /diaries/{id}`는 상세 화면에서 id를 이미 아는 경우의 명시적 수정 경로이며, 동일하게 DRAFT만 수정 가능하고 확정 기록은 409다. **확정이 코인·경험치·미션 해금의 유일한 트리거이므로, 확정 후 수정 불가 규칙은 보상 어뷰징 방지 장치이기도 하다.**
 
 ### 피드 (feed) — Phase 6 구현본
 | 메서드 | 경로 | 설명 | 인증 |
@@ -141,6 +173,8 @@
 | GET | `/feed/{id}` | 피드 카드 전문(viewer-aware; 볼 수 없으면 404). 기존 owner-only `GET /diaries/{id}`는 유지 | ○ |
 
 > **피드 카드 DTO**: `{ id, authorUuid, authorNickname, authorProfileImageUrl, moodEmoji, aiTitle, preview(content_text 발췌), writtenDate, visibility, primaryEmotion, backgroundColor, accentColor, reactionCount, reactedByMe }` — 전문(content)은 싣지 않고 탭 시 `/feed/{id}`로 조회.
+
+> ⚠️ **현재(Task 024 미착수)**: LLM 분석이 활성이므로 `moodEmoji`·`aiTitle`·`backgroundColor`·`accentColor`는 분석 완료(`DONE`) 시 채워진다. Task 024로 flag를 끄면 이 필드들은 **항상 null**이 되고(필드는 보존), 앱은 감정 배경색 대신 중립 카드 + 감정 칩(`primaryEmotion` / `emotionLabel`)으로 렌더하게 된다.
 
 ### 친구 (friends) — Phase 6 구현본
 | 메서드 | 경로 | 설명 | 인증 |
@@ -270,6 +304,227 @@
 // DELETE /devices/tokens?token=fcm-registration-token
 // 응답: success=true. 본인 소유 토큰만 삭제, 없거나 타인 소유면 무동작(멱등).
 ```
+
+### 캐릭터 (character) — Phase 7
+
+> 기록하면 **내 캐릭터가 반응하고, 쌓일수록 캐릭터가 꾸며진다.** 확정('오늘을 기억하기')과 작심삼일 완주가 코인·경험치·미션 해금의 트리거이며, 감정은 여기에 **일절 관여하지 않는다**(순수 기록 메타).
+>
+> **아이템은 `group_code` 단위로 사고·입는다.** 캐릭터마다 체형이 달라 옷 이미지(variant)는 캐릭터별로 존재하지만, API는 그 사실을 노출하지 않는다 — 응답의 `imageUrl`은 **항상 내 선택 캐릭터 기준으로 해석된 variant**다. 캐릭터를 바꿔도 소유·착용은 유지되고 이미지만 갈아끼워진다.
+
+**구현본 (Task 027)**
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| GET | `/characters` | 선택 가능한 캐릭터 목록(2종) + 내 보유·선택 여부. 온보딩 좌우 비교용 | ○ |
+| GET | `/characters/me` | 내 캐릭터 상태(선택·착용·레벨/경험치·코인·미확인 보상 수) — 캐릭터 홈 1회 조회 | ○ |
+| PUT | `/characters/me/selection` | 캐릭터 선택/교체(`{characterCode}`) | ○ |
+| PUT | `/characters/me/equipment` | 착용 **배치 교체**(`group_code` 단위, 전체 스냅샷 PUT) | ○ |
+| GET | `/characters/items?slot=` | 아이템 그룹 목록(슬롯 필터, 보유 여부 + 내 캐릭터 기준 variant 이미지) | ○ |
+| GET | `/missions` | 미션 목록(달성 여부 + 진행률) | ○ |
+
+**미구현 — 보상 엔진(Task 028) 이후**
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매 | ○ |
+| GET | `/characters/me/wallet` | 코인 잔액 | ○ |
+| GET | `/characters/me/rewards?cursor=&size=` | 보상 이벤트함(커서 페이징, id DESC) | ○ |
+| POST | `/characters/me/rewards/ack` | 보상 확인 처리(멱등) | ○ |
+| GET | `/characters/me/reaction?diaryId=` | 확정 기록에 대한 캐릭터 리액션(대사·획득 보상) | ○ |
+| GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록·감정 분포·성장 요약) | ○ |
+
+> ⚠️ **현재 구현 범위(Task 027)**: 캐릭터 선택·옷장(조회·착용)·미션 조회까지다. **코인 적립·구매·보상함·리액션은 보상 엔진(Task 028) 소관으로 아직 없다** — 그래서 `coinBalance`·`unackedRewardCount`는 **항상 0**이고, 미션의 `achieved`는 항상 false다(달성 이력을 쓰는 주체가 없다). `progress`는 `user_progress` 스냅샷을 그대로 읽으므로 이 역시 Task 028 전에는 0이다. 아이템은 **기본 지급(`DEFAULT`)분만 보유**한 상태로 시작한다.
+>
+> ⚠️ **`thumbnailUrl`·`imageUrl`은 서버 URL이 아니라 앱 로컬 에셋 경로다**(`assets/characters/monkey.png`, `assets/items/hat_party_monkey.png`). 다른 도메인의 이미지 필드(`/files/...` 상대경로 → 앱이 호스트 조립)와 **의미가 다르다.** 캐릭터·아이템 아트는 앱 번들에 동봉되고, 서버는 "어떤 에셋을 그릴지"만 알려준다.
+>
+> **기본 상태는 JIT 생성(멱등)**: 캐릭터 API 최초 호출 시 서버가 `user_character_state`/`user_wallets`/`user_progress` + **기본 지급 아이템 소유**를 `ON CONFLICT DO NOTHING`으로 심는다. 신규 가입자도 별도 초기화 호출 없이 곧바로 정상 응답을 받는다.
+
+```jsonc
+// ===== 구현본 (Task 027) =====
+
+// GET /characters  응답 data
+// 온보딩(좌우 2장 대형 비교)과 캐릭터 교체 화면이 함께 쓴다.
+// owned 는 MVP 에서 **항상 true** 다(캐릭터 2종 전원 무료 개방). 유료·한정 캐릭터가 생기면
+//   이 필드만 실제 소유 판정으로 바뀌고 앱 계약은 그대로다.
+{ "selectedCharacter": null,
+  "items": [
+    { "code": "MONKEY",    "nameKo": "원숭이",
+      "tagline": "뭐든 천천히, 오늘도 느긋하게. 여유가 특기인 친구예요.",
+      "thumbnailUrl": "assets/characters/monkey.png",    "owned": true, "selected": false },
+    { "code": "RED_PANDA", "nameKo": "레서판다",
+      "tagline": "부지런히 곁을 지켜요. 정 많고 애착이 강한 친구예요.",
+      "thumbnailUrl": "assets/characters/red_panda.png", "owned": true, "selected": false } ] }
+// selectedCharacter=null → 온보딩 미완료. 앱은 캐릭터 선택 화면으로 분기한다.
+
+// GET /characters/me  응답 data (캐릭터 홈이 한 번에 그리는 데 필요한 전부)
+// ★ 캐릭터 미선택(신규 가입 직후)이어도 **200 + character: null** 이다(404 아님).
+//   앱은 이 null 을 **온보딩 미완료 신호**로 읽는다. 이때 level=1 / exp=0 / equipment=[] 이다.
+{ "character": { "code": "MONKEY", "nameKo": "원숭이", "riveArtboard": "monkey",
+                 "thumbnailUrl": "assets/characters/monkey.png" },
+  "level": 1, "exp": 0, "expToNext": 100,
+  "coinBalance": 0,          // Task 028 전까지 항상 0(적립 주체 없음)
+  "unackedRewardCount": 0,   // Task 028 전까지 항상 0(보상 이벤트 없음)
+  "equipment": [
+    { "slot": "OUTFIT",    "slotIndex": 0, "groupCode": "OUTFIT_BASIC_TEE", "nameKo": "기본 흰 티셔츠",
+      "imageUrl": "assets/items/outfit_basic_tee_monkey.png", "riveSlot": "outfit",
+      "renderMeta": { "anchorX": 0.5, "anchorY": 0.55, "scale": 0.60, "z": 30 } },
+    { "slot": "ROOM_PROP", "slotIndex": 0, "groupCode": "ROOM_PROP_PLANT", "nameKo": "작은 화분",
+      "imageUrl": "assets/items/room_prop_plant.png", "riveSlot": "roomProp0",
+      "renderMeta": { "anchorX": 0.82, "anchorY": 0.78, "scale": 0.30, "z": 10 } } ] }
+// imageUrl/riveSlot/renderMeta 는 (groupCode + 선택 캐릭터)로 **해석된 variant** 값이다.
+//   캐릭터 전용 variant 우선 → 없으면 공용(character_code IS NULL) 폴백.
+//   캐릭터 미선택이면 공용 variant 만 해석된다(전용 아이템은 목록·착용 조회에서 빠진다).
+// renderMeta 는 Rive 미사용 시 플레이스홀더 렌더러(Task 029)가 쓰는 좌표/스케일. null 가능.
+// expToNext 는 레벨당 고정 100(CharacterConstants.EXP_PER_LEVEL) — 곡선 확정은 Task 028.
+
+// PUT /characters/me/selection  요청
+{ "characterCode": "RED_PANDA" }
+// 응답 data: 갱신된 MyCharacter (GET /characters/me 와 동일 형태).
+// 착용(equipment)은 group 단위라 **그대로 유지**되고, imageUrl 만 새 캐릭터의 variant 로 재해석된다.
+// 에러: **없는 코드·비활성 코드·미보유 캐릭터 → 모두 409 CHARACTER_NOT_OWNED 로 수렴**(404 아님 —
+//         캐릭터는 전원 무료 개방이라 '없는 코드'도 '선택할 수 없는 캐릭터'로 통일한다) /
+//       착용 중인 아이템의 **새 캐릭터용 variant 가 미제작**이면 → 409 ITEM_VARIANT_MISSING(교체 거부·전체 롤백.
+//         교체를 허용하면 홈이 그 아이템을 못 그린 채 조용히 사라지므로 원인을 명시적으로 알린다).
+
+// PUT /characters/me/equipment  요청 — **배치 교체**(보낸 배열이 착용 전체 스냅샷이 된다. PATCH 아님)
+// 단일 슬롯(HAT/OUTFIT/GLASSES/PROP/BACKGROUND)은 slotIndex=0 한 칸만, ROOM_PROP 만 0~5 다중 진열.
+// 해제는 그 슬롯을 배열에서 빼면 되고, **빈 배열([])이면 전 슬롯 비움**이다(별도 DELETE 엔드포인트 없음).
+// 항목 최대 12개(단일 슬롯 5종 + BACKGROUND + ROOM_PROP 6칸).
+{ "equipment": [
+    { "slot": "OUTFIT",    "slotIndex": 0, "groupCode": "OUTFIT_BASIC_TEE" },
+    { "slot": "HAT",       "slotIndex": 0, "groupCode": "HAT_PARTY" },
+    { "slot": "ROOM_PROP", "slotIndex": 0, "groupCode": "ROOM_PROP_PLANT" } ] }
+// 응답 data: 갱신된 MyCharacter.
+// ★ **원자적이다.** 요청 전체를 먼저 검증하고(슬롯 규칙 → 슬롯 일치 → 소유 → variant),
+//   하나라도 실패하면 **쓰기 전에** 예외를 던진다(3번째가 미보유면 1·2번도 반영되지 않는다).
+// 에러(검증 순서대로):
+//   알 수 없는 slot 문자열 / slotIndex 규칙 위반(단일 슬롯에 index>0, ROOM_PROP 범위 초과) /
+//     같은 칸 중복 / 같은 group 을 두 칸에 진열   → 400 VALIDATION_ERROR
+//   그룹의 slot 과 요청 slot 불일치               → 400 ITEM_SLOT_MISMATCH
+//   **없는 groupCode** 또는 미보유 그룹            → 409 ITEM_NOT_OWNED (없는 코드는 소유했을 리 없으므로 수렴)
+//   내 캐릭터용 variant 미제작                     → 409 ITEM_VARIANT_MISSING
+
+// GET /characters/items?slot=HAT  응답 data (slot 생략 시 전체. 정렬: slot → sort_order → code)
+// 옷장·상점이 공유하는 단일 목록. owned 로 옷장/상점 탭을 가른다.
+{ "items": [
+    { "groupCode": "HAT_PARTY", "slot": "HAT", "nameKo": "파티 모자",
+      "thumbnailUrl": "assets/items/hat_party.png",
+      "acquireType": "MISSION", "coinPrice": 0, "owned": false, "equipped": false,
+      "imageUrl": "assets/items/hat_party_monkey.png",
+      "renderMeta": { "anchorX": 0.5, "anchorY": 0.18, "scale": 0.42, "z": 40 },
+      "lockedBy": { "missionCode": "DIARY_10", "title": "기록 10개", "progress": 6, "threshold": 10 } },
+    { "groupCode": "HAT_STRAW", "slot": "HAT", "nameKo": "밀짚모자",
+      "thumbnailUrl": "assets/items/hat_straw.png",
+      "acquireType": "COIN", "coinPrice": 120, "owned": false, "equipped": false,
+      "imageUrl": "assets/items/hat_straw_monkey.png",
+      "renderMeta": { "anchorX": 0.5, "anchorY": 0.18, "scale": 0.44, "z": 40 },
+      "lockedBy": null } ] }
+// thumbnailUrl = 캐릭터 무관 대표 썸네일(목록 그리드용). imageUrl = **내 캐릭터 기준 해석된 variant**(렌더용).
+// acquireType: DEFAULT(기본 지급) / MISSION(미션 해금) / COIN(상점 구매).
+// lockedBy: acquireType=MISSION 이고 **미보유**일 때만 채워진다(해금 진행률 바). 그 외 null.
+// ⚠️ imageUrl 이 내 캐릭터 variant 로 해석되지 않으면(미제작) 해당 항목은 **목록에서 조용히 제외**된다
+//    (조회 경로라 409 를 내지 않는다 — 착용 시도 시에만 409 ITEM_VARIANT_MISSING 으로 알린다).
+
+// GET /missions  응답 data (정렬: sort_order)
+// 해금의 유일한 경로. 진행률은 user_progress(+레벨) 스냅샷의 컬럼 하나만 읽어 **O(1)** 산출한다.
+{ "items": [
+    { "code": "DIARY_10", "title": "기록 10개", "description": "기록을 10개 확정하면 파티 모자를 드려요.",
+      "rule": { "type": "DIARY_COUNT", "threshold": 10 },
+      "progress": 6, "threshold": 10, "achieved": false, "achievedAt": null,
+      "coinReward": 50, "itemGroupReward": "HAT_PARTY" },
+    { "code": "STREAK_7", "title": "7일 연속 기록", "description": "7일 연속으로 기록을 확정해 보세요.",
+      "rule": { "type": "CONSECUTIVE_DAYS", "threshold": 7 },
+      "progress": 7, "threshold": 7, "achieved": true, "achievedAt": "2026-07-10T12:03:11Z",
+      "coinReward": 100, "itemGroupReward": "BG_COZY_ROOM" } ] }
+// rule.type: DIARY_COUNT / CONSECUTIVE_DAYS / RESOLUTION_SUCCESS / RESOLUTION_STREAK / LEVEL
+//   (★ 감정 기반 규칙은 없다 — 감정은 해금과 완전 분리)
+// rule 은 DB rule(JSONB)의 타입별 상이한 임계값 키(count/days/seq/level)를 서버가 (type, threshold) 로
+//   **정규화**한 형태다 — 앱은 타입별 키를 알 필요가 없다.
+// progress 는 threshold 를 넘어도 잘라내지 않는다(예: 12/10) — 앱이 min(progress/threshold, 1) 로 클램프한다.
+// achieved 는 **달성 이력(user_missions)이 있는가**로만 판정한다(임계값 도달 ≠ 달성 — 지급은 Task 028).
+//   → Task 028 전까지 achieved 는 항상 false, achievedAt 은 null 이다.
+
+// ===== 미구현 — 보상 엔진(Task 028) 이후. 아래는 설계안이다 =====
+
+// POST /characters/items/{groupCode}/purchase  (요청 바디 없음)
+// 응답 data
+{ "groupCode": "HAT_STRAW", "coinBalance": 40, "owned": true }
+// 코인 소비는 UPDATE ... WHERE balance >= price 단일 문장(경합 안전) → 0행이면 409 COIN_INSUFFICIENT.
+// 에러: 잔액 부족 → 409 COIN_INSUFFICIENT / 이미 보유 → 200(멱등, 잔액 불변) /
+//       미션 전용·기본 지급 아이템 구매 시도 → 400 VALIDATION_ERROR /
+//       상점 비활성(record.character.coin-enabled=false) → 403 FEATURE_DISABLED.
+
+// GET /characters/me/wallet  응답 data
+{ "balance": 120 }
+
+// GET /characters/me/rewards?cursor=&size=  응답 data (커서 페이징, id DESC, OFFSET 미사용)
+// 보상 이벤트함 = character_events. acked=false 인 것이 홈 상단 알림 뱃지가 된다.
+{ "items": [
+    { "id": 91, "eventType": "MISSION", "coinDelta": 50, "balanceAfter": 120,
+      "diaryId": null, "acked": false, "createdAt": "2026-07-12T09:00:02Z",
+      "payload": { "line": "어쩌다 보니 미션도 끝났네. 축하해, 느긋하게 즐겨.", "missions": ["DIARY_10"],
+                   "itemGroups": ["HAT_PARTY"], "balance": 120 } },
+    { "id": 90, "eventType": "DIARY_CONFIRM", "coinDelta": 10, "balanceAfter": 90,
+      "diaryId": 10, "acked": true, "createdAt": "2026-07-12T09:00:01Z",
+      "payload": { "line": "오늘도 잘 마무리했네.", "missions": [], "itemGroups": [], "balance": 90 } } ],
+  "nextCursor": 90, "hasNext": true }
+
+// POST /characters/me/rewards/ack  요청 — 확인 처리(멱등). ids 생략 시 미확인 전체를 확인 처리.
+{ "ids": [91] }
+// 응답 data: { "unackedRewardCount": 0 }
+
+// GET /characters/me/reaction?diaryId=10  응답 data
+// 리액션 오버레이의 단일 소스(앱이 보상을 스스로 계산하지 않는다).
+// 획득이 없어도 대사(line)는 항상 1줄 온다(character_lines 의 CONFIRM 맥락에서 가중 랜덤 선택,
+//   캐릭터 전용 대사 → 없으면 공용 폴백). 해당 확정 이벤트가 아직 없으면 404 REACTION_NOT_READY.
+{ "diaryId": 10,
+  "characterCode": "MONKEY",
+  "line": "오늘도 한 줄 남겼네. 천천히 해도 다 남더라.",
+  "riveTrigger": "nod",                // character_lines.rive_trigger (null=기본 모션)
+  "coinDelta": 10, "coinBalance": 90,
+  "levelUp": false, "level": 3, "exp": 40, "expToNext": 100,
+  "achievedMissions": [
+    { "code": "DIARY_10", "title": "기록 10개",
+      "itemGroupReward": { "groupCode": "HAT_PARTY", "nameKo": "파티 모자",
+                           "imageUrl": "assets/items/hat_party_monkey.png" },
+      "coinReward": 50 } ],
+  "eventId": 90 }
+// 앱은 오버레이를 닫을 때 POST /characters/me/rewards/ack {"ids":[eventId, ...]} 를 보낸다.
+
+// GET /characters/me/retrospect?yearMonth=2026-07  응답 data (월간 회고 = 락인)
+// 감정이 실제로 쓰이는 유일한 곳(통계). 캐릭터 성장과 나란히 보여 준다.
+{ "yearMonth": "2026-07",
+  "confirmedCount": 18, "consecutiveDaysMax": 9,
+  "resolutionSuccessCount": 2,
+  "emotions": [ { "code": "JOY", "labelKo": "기쁨", "count": 7 },
+                { "code": "CALM", "labelKo": "평온", "count": 5 },
+                { "label": "설레는", "count": 3 } ],   // code 없는 항목 = 직접 입력 감정
+  "coinEarned": 210,
+  "levelStart": 2, "levelEnd": 3,
+  "unlockedItems": [ { "groupCode": "HAT_PARTY", "nameKo": "파티 모자",
+                       "imageUrl": "assets/items/hat_party_monkey.png" } ] }
+```
+
+> **보상은 서버가 멱등하게 확정한다(Task 028 설계).** 기록 확정·작심삼일 완주는 커밋 후(`AFTER_COMMIT`) 비동기로 보상 엔진에 전달되고, 엔진은 `character_events(user_id, event_key)` **UNIQUE 게이트**를 먼저 꽂아 **1행이 들어간 경우에만** 코인·경험치·미션 해금을 실행한다. 재전달·백스톱 폴러·앱 재시도가 겹쳐도 **이중 적립은 발생하지 않는다**. 앱은 보상을 스스로 계산하지 않고 항상 서버 응답(`/reaction`, `/rewards`)을 그대로 표시한다. 게이트 테이블(`character_events`)은 **V17로 이미 만들어져 있고**, 여기에 행을 쓰는 엔진만 남았다.
+
+**에러 코드 (Phase 7 — Task 027 구현본 4종)**
+
+| code | HTTP | 발생 상황 |
+|---|---|---|
+| `ITEM_SLOT_MISMATCH` | 400 | 요청한 `slot`이 해당 아이템 그룹의 슬롯과 다름(HAT 칸에 OUTFIT 그룹) |
+| `CHARACTER_NOT_OWNED` | 409 | 선택할 수 없는 캐릭터 — **없는 코드·비활성 코드·미보유를 모두 이 코드로 수렴**(404 아님) |
+| `ITEM_NOT_OWNED` | 409 | 보유하지 않은 아이템 그룹을 착용 시도(**없는 `groupCode`도 여기로 수렴**) |
+| `ITEM_VARIANT_MISSING` | 409 | 내 선택 캐릭터용 variant가 아직 제작되지 않은 아이템을 착용/캐릭터 교체 시도 |
+
+> 슬롯 문자열 오류·`slotIndex` 규칙 위반(단일 슬롯에 index>0, ROOM_PROP 범위 초과)·같은 칸/같은 그룹 중복 지정은 **400 `VALIDATION_ERROR`**(공통 코드)로 응답한다 — 별도 코드를 만들지 않았다.
+
+**에러 코드 (미구현 — 해당 기능 구현 시 추가)**
+
+| code | HTTP | 발생 상황 | 소관 |
+|---|---|---|---|
+| `EMOTION_CONFLICT` | 400 | `emotion`(프리셋)과 `emotionLabel`(직접 입력)을 **동시에** 지정 | Task 024 |
+| `FEATURE_DISABLED` | 403 | 비활성 기능 호출(상점 `coin-enabled=false` 상태의 구매 등) | Task 028 |
+| `COIN_INSUFFICIENT` | 409 | 코인 잔액 부족(`UPDATE ... WHERE balance >= price`가 0행) | Task 028 |
 
 ## 4. 가시성(visibility) 규칙
 

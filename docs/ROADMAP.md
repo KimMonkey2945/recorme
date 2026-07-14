@@ -17,9 +17,9 @@
 
 | 구분 | 스택 |
 |---|---|
-| 모바일(`app/`) | Flutter / Dart(SDK `^3.10.x`), feature-first 구조, **flutter_riverpod ^3.x**, **go_router ^17.x**, Dio(Supabase 토큰 첨부 인터셉터), **flutter_secure_storage ^10.x**, supabase_flutter(Supabase Auth) / google_sign_in ^7.x, image_picker, **flutter_quill ^11.x(리치 텍스트 에디터, Delta JSON) + flutter_quill_extensions + flutter_localizations**, **video_player(감정 마스코트·러닝 로딩·로그인 영상 연출)**, firebase_core/firebase_messaging ^16.x + flutter_local_notifications ^22.x(FCM). ※ 모델은 freezed 미도입·손 작성(Task 004 비고) |
+| 모바일(`app/`) | Flutter / Dart(SDK `^3.10.x`), feature-first 구조, **flutter_riverpod ^3.x**, **go_router ^17.x**, Dio(Supabase 토큰 첨부 인터셉터), **flutter_secure_storage ^10.x**, supabase_flutter(Supabase Auth) / google_sign_in ^7.x, image_picker, **flutter_quill ^11.x(리치 텍스트 에디터, Delta JSON) + flutter_quill_extensions + flutter_localizations**, **video_player(감정 마스코트·러닝 로딩·로그인 영상 연출)**, firebase_core/firebase_messaging ^16.x + flutter_local_notifications ^22.x(FCM), **rive ^0.14.x(캐릭터 비트맵 리깅 렌더러 — Phase 7 Task 031 예정. State Machine + Data Binding 이미지 슬롯 런타임 주입, `--dart-define=USE_RIVE` 스위치·비-Rive 폴백). ⚠️ 아직 pubspec 미추가 — Rive 런타임은 `.riv` 없이 PNG를 애니메이션하지 못하므로 아트보드 확보 시점에 도입한다. 그동안의 대체 렌더러는 `IdleCharacterView`(메시 워프, 추가 의존성 0)**. ※ 모델은 freezed 미도입·손 작성(Task 004 비고). ※ Phase 7에서 `flutter_shaders`·감정 mp4/셰이더 연출 제거(로그인 마스코트 영상·`video_player`는 유지) |
 | 백엔드(`backend/`) | Java 21 / Spring Boot 3.5.x, 도메인 기반 패키지 `com.recordapp.domain.*`(`auth`·`user`·`diary`·`emotion`·`resolution`·`device`) + `infra.*`(`llm`·`push`·`storage`), Controller → Service(@Transactional) → Mapper(MyBatis) → PostgreSQL, **Supabase JWT 검증(JWKS ES256 비대칭, `spring-boot-starter-oauth2-resource-server`, 자체 발급 없음)**, **멀티모달 감정 분석(`infra.llm` LlmClient 추상화: Claude(`anthropic-java`)·Gemini·Ollama·Stub / `@Async` 전용 풀 + Poller 백스톱)**, firebase-admin(FCM) |
-| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V3=diary_images(→V5에서 제거)`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V6=content_text NOT NULL`, `V7=감정 분석(emotion_types 마스터 + diaries 감정·테마 컬럼)`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`, `V9=resolutions+resolution_checks(작심삼일)`, `V10=device_tokens(FCM)`) |
+| DB | PostgreSQL 18.x(로컬 네이티브), Flyway 11.x, **기능별 마이그레이션 분할**(`V1=users`, `V2=diaries`, `V3=diary_images(→V5에서 제거)`, `V4=리치 본문(content=Delta JSON·content_text)`, `V5=diary_images 제거`, `V6=content_text NOT NULL`, `V7=감정 분석(emotion_types 마스터 + diaries 감정·테마 컬럼)`, `V8=draft→확정 라이프사이클(analysis_status 기본값 DRAFT·CHECK)`, `V9=resolutions+resolution_checks(작심삼일)`, `V10=device_tokens(FCM)`, `V11~V14=소셜(friendships·visibility·피드 인덱스·diary_reactions)`, **`V15=diary_manual_emotion(감정 사용자 입력 — emotion_label 추가·done-has-emotion CHECK 해제)`**, **`V16=add_character_catalog(characters·item_groups·character_items(variant)·character_lines)`**, **`V17=add_missions(missions·user_missions)`**, **`V18=add_user_character_state(user_character_state·user_item_groups·user_equipment·user_progress·user_wallets·character_events)`**) |
 | 테스트(앱) | `flutter test`(위젯/유닛) + `integration_test`(E2E) |
 | 테스트(백엔드) | JUnit5 + Spring Boot Test(@WebMvcTest/@SpringBootTest) + Testcontainers(PostgreSQL) |
 
@@ -290,7 +290,8 @@
   - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — DRAFT 저장(미분석)·확정(PENDING) 분기, 확정 기록 재upsert/PUT 409, DRAFT 수정 정상, 소프트 삭제 후 재작성, V8 CHECK 제약 동작 / 앱 `flutter test`·`integration_test` — 2버튼 분기·확정 다이얼로그·분석중 폴링
 
 - **Task 012: 감정 분석 (멀티모달 LLM) — 백엔드 엔진 + 비동기 파이프라인** ✅ - 완료(Testcontainers Docker 대기)
-  - 구현 기능: F003/F006 확장 (확정 시 1회 감정 분석)
+  - 구현 기능: F003/F006 확장 (확정 시 1회 감정 분석) — **F018**
+  - ⚠️ **Phase 7에서 비활성화 예정(코드 보존)** — **Task 024 미착수이므로 현재는 LLM 감정 분석이 활성 상태다**: Task 024가 `record.analysis.enabled=false`(기본값)로 LLM 분석 파이프라인을 `@ConditionalOnProperty` 차단한다. `domain.emotion`·`infra.llm`·`emotion_types` 마스터·`diaries` 감정/테마 컬럼은 **삭제하지 않고 보존**하며, `ANALYSIS_ENABLED=true` 한 줄로 복구 가능하다. flag off 상태에서는 감정을 **사용자가 직접 입력**(프리셋 6종 또는 자유 텍스트)하고, 확정 시 즉시 `DONE`으로 전이한다.
   - ✅ `V7__add_emotion_analysis.sql`(emotion_types 마스터 6종 시드 + diaries에 `primary_emotion`(FK)·`background_color`/`text_color`/`accent_color`(색 형식 CHECK)·`ai_comment`·`ai_title`·`mood_emoji`·`emotion_scores`(JSONB)·`analyzed_at`, `chk_diaries_done_has_emotion`) 구현. `V6__diary_content_text_not_null.sql`로 content_text NOT NULL 강화.
   - ✅ `domain.emotion`: `EmotionAnalysisService`(`@Async("emotionAnalysisExecutor")`, 트랜잭션 밖 LLM 호출·낙관적 조건부 UPDATE — 분석 중 수정/삭제 시 stale 폐기)·`EmotionAnalysisPoller`(PENDING 백스톱)·`EmotionAnalyzer`/`LlmEmotionAnalyzer`·`DiaryImagePreparer`(본문 인라인 이미지 → 멀티모달 입력)·`EmotionAnalysisMapper`.
   - ✅ 확장 포인트 인터페이스 격리 `infra.llm.LlmClient`: `ClaudeLlmClient`(`anthropic-java`)·`GeminiLlmClient`·`OllamaLlmClient`(로컬 무키)·`StubLlmClient`(무키 로컬/CI 폴백). `LlmConfig`가 provider·키 유무로 구현체 프로그램적 선택(기본 provider=`gemini`, 무키 시 Stub 폴백). LLM 실패는 analyzer가 `NEUTRAL`로 흡수 → FAILED+NEUTRAL 반영(CHECK 통과).
@@ -298,7 +299,8 @@
   - ✅ 분석 결과는 `DiaryResponse`·`DiarySummaryDay`(캘린더)로 노출. `DiarySummaryDay`는 DONE 기록만 `primaryEmotion`·`moodEmoji` 값 보유(캘린더 감정색/이모지 렌더).
 
 - **Task 013: 감정 기반 동적 테마 · 마스코트/시네마틱 연출 (앱)** ✅ - 완료
-  - 구현 기능: F003/F005/F006 확장 (감정 표현 계층)
+  - 구현 기능: F003/F005/F006 확장 (감정 표현 계층) — **F019**
+  - ⚠️ **Phase 7에서 연출 제거 예정(캐릭터로 대체)** — **Task 025 미착수이므로 현재는 감정 연출이 그대로 살아 있다**: Task 025가 감정 마스코트 mp4 6종·`emotion_alpha.frag` 셰이더·`flutter_shaders`·동적 배경 테마·상세 시네마틱 인트로·러닝 로딩 영상·PENDING 폴링을 **삭제**한다. 연출 주인공은 **내 캐릭터 하나로 일원화**되며(`ReactionOverlay`·`CharacterStage`), 감정은 **달력 점 색 + 감정 칩**에만 남는 순수 기록 메타데이터가 된다. **로그인 마스코트 영상 3종과 `video_player`는 브랜딩 자산으로 유지.**
   - ✅ **감정 동적 테마**: `core/theme/diary_theme.dart`가 `primaryEmotion`(+백엔드 생성 색) 기반 배경/글자/강조 팔레트를 상세·목록에 적용. `core/theme/emotion_assets.dart`가 감정 6종별 PNG·mp4 매핑.
   - ✅ **감정 마스코트 영상**: `shared/widgets/emotion_video.dart`(감정 코드별 마스코트 mp4 자동재생·무한루프·무음, PNG 폴백, `video_player`).
   - ✅ **마스코트 투명 배경(후속 추가)**: 단일 영상 코덱으로 iOS+Android 동시 네이티브 투명이 불가(H.264=알파 없음, VP9-알파 webm=iOS 미재생)하여, **불투명 H.264에 [좌:색\|우:실루엣 알파]를 2:1로 패킹**하고 `flutter_shaders` `AnimatedSampler` + 프래그먼트 셰이더(`emotion_alpha.frag`)로 premultiplied RGBA 합성 → 배경 투명. 매 프레임 리페인트 티커로 영상 정지 방지. 웹은 셰이더 합성 불가(video_player DOM 오버레이)라 투명 PNG 포스터 폴백. 원본 webm은 `docs/`에 재인코딩 소스로 보관.
@@ -347,11 +349,129 @@
 
 - **Task 016: 홈서버 배포** — 상세 절차: **`docs/deployment.md`**, 실행 체크리스트: **shrimp task manager**
   - **채택 아키텍처**: 집 서버 PC(Windows 10) → WSL2 Ubuntu → Docker(`postgres:18` + backend:8080 + Jenkins pollSCM + 보류 ollama). 폰(Z Flip3)은 **Tailscale VPN**으로 접속(포트포워딩·CGNAT 회피, 외부 미개방). Supabase Auth·FCM·Gemini는 클라우드 그대로.
-  - **자체호스팅 PostgreSQL**: 같은 서버 컨테이너(`recorme` DB), 빈 DB 최초 기동 시 Flyway V1~V10 자동 적용. `application-cloud.yml`은 `DB_URL/DB_USER/DB_PASSWORD` 환경변수로 연결. 백업(pg_dump)·명명 볼륨(`uploads`) 영속화.
+  - **자체호스팅 PostgreSQL**: 같은 서버 컨테이너(`recorme` DB), 빈 DB 최초 기동 시 Flyway V1~V17 자동 적용. `application-cloud.yml`은 `DB_URL/DB_USER/DB_PASSWORD` 환경변수로 연결. 백업(pg_dump)·명명 볼륨(`uploads`) 영속화.
   - **준비된 산출물**(커밋 완료): `backend/Dockerfile`(self-contained 멀티스테이지), `deploy/docker-compose.yml`, `deploy/env.example`, `Jenkinsfile`(pollSCM 5분), 앱 `network_security_config.xml`·릴리즈 서명 config·`build_release` 스크립트.
   - **정합성 교정**(배포 시 필수): `SPRING_PROFILES_ACTIVE=cloud` / 데이터소스 var 이름 / `STORAGE_ROOT` 볼륨 경로 일치 / 릴리즈 앱 cleartext·서명. (§`docs/deployment.md` 트러블슈팅)
   - **잔여 검증 실행**(Docker 확보 후): 백엔드 Testcontainers 통합테스트 일괄 실행 ②, 작심삼일 FCM 실기기(Z Flip3) 라이브 검증 ①.
   - 성능(캘린더 summary 캐싱·인덱스 튜닝), 모니터링·로깅, 애플 로그인(Supabase Apple provider) 확장은 이후.
+
+### Phase 7: 캐릭터 중심 전환 (LLM 감정 분석 비활성화 · 커스터마이징 · 미션/해금 · 락인)
+
+제품의 중심을 **"기록하면 LLM이 감정을 분석해 테마·영상을 입힌다"**에서 **"기록하면 내 캐릭터가 반응하고, 쌓일수록 캐릭터가 꾸며진다"**로 전환한다. 목표는 애착 기반 7일 리텐션(1단계)과, 데이터가 쌓일수록 떠나기 어려운 락인 구조(2단계)다. 감정 분석(F018)·동적 테마(F019)는 **삭제가 아니라 비활성화/대체**한다 — 백엔드 LLM 코드·테이블은 flag로 보존하고(`ANALYSIS_ENABLED=true` 한 줄로 복구), 앱 감정 연출만 제거해 연출 주인공을 **내 캐릭터 하나로 일원화**한다. 감정은 **사용자가 직접 입력**(프리셋 6종 또는 자유 텍스트 ≤20자)하는 **순수 기록 메타데이터**가 되며, 캐릭터 리액션·미션 판정·해금 어디에도 관여하지 않는다(달력 표시·회고 통계 전용). 확정('오늘을 기억하기') 라이프사이클은 **유지**되어 리액션·코인·해금의 유일한 트리거가 된다(확정 후 수정 불가 = 보상 어뷰징 방지).
+
+> **핵심 설계**: ① 캐릭터 **2종으로 시작**(`MONKEY` 원숭이 — 여유롭고 느긋함 / `RED_PANDA` 레서판다 — 부지런하고 애착 강함). ② 렌더는 **Rive 비트맵 리깅** — 확보된 3D 렌더풍 정면 PNG를 파츠로 잘라 그대로 본에 바인딩(벡터 재작화 없음), 의상·소품은 `.riv`에 굽지 않고 **Data Binding `image` 프로퍼티에 런타임 주입**(아이템 추가에 앱 재배포 불필요). ③ 아이템은 **group(소유·착용) ↔ variant(렌더) 2단 구조** — 캐릭터마다 체형이 달라 옷 PNG를 따로 그려야 하므로, 사용자는 `group_code`("빨간 후드티")를 소유하고 렌더 시에만 `(group_code + 캐릭터)`로 variant를 해석한다 → **캐릭터를 바꿔도 옷장이 그대로 따라온다**. ④ 해금은 **미션(누적 업적) 단일 경로**. ⑤ 모든 적립·해금·구매는 `character_events(user_id, event_key) UNIQUE` **단일 멱등 관문**을 통과한다. ⑥ 에셋 제작이 크리티컬 패스에 걸리지 않도록 **비-Rive 대체 렌더러**로 **Rive 없이 전 기능을 개발·테스트**하고, Rive 교체는 **최후(Task 031)**에 수행한다(`--dart-define=USE_RIVE=false`가 기본값, 웹은 **항상 비-Rive**). ※ 실제 대체 렌더러는 원안의 `PlaceholderCharacterView`(PNG Stack)가 아니라 **`IdleCharacterView`(메시 워프 — `drawVertices` + `ImageShader`)** 로 구현됐다(Task 029).
+
+> **탭 재편(회귀 주의) — 아직 수행하지 않았다**: 목표는 `[캐릭터(홈)] [캘린더] [작심삼일] [피드] [프로필]`이며 캘린더가 index 0 → 1로 밀린다. Phase 6의 "탭은 맨 뒤 append로 인덱스 보존" 전제가 여기서 깨지므로 **FCM 딥링크·`context.go` 경로 전수 점검 + 탭 인덱스 회귀 테스트 필수**.
+> **현재 상태**: Task 029가 회귀 위험을 이유로 탭 재편을 **캐릭터 홈 구현과 함께 별도 작업으로 미뤘다.** 탭은 여전히 `[캘린더][목록][작심삼일][피드]` **4개**이고, 라우터에는 **현재 브랜치 순서(캘린더 index 0)를 못박는 가드 테스트**가 걸려 있다 — 탭을 재편하는 순간 이 가드가 실패하며 전수 점검을 강제한다.
+
+> **신규 기능 ID(진행 현황)**: **F026** 캐릭터 선택 — 🔶 **부분**(백엔드 API ✅ / 앱 온보딩 선택 ✅ / Rive 렌더 ❌) / **F027** 코스튬·옷장 — 🔶 **부분**(백엔드 착용 API ✅ / 앱 옷장 UI ❌) / **F028** 코인 — ❌ / **F029** 상점 — ❌ / **F030** 미션 해금 — 🔶 **부분**(스키마·`GET /missions` ✅ / 판정·지급 엔진 ❌) / **F031** 기록 리액션 — ❌ / **F032** 월간 회고·성장 — ❌ / **F033** 캐릭터 홈·소품 진열 — 🔶 **부분**(백엔드 ✅ / 앱 홈 화면 ❌).
+> **F018(감정 분석)·F019(동적 테마·연출)**: 원안대로 "비활성/캐릭터로 대체됨"으로 전환할 예정이나 **Task 024·025가 미착수라 아직 활성 상태**다(Phase 4 Task 012·013 ⚠️ 주석 참조).
+
+> **순서 원칙**: 감정 걷어내기 → 스키마 → 백엔드 → 앱(대체 렌더러로 전 기능 완성) → Rive 교체(에셋 의존, 최후) → 락인. **최대 리스크는 Task 028(멱등성)** — 여기만 정확하면 나머지는 CRUD다.
+
+> **⚠️ 마이그레이션 번호 재배치(실적 반영)**: 실제로는 **Task 026을 먼저 착수**해 **V15~V17을 선점**했다. Task 024가 원안대로 V15를 쓰면 이미 V17까지 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다. → **Task 026 = V15~V17**, **Task 024 = V18**.
+
+> **📊 Phase 7 진행 현황**(2026-07-14): **Task 026 ✅ 완료** · **Task 027 ✅ 완료** · **Task 029 🔶 부분 완료(온보딩 선택창까지 — 탭 재편·캐릭터 홈 미착수)** · Task 024·025·028·030·031·032 미착수.
+> ⚠️ Task 024가 미착수이므로 **LLM 감정 분석은 아직 활성 상태**(확정 → PENDING → 비동기 분석 → DONE)이며, `record.analysis.enabled` flag는 아직 존재하지 않는다.
+> ⚠️ Task 029가 부분 완료이므로 **탭은 아직 `[캘린더][목록][작심삼일][피드]` 4개, 캘린더 index 0 그대로**다. 탭 재편 회귀(아래)는 **아직 발생하지 않았다**.
+
+- **Task 024: 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V18)** - 우선순위 · **미착수**
+  - 구현 기능: F018·F019 축소 (감정 분석 비활성화 + 사용자 직접 입력 전환)
+  - DB `V18__diary_manual_emotion.sql`(**원안 V15 → V18**: Task 026이 V15~V17 선점): `diaries`에 `emotion_label VARCHAR(20)`(직접 입력 감정) 추가 + `chk_diaries_done_has_emotion` **DROP**(감정 미입력도 확정 가능). `emotion_types` 6종 마스터는 **유지**(프리셋 라벨·정렬의 단일 진실원). 기존 감정·테마 컬럼은 **보존**(LLM 복구 대비)
+  - 설정: `application.yml`에 `record.analysis.enabled: ${ANALYSIS_ENABLED:false}` 추가. `EmotionAnalysisService`·`EmotionAnalysisPoller`·`LlmEmotionAnalyzer`·`infra/llm/*`를 **삭제하지 않고** `@ConditionalOnProperty`로 빈 미등록 처리 → LLM 호출·비용 0, 코드 100% 보존
+  - `SaveDiaryRequest`에 `emotion`(프리셋 코드, `emotion_types` FK) + `emotionLabel`(자유 텍스트 `@Size(max=20)`) 추가 — **둘 다 선택**(감정 없이도 저장·확정 가능), **동시 지정 시 400 `EMOTION_CONFLICT`**(신규 ErrorCode)
+  - `DiaryService.upsert`: flag **off** → 확정 시 `analysis_status='DONE'` **즉시 전이**(대기 없음 → 리액션 지연 0) + 사용자 감정 저장, 색상·AI 필드(`background_color`/`ai_comment`/`ai_title`/`mood_emoji`/`emotion_scores`)는 NULL / flag **on** → 기존 `PENDING`+비동기 분석 경로 **무손상 유지**
+  - `GET /diaries/me/emotions/recent`: 최근 사용한 커스텀 감정 목록(재입력 편의 — 앱 작성기 추천 칩)
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — flag off 시 확정하면 `analysis_status='DONE'` + 사용자 감정 저장 + AI 필드 NULL 검증 / 프리셋·커스텀 **동시 지정 400 `EMOTION_CONFLICT`** / **감정 미입력도 확정 성공**(CHECK 해제 확인) / `emotionLabel` 21자 → 400 / **flag on 복구 시 기존 PENDING 분석 경로 정상 동작**(회귀 방지 — 가장 중요) / flag off 시 LLM 관련 빈 **미등록** 확인 / V18 마이그레이션 적용 및 기존 확정 기록 무손상
+
+- **Task 025: 앱 감정 연출 제거 + 작성기 감정 입력 위젯** · **미착수**
+  - 구현 기능: F018·F019 축소 (모바일 — 연출 제거 + 사용자 입력 UI)
+  - **제거**: `shared/widgets/emotion_video.dart`·`emotion_avatar.dart`, `shaders/emotion_alpha.frag` + pubspec `shaders:` 섹션 + `flutter_shaders` 의존성, `assets/emotions/**`·`assets/videos/running_sel.mp4`(원본은 `docs/`에 재인코딩 소스로 보존), `diary_detail_view.dart`의 `_IntroPhase`·`_RunningIntroOverlay`·**PENDING 3초 폴링**(확정 응답이 곧 DONE이므로 불필요), 피드 카드 감정 배경색·`diary_dto.hasTheme`
+  - **축소**: `core/theme/diary_theme.dart` 팔레트 → `emotion_palette.dart`(**달력 점 색 + 감정 칩 색만**), `core/theme/emotion_assets.dart`(PNG/mp4 경로) → `emotion_labels.dart`(**라벨만**). 상세·목록·피드는 **중립 카드 + 감정 칩**으로 렌더
+  - **유지**: 로그인 마스코트 영상 3종과 `video_player`(브랜딩 자산) — 삭제하지 않는다
+  - **추가**: `diary_editor_view.dart`에 감정 입력 위젯 — **프리셋 칩 6종**(JOY/SADNESS/ANGER/CALM/ANXIETY/NEUTRAL) + **"직접 입력"**(≤20자, 카운터) + **최근 사용 감정 추천**(`GET /diaries/me/emotions/recent`). **감정은 선택 사항**이며 미입력 확정도 정상 동작
+  - **(구현 직후 필수 테스트)** `flutter test` — 프리셋 칩 선택/해제, 직접 입력 20자 경계(21자 입력 차단), 프리셋·직접 입력 **상호 배타**(동시 선택 불가 → 400 사전 차단), 최근 감정 추천 칩 탭 시 값 채움, **감정 없이 확정 가능**, 확정 직후 상세가 **폴링 없이 즉시 DONE 렌더** / `flutter analyze` **클린**(삭제 위젯·셰이더·에셋 참조 0건 — 잔존 import 0 확인)
+
+- **Task 026: DB 캐릭터 도메인 스키마 (V15~V17) + 캐릭터 2종 시드** — ✅ **완료**
+  - 구현 기능: 캐릭터 도메인 토대 (F026~F033 공통)
+  - **실적**: V15(캐릭터 **2종**·대사 **33행**·item_group **5종**·variant **8행** 시드) / V16(미션 **5종** 시드) / V17(사용자 상태 6테이블). 로컬 PG18 `recorme` **적용 완료**(Flyway 버전 **17**), `CharacterSchemaTest`(Testcontainers) **통과**
+  - **`uq_variant`는 `UNIQUE NULLS NOT DISTINCT(group_code, character_code)`** — 공용 아이템은 `character_code`가 NULL인데, 표준 UNIQUE는 NULL을 서로 다른 값으로 봐서 **공용 variant의 중복을 못 막는다**(PG15+ 문법 필수)
+  - `V15__add_character_catalog.sql`: `characters`(code PK·name_ko·tagline·rive_artboard·thumbnail_url·sort_order·active) + **2종 시드**(`MONKEY` 여유롭고 느긋한 / `RED_PANDA` 부지런하고 애착 강한 — 둘 다 온보딩 무료 선택). `item_groups`(code PK·slot·name_ko·thumbnail_url·acquire_type(DEFAULT/MISSION/COIN)·coin_price·sort_order·active) = **상점·인벤토리가 다루는 단위**, slot ∈ `HAT`/`OUTFIT`/`GLASSES`/`PROP`(손)/`ROOM_PROP`(방 소품)/`BACKGROUND`. `character_items`(group_code FK·character_code FK **nullable**·image_url·rive_slot·render_meta JSONB) = **렌더 단위(variant)**, `character_code` NOT NULL=캐릭터 전용(체형·머리 크기가 달라 별도 PNG 필요) / NULL=공용(ROOM_PROP·BACKGROUND), `uq_variant UNIQUE(group_code, character_code)`. `character_lines`(character_code nullable(=공용)·context·line_ko·rive_trigger·weight) — **`context`는 감정이 아님**: `CONFIRM`/`STREAK_3`/`STREAK_7`/`MISSION`/`LEVEL_UP`/`IDLE`
+  - `V16__add_missions.sql`: `missions`(code PK·title·description·**rule JSONB**·coin_reward·item_group_reward FK·sort_order·active + `chk_missions_reward CHECK(coin_reward > 0 OR item_group_reward IS NOT NULL)`) + `user_missions(user_id, mission_code, achieved_at, PK(user_id, mission_code))`. rule 타입: `DIARY_COUNT`/`CONSECUTIVE_DAYS`/`RESOLUTION_SUCCESS`/`RESOLUTION_STREAK`/`LEVEL` — **감정 규칙 없음**. 판정은 DB 트리거가 아닌 `MissionEvaluator` 순수 함수
+  - `V17__add_user_character_state.sql`: `user_character_state`(user_id PK·selected_character FK·level·exp), `user_item_groups(user_id, group_code)` — **소유는 group 단위**(캐릭터 교체 시 옷장 유지), `user_equipment(user_id, slot, slot_index, group_code)` + `CHECK(slot='ROOM_PROP' OR slot_index=0)`(단일 슬롯 1개 / ROOM_PROP만 0~5 다중 진열), `user_progress`(confirmed_diary_count·consecutive_days·last_confirmed_date·resolution_success_count·max_streak_seq — **미션 판정 O(1) 캐시**), `user_wallets`(balance INT `CHECK >= 0`), `character_events`(user_id·event_key·event_type·coin_delta·balance_after·diary_id·payload JSONB·acked_at) + **`uq_character_events_key UNIQUE(user_id, event_key)`** — 이 한 테이블이 ① 멱등 관문 ② 코인 원장 ③ 리액션 페이로드 ④ 미확인 보상 알림함을 겸한다
+  - **(구현 직후 필수 테스트 — 완료)** JUnit5 + Testcontainers — V15~V17 무오류 적용, `uq_variant(group_code, character_code)` 중복 차단, **`uq_character_events_key` 중복 삽입 차단**(멱등 관문의 물리적 근거), `user_wallets.balance` **음수 UPDATE 거부**(CHECK), `chk_missions_reward`(보상 둘 다 없으면 거부), `user_equipment` slot_index CHECK(ROOM_PROP 아닌데 index≠0 거부), **캐릭터 2종 시드 존재**(MONKEY·RED_PANDA), FK 무결성(존재하지 않는 group_code 소유 거부)
+
+- **Task 027: 백엔드 캐릭터·미션 조회/선택/착용 API (group↔variant 해석)** — ✅ **완료**
+  - 구현 기능: F026(캐릭터 선택), F027(코스튬·옷장), F033(캐릭터 홈·소품 진열)
+  - **실적**: controller 3 / service 4(+`CatalogCache`) / mapper 3(+XML) / dto·vo. ErrorCode 4종은 실제로 **`global/exception/ErrorCode.java`**에 추가(설계 시 적어둔 `global/error/`가 아님). **백엔드 전체 202개 테스트 통과**(Docker 실기동 — Testcontainers 포함)
+  - **설계와 의도적 차이**: ① `GET /characters/me`는 **미선택자도 200 + `character: null`**(앱이 온보딩 분기를 에러가 아닌 정상 응답으로 판정) ② `PUT /characters/me/equipment`는 **전체 스냅샷 PUT** ③ 존재하지 않는 캐릭터 코드는 404가 아니라 **409 `CHARACTER_NOT_OWNED`로 통일**(카탈로그 존재 여부를 캐내는 열거 신호 차단)
+  - **원안에 없던 추가**: **`acquire_type='DEFAULT'` 아이템의 기본 지급을 JIT 프로비저닝에 포함**. DEFAULT 그룹은 미션·구매 어느 경로로도 지급되지 않아 **아무도 소유할 수 없는 구멍**이 되므로 baseline으로 함께 지급한다(보상 **적립**이 아니라 초기 상태 구성 → Task 028 영역 불침범)
+  - **부수 수정**: `FlywayMigrationTest`·`CharacterSchemaTest`의 `insertUser` 픽스처가 `users.friend_code`(V11 NOT NULL+UNIQUE)를 누락해 **Docker 실행 시 21개가 전부 실패**하던 선행 결함을 함께 고침
+  - 신규 패키지 `com.recordapp.domain.character`: `controller/`(CharacterController·WardrobeController·MissionController) → `service/`(CharacterService·WardrobeService·MissionService·CatalogCache) → `mapper/`(CharacterCatalogMapper·UserCharacterMapper·MissionMapper) → `dto/`·`vo/`
+  - **기본 상태 JIT 생성**: 최초 접근 시 `user_character_state`·`user_wallets`·`user_progress` 자동 생성(멱등 — `ON CONFLICT DO NOTHING`). `UserProvisioningService`와 동일 철학
+  - API: `GET /characters`(2종 + owned) · `GET /characters/me`(선택·착용·level/exp·코인·미확인 보상 수) · `PUT /characters/me/selection` · `PUT /characters/me/equipment`(**배치 교체**, `group_code` 단위) · `GET /characters/items?slot=`(group 목록 + owned + **내 캐릭터 기준 variant 이미지**) · `GET /missions`(달성 여부 + 진행률)
+  - **★ group↔variant 해석**: 착용·소유는 `group_code`로만 저장하고, 응답 렌더 정보는 `(group_code + 선택 캐릭터)`로 `character_items`를 조인해 이미지/`rive_slot`/`render_meta`를 해석한다 → **캐릭터를 교체해도 착용 상태는 유지되고 variant만 재해석**된다. 해당 캐릭터용 variant가 미제작이면 409 `ITEM_VARIANT_MISSING`
+  - 신규 ErrorCode: `CHARACTER_NOT_OWNED`(409), `ITEM_NOT_OWNED`(409), `ITEM_SLOT_MISMATCH`(400), `ITEM_VARIANT_MISSING`(409)
+  - **(구현 직후 필수 테스트 — 완료)** JUnit5 + Testcontainers — **JIT 기본 상태 생성 멱등**(동시 2회 호출에도 1행), 미보유 group 착용 시도 **409 `ITEM_NOT_OWNED`**, slot 불일치 착용 400, **★ 캐릭터 교체 시 착용 유지 + variant만 재해석**(핵심 시나리오), 해당 캐릭터용 variant 미제작 시 **409 `ITEM_VARIANT_MISSING`**, `ROOM_PROP` 다중 진열(0~5) + 단일 슬롯 중복 착용 거부, 배치 교체가 원자적(일부 실패 시 전체 롤백), **IDOR 차단**(타인 상태 조회·수정 불가)
+
+- **Task 028: ★ 백엔드 보상 엔진 — 이벤트 훅 + 멱등 게이트 + 미션 판정 + 코인 + 백스톱 폴러** · **미착수**
+  - 구현 기능: F028(코인), F029(상점), F030(미션 해금)
+  - ⚠️ **Phase 7 최대 리스크 지점.** 여기만 정확하면 나머지는 CRUD다. 테스트를 가장 두껍게 작성한다
+  - **도메인 훅킹(단방향)**: `global/event/`에 `DiaryConfirmedEvent(userId, diaryId, writtenDate)`·`ResolutionSucceededEvent(userId, resolutionId, streakSeq)` 정의. 기존 코드는 **`publishEvent` 한 줄씩만** 추가 — `DiaryService.upsert`(확정=DONE 전이 시), `ResolutionService.completeToday`(`markResolutionSuccessIfAllDone(id)==1` 블록, 기존 push 훅 옆). **diary·resolution은 character를 모른다** → 보상이 터져도 기록 저장은 롤백되지 않는다
+  - **수신**: `CharacterEventListener` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("characterExecutor")`. `AsyncConfig`에 `characterExecutor`(core 2 / max 4 / queue 200 / CallerRunsPolicy) 추가
+  - **★ 멱등 보상 엔진** `CharacterRewardService`(`@Transactional(propagation = REQUIRES_NEW)`): ① `character_events`에 `event_key`(`DIARY_CONFIRM:{diaryId}`) **`INSERT … ON CONFLICT DO NOTHING`** → **0행이면 즉시 no-op 반환**(재전달·폴러 중복 흡수). 게이트 삽입 성공(1행)이 **모든 부작용의 유일한 진입 조건** ② 코인 적립 + `balance_after` 기록 ③ `user_progress` UPSERT + RETURNING(확정 수·연속일·최대 streak) ④ `MissionEvaluator`(순수 함수)로 미션 판정 — 미션도 `event_key='MISSION:{code}'` 게이트를 통과해 **보상 1회 보장** ⑤ `character_lines`에서 **캐릭터별·맥락별**(감정 아님 — CONFIRM/STREAK/MISSION/LEVEL_UP) 대사 1줄 선택 ⑥ `payload` 갱신 → **앱 리액션의 단일 소스**
+  - **코인 소비(경합 안전)**: `POST /characters/items/{groupCode}/purchase` → `UPDATE user_wallets SET balance = balance - ? WHERE user_id = ? AND balance >= ?` → **0행이면 409 `COIN_INSUFFICIENT`**(CHECK 제약이 최종 방어선). `record.character.coin-enabled=false`(기본)이면 403 `FEATURE_DISABLED` — **적립은 항상 동작, 상점 소비만 게이팅**
+  - **백스톱 폴러** `CharacterRewardBackfillPoller`: `EmotionAnalysisPoller`와 동일 철학 — 확정됐으나 `character_events`에 게이트가 없는 기록을 주기적으로 스캔·보정(비동기 유실 대비). 게이트가 멱등하므로 중복 적립 불가
+  - API: `GET /characters/me/wallet` · `GET /characters/me/rewards`(커서 — 미확인 보상함) · `POST /characters/me/rewards/ack` · `POST /characters/items/{groupCode}/purchase` · `GET /characters/me/reaction?diaryId=`(**확정 즉시 생성 → 폴링 불필요**)
+  - 설정: `record.character.{coin-enabled: false, coin-per-diary: 10, coin-per-resolution-success: 30, exp-per-diary: 10}`. 신규 ErrorCode: `COIN_INSUFFICIENT`(409), `FEATURE_DISABLED`(403)
+  - **(구현 직후 필수 테스트 — 가장 두껍게)** JUnit5 + Testcontainers — ① 확정 1회 → **코인·진척도·`character_events` 정확히 1행** ② **★ 같은 이벤트 3회 재전달 → 잔액·진척도·미션 전부 불변**(멱등 핵심) ③ 미션 임계값 도달 시 **보상 1회만** 지급(재판정해도 재지급 없음) ④ 작심삼일 완주 시 코인 적립 + `RESOLUTION_STREAK` 미션 판정 ⑤ **트랜잭션 롤백 시 미적립**(AFTER_COMMIT 보장 — 기록 저장 실패했는데 코인만 들어오면 안 됨) ⑥ **백스톱 폴러가 유실분 보정**(리스너 미실행 상황 시뮬레이션 → 폴러 실행 → 1회만 적립) ⑦ **구매 동시 요청 경합 시 잔액 음수 불가**(0행 UPDATE → `COIN_INSUFFICIENT`) ⑧ **연속일 계산**(연속 확정 시 증가 / **하루 건너뛰면 리셋** / 같은 날 재확정은 불변) ⑨ `coin-enabled=false`에서 구매 403 `FEATURE_DISABLED`(적립은 정상)
+
+- **Task 029: 앱 캐릭터 홈(1번 탭) + 탭 재편 + 온보딩 + 대체 렌더러 + 데이터 계층** — 🔶 **부분 완료(온보딩 선택창까지)**
+  - 구현 기능: F026(캐릭터 선택) **부분** / F033(캐릭터 홈·소품 진열) **미착수**
+  - **✅ 완료**: 데이터 계층(`CharacterRepository` abstract → Api/Fake + Riverpod providers) · `/onboarding/character` 라우트 + **redirect 가드**(`characterOnboardingRedirect` **순수 함수** — async 호출 없이 상태만 보고 판정, 판단 불가면 `null`로 분기 보류 → 루프 방지) · **캐릭터 선택 온보딩 화면** · `CharacterStage` 렌더러 스위치 · `IdleCharacterView`. `flutter analyze` 무경고 · `flutter test` **112개 통과**
+  - **❌ 미착수(중요)**: **탭 재편을 하지 않았다** — 하단 탭은 여전히 `[캘린더][목록][작심삼일][피드]` **4개**, **캘린더 index 0 유지**. FCM 딥링크 회귀 위험이 커서 **캐릭터 홈 구현과 한 덩어리로 묶어** 별도 작업으로 미룸. 그 사이 라우터에는 **현재 브랜치 순서를 못박는 가드 테스트**를 걸어 둠(탭 재편 시 실패하며 전수 점검을 강제). / **캐릭터 홈(1번 탭)·`placeholder_character_view.dart`·상태바·소품 진열·하단 액션 전부 미구현** / **`AppColors.currency` 토큰 미추가**(코인을 그리는 화면이 아직 없음)
+  - **온보딩 UI는 설계와 다르게 갔다**: 원안의 "좌우 2장 대형 비교"가 아니라 **peek 캐러셀**(`PageView`, `viewportFraction 0.78`) + 페이지 도트 + 하단 "선택" CTA, 전환 3수단(드래그·옆 카드 탭·도트 탭). 사용자 요청이며, **캐릭터가 3종 이상으로 늘어도 레이아웃이 그대로 확장**된다. 헤드라인은 "기억을 같이 만들어갈 / 친구를 선택해주세요.", **tagline은 렌더하지 않음**
+  - **대체 렌더러는 `PlaceholderCharacterView`(PNG Stack)가 아니라 `IdleCharacterView`(메시 워프)** — `Canvas.drawVertices` + `ImageShader`로 PNG를 **12×16 격자**로 변형(발 고정 스웨이·숨쉬기 스쿼시&스트레치·머리 두리번·12초 주기 정수배 하모닉). 이미지를 통째로 `Transform`하면 **판자가 흔들리는 모양**이 되기 때문이다(Rive가 자연스러운 건 런타임이 아니라 **아트보드가 메시로 리깅**돼서다 — 같은 원리를 Flutter에서 직접 구현)
+  - **`app.dart`에 `_AppScrollBehavior` 추가**: Flutter 기본 `MaterialScrollBehavior`가 `dragDevices`에서 **마우스를 제외**해 **웹에서 `PageView`가 마우스로 끌리지 않던** 문제 해결
+  - 신규 feature `app/lib/features/character/`: `domain/`(character·item_group·my_character·mission·reward_event·retrospect + `CharacterRepository` **abstract**) → `data/`(`ApiCharacterRepository`·`FakeCharacterRepository`·dto) → `presentation/`(page·providers·widgets). **기존 컨벤션 준수**: abstract Repository → Api/Fake impl → Riverpod provider override → 라우트
+  - **⚠️ 탭 재편(회귀 주의)**: `core/router/app_router.dart`·`scaffold_with_nav_bar.dart`를 `[캐릭터(홈)] [캘린더] [작심삼일] [피드] [프로필]`로 재구성 → **캘린더가 index 0 → 1로 밀린다**. **FCM 딥링크(`/resolution/:id`)·모든 `context.go` 경로 전수 점검** 필수(Phase 6의 "맨 뒤 append로 인덱스 보존" 전제가 깨짐)
+  - **온보딩**: 가입 완료 후 `selectedCharacter == null`이면 go_router `redirect`로 `/onboarding/character` → **원숭이 vs 레서판다 좌우 대형 2장 비교** + 성격 소개 문구 → "이 친구와 시작하기" → `PUT /characters/me/selection`
+  - **캐릭터 홈(몰입형 풀스크린 "내 방")**: 상단 반투명 상태바(`character_home_stat_bar` — Lv·성장 게이지·코인·보상 알림 배지), 중앙 대형 캐릭터(idle 두리번거림), 주변 **소품 4슬롯 진열**, 배경은 착용 `BACKGROUND`, 하단 플로팅 패널(`character_home_bottom_actions` — **"오늘 기록하기" 주 CTA** + 옷장·미션·상점)
+  - **★ 플레이스홀더 렌더러**: `character_stage.dart`(Rive/플레이스홀더 **스위치** — `--dart-define=USE_RIVE`, 기본 false) + `placeholder_character_view.dart`(**PNG Stack 합성** — `render_meta`의 `anchorX`/`anchorY`/`scale`/`z`로 아이템 배치). **Rive 없이 전 기능 개발·테스트 가능** → 에셋 제작이 크리티컬 패스에서 제거됨. `kIsWeb`이면 무조건 플레이스홀더
+  - 색 역할 준수(`primary`=선택/CTA, `success`=성장 게이지, `accent`는 AI 전용이므로 **미사용**). 코인 색은 `AppColors`에 **`currency`(골드) 토큰 신규 승격**
+  - **(구현 직후 필수 테스트)** `flutter test` — **★ 탭 인덱스 회귀**(캘린더 0→1 이동 후 각 탭 라우트 정상 진입, **FCM 딥링크 `/resolution/:id` 전수 검증**), 온보딩 리다이렉트(`selectedCharacter == null` → `/onboarding/character`, 선택 후 홈 복귀·재진입 시 리다이렉트 없음), **플레이스홀더가 `render_meta` 좌표(anchor·scale·z)대로 아이템 렌더**, 미착용 슬롯은 렌더 생략, 상태바 Lv·게이지·코인 바인딩, 로딩/에러/빈 상태 / `flutter analyze` 무경고
+
+- **Task 030: 앱 옷장 · 상점 · 미션 · 보상함 UI** · **미착수**
+  - 구현 기능: F027(코스튬·옷장), F029(상점), F030(미션 해금)
+  - `wardrobe_page.dart`: slot 탭(HAT/OUTFIT/GLASSES/PROP/ROOM_PROP/BACKGROUND) + `item_grid_tile`(보유/미보유·착용중 표시) → 착용/해제 → **`PUT /characters/me/equipment` 배치 교체**. ROOM_PROP은 0~5 다중 진열 슬롯 UI
+  - `shop_page.dart`: `acquire_type=COIN` group 목록 + 가격·잔액 표시 → 구매 확인 → `POST /characters/items/{groupCode}/purchase`. **잔액 부족 시 `COIN_INSUFFICIENT` 에러 UI**, `coin-enabled=false`면 `FEATURE_DISABLED` 안내(준비 중)
+  - `mission_page.dart`: `mission_tile` + **`unlock_progress_bar`**(진행률 — "10개 중 7개 기록") + 달성 시 보상(코인·아이템) 표시. 해금은 **미션 단일 경로**임을 UI로도 명확히
+  - 보상함: 미확인 `character_events` 목록(커서) → 확인 시 `POST /characters/me/rewards/ack` → 상태바 배지 감소
+  - **(구현 직후 필수 테스트)** `flutter test` — 착용/해제 시 **배치 payload가 group_code 단위**로 정확히 구성됨, 미보유 아이템 착용 불가(비활성), **구매 성공 → 잔액 차감·소유 반영 / 구매 실패(잔액 부족) → 에러 UI·잔액 불변**, `FEATURE_DISABLED` 안내 노출, 미션 진행률 바 경계값(0%·99%·100%), 보상함 ack 후 배지 감소 및 목록에서 제거, 커서 페이징
+
+- **Task 031: 에셋 제작 + Rive 비트맵 리깅 렌더러 교체** · **미착수**(사용자가 **Rive로 캐릭터를 제작해 넣을 예정**)
+  - 구현 기능: F026 (캐릭터 렌더 최종 품질)
+  - ⚠️ **에셋 의존 작업이므로 최후 배치.** 선행 Task는 전부 **비-Rive 렌더러**로 완결돼 있어야 한다. **먼저 캐릭터 1종 + 아이템 2개로 전 구간(DB→API→상점→착용→렌더)을 관통시킨 뒤** 나머지를 채운다
+  - **★★ 핵심 전제 — Rive 런타임은 PNG를 애니메이션하지 못한다**: 공식 문서상 *"The Flutter runtime does not provide animation capabilities for plain PNG images. It exclusively works with Rive's native format."* → **`rive` 패키지만 넣는 것으로는 아무 효과가 없고**, **에디터에서 비트맵 리깅한 `.riv`가 선행돼야 한다**. 이 Task의 실질은 코드가 아니라 **에셋 제작**이다
+  - **`rive` 패키지는 아직 pubspec에 없다** — 재생할 `.riv`가 없는 상태에서 네이티브 FFI dev 릴리스(`rive: ^0.14.0-dev.6` + `rive_native`)를 얹으면 **효과 0 · 빌드 리스크만 증가**. `.riv` 확보와 **동시에** 추가한다
+  - **교체 대상은 `IdleCharacterView`(메시 워프)** — Task 029가 `PlaceholderCharacterView`(PNG Stack) 대신 이것을 구현했다. **드롭인 지점은 `character_stage.dart`의 `USE_RIVE` 분기**에 주석으로 준비돼 있다(스위치·웹 폴백은 이미 동작). 참고 API: `RiveNative.init()` → `File.asset(..., riveFactory: Factory.rive)` → `RiveWidgetController(file, stateMachineSelector: StateMachineSelector.byName('Idle'))` → `RiveWidget(controller:, fit:)`
+  - ⚠️ **에셋 블로커**: 현재 `app/assets/characters/{monkey,red_panda}.png`는 **배경이 불투명한 크림색**이다. 파츠 분리·슬롯 합성 모두 **투명 PNG가 전제**이며, 사용자가 투명 PNG를 준비하기로 했다
+  - **① 맨몸 베이스 생성**: 현재 PNG는 흰 티 + 검은 반바지 착용 → AI/생성 채우기로 **옷 없는 버전** 제작. 지금의 흰 티·검은 반바지는 **첫 의상 아이템**(`OUTFIT/BASIC_TEE`·`OUTFIT/BASIC_SHORTS`)으로 등록 → 몸에 밀착하는 셀프·반팔·수영복이 나중에 가능해짐
+  - **② 파츠 분리**: 배경 제거 후 레이어 분해(`head`/`ears`/`eyes`(+감은 눈 1장)/`body`/`arm_L`/`arm_R`/`leg_L`/`leg_R`/`tail`). 가려진 부분(팔 뒤 몸통)은 인페인팅 복원
+  - **③ Rive 아트보드**: 캐릭터당 1개, 이름 = DB `characters.code`(`MONKEY`·`RED_PANDA`). 1:1 캔버스(1000×1000), 하단 정렬. **비트맵 그대로** 배치 + 본(spine/head/arm/tail) 바인딩(벡터 재작화 없음)
+  - **④ State Machine `SM_Character`**(전 아트보드 동일): `Idle`(루프 — 숨쉬기 + 눈 깜빡임 + **주기적 고개 돌려 두리번거림**) / `React`(1회 → Idle 복귀) / `Celebrate` / `Wave`
+  - **⑤ ViewModel `CharacterVM`**(감정 프로퍼티 **없음**): Image `hat`·`outfit`·`glasses`·`prop`·`background`·`roomProp0~5`(런타임 주입, null=미착용) / String `speech`·`nickname` / Number `level`·`expRatio`(0~1) / Trigger `react`·`celebrate`·`wave`
+  - **⑥ 런타임 연결**: `rive_character_view.dart` + `shared/character/rive_image_cache.dart`(url→bytes **메모리 LRU + 디스크 캐시**). `File.asset` → `RiveWidgetController`(artboard = `spec.riveArtboard`, SM = `SM_Character`) → `dataBind(DataBind.auto())` → `_vmi.image('outfit')?.value = decodeImage(bytes)`. **아이템은 `.riv`에 굽지 않는다** — 서버 `/files/items/` 업로드 → `character_items.image_url` → 앱 다운로드·캐시·주입 → **아이템 추가에 앱 재배포 불필요**
+  - 성능 예산: 아트보드당 본 ≤40, `.riv` ≤1.5MB, 이미지는 **referenced**(embed 금지), 아이템 PNG 512×512 투명 ≤80KB(**캐릭터별로 슬롯 프레임에 맞춰 export**)
+  - **(구현 직후 필수 테스트)** 실기기 수동(Z Flip3 + iOS) — 2종 아트보드 정상 로드, **idle 두리번거림·눈 깜빡임 재생**, 슬롯 이미지 스왑(착용/해제/교체 즉시 반영), **캐릭터 전환 시 variant 재주입**, `react`/`celebrate` 트리거 1회 재생 후 Idle 복귀, **홈 재진입 50회 dispose 누수 없음**(메모리 프로파일), APK 증가분 기록, `kIsWeb` 웹에서 플레이스홀더 폴백 확인. ⚠️ Rive는 네이티브 FFI 의존 → **위젯 테스트는 플레이스홀더 경로 유지**(Task 029 테스트 무손상)
+
+- **Task 032: 앱 리액션 오버레이 + 월간 회고 카드 (락인 완성)** · **미착수**
+  - 구현 기능: F031(기록 리액션), F032(월간 회고·성장)
+  - **리액션 오버레이**: `diary_detail_view.dart`에서 인트로·러닝 영상·PENDING 폴링을 제거한 자리(Task 025)에 `reaction_overlay.dart` + `character_speech_bubble.dart`. **확정 응답이 곧 `DONE`이므로 대기 없이 즉시** 캐릭터 등장 → 말풍선(맥락 기반 대사) + 코인/미션 획득 카드 → 탭하면 `POST /characters/me/rewards/ack`. **획득이 없어도 대사 1줄은 항상** 표시(빈손 리액션 금지). 페이로드 소스는 `GET /characters/me/reaction?diaryId=`
+  - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` — `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·연속일·**감정 분포**(사용자 입력 감정 통계)·획득 아이템·레벨 성장·캐릭터 성장 요약. **데이터가 쌓일수록 떠나기 어려워지는 구조**의 가시화. 백엔드 `RetrospectService`
+  - **(구현 직후 필수 테스트)** `flutter test` — 리액션 오버레이 표시/dismiss, **획득 없어도 대사 1줄 표시**, ack 호출 후 배지 감소·재표시 안 됨, 코인/미션 카드 렌더, 회고 카드 빈 달(기록 0건) 처리, 감정 분포 집계 렌더(프리셋 + 커스텀 라벨 혼재) / **`integration_test` E2E — 가입 → 캐릭터 선택(온보딩) → 기록 작성 → 감정 입력 → 확정 → 리액션 즉시 등장 → 코인 반영 → 상점 구매 → 착용 → 홈 반영**(전 구간 관통)
+
+- **Phase 7 로컬 실행**: `cd backend && ./gradlew bootRun`(네이티브 PG 18 `recorme`) + `cd app && flutter run` + `adb reverse tcp:8080 tcp:8080`
 
 ## 상태 범례
 
