@@ -66,7 +66,7 @@
 | `EmotionAnalyzer` / `LlmClient` | LLM provider 교체(Gemini·Claude·Ollama·Stub) | ✅ **현재 활성**(기본 Gemini, 무키 시 Stub 폴백). 비활성화는 Task 024 예정 |
 | `PushService` | FCM ↔ Stub 폴백 | 무키 시 `StubPushService` |
 | `StorageService` | 로컬 디스크 → S3 | **캐릭터 아이템 PNG 서빙(`/files/items/`)에 그대로 재사용** — 신규 인프라 없음 |
-| `CharacterStage` (앱) | **렌더러 스위치** | `--dart-define=USE_RIVE`(기본 `false`)로 전환. `kIsWeb`이면 무조건 비-Rive. `.riv`가 없어 **현재는 양쪽 분기 모두 `IdleCharacterView`로 폴백**한다 → 에셋 리깅이 크리티컬 패스에 걸리지 않는다 |
+| `CharacterStage` (앱) | **렌더러 배선** | 렌더러는 `IdleCharacterView`(통짜 PNG 12×16 메시 워프) 하나다. **Rive·파츠 조립을 둘 다 시도했다가 되돌렸다**(Task 031 — 파츠가 서로 맞지 않아 캐릭터가 조각나 보였다). 외부 의존성 0 → 웹 포함 전 플랫폼 동일 동작 |
 | `CatalogCache` (백엔드) | 캐릭터·아이템·미션 **마스터 캐시** | 마이그레이션으로만 바뀌는 마스터라 요청마다 SQL을 태우지 않는다. 불변 스냅샷을 volatile 참조로 통째 교체(읽기 무락) |
 | `MusicSource` + `tracks.source_type` | 음악 소스 미정 흡수 | **MVP 이후** |
 
