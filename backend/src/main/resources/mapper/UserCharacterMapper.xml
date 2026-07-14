@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.character.mapper.UserCharacterMapper">
+
+    <!-- ⚠️ constructor 매핑 — <arg> 순서가 record 표준 생성자와 일치해야 한다(ResolutionMapper 관례). -->
+    <resultMap id="userCharacterStateMap" type="com.recordapp.domain.character.dto.UserCharacterStateRow">
+        <constructor>
+            <arg column="selected_character" javaType="java.lang.String"/>
+            <arg column="level" javaType="_int"/>
+            <arg column="exp" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="userProgressMap" type="com.recordapp.domain.character.dto.UserProgressRow">
+        <constructor>
+            <arg column="confirmed_diary_count" javaType="_int"/>
+            <arg column="consecutive_days" javaType="_int"/>
+            <arg column="resolution_success_count" javaType="_int"/>
+            <arg column="max_streak_seq" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 착용 + 해석된 variant. render_meta 는 ::text 원문(서비스가 JsonNode 로 파싱). -->
+    <resultMap id="equippedItemMap" type="com.recordapp.domain.character.dto.EquippedItemRow">
+        <constructor>
+            <arg column="slot" javaType="java.lang.String"/>
+            <arg column="slot_index" javaType="_short"/>
+            <arg column="group_code" javaType="java.lang.String"/>
+            <arg column="name_ko" javaType="java.lang.String"/>
+            <arg column="image_url" javaType="java.lang.String"/>
+            <arg column="rive_slot" javaType="java.lang.String"/>
+            <arg column="render_meta" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- ===== JIT 기본 상태(멱등) =====
+         ON CONFLICT (user_id) DO NOTHING → 동시 최초요청 2건에도 각 1행. 반환 0행 = 이미 존재(정상). -->
+
+    <insert id="insertStateIfAbsent">
+        INSERT INTO user_character_state (user_id)
+        VALUES (#{userId})
+        ON CONFLICT (user_id) DO NOTHING
+    </insert>
+
+    <insert id="insertWalletIfAbsent">
+        INSERT INTO user_wallets (user_id)
+        VALUES (#{userId})
+        ON CONFLICT (user_id) DO NOTHING
+    </insert>
+
+    <insert id="insertProgressIfAbsent">
+        INSERT INTO user_progress (user_id)
+        VALUES (#{userId})
+        ON CONFLICT (user_id) DO NOTHING
+    </insert>
+
+    <!-- 기본 지급 아이템(DEFAULT) 소유 부여. INSERT … SELECT 라 그룹이 늘어도 코드 변경이 없다.
+         (user_id, group_code) PK 충돌은 DO NOTHING → 재호출해도 소유 1행(멱등). -->
+    <insert id="grantDefaultItemGroups">
+        INSERT INTO user_item_groups (user_id, group_code)
+        SELECT #{userId}, g.code
+          FROM item_groups g
+         WHERE g.acquire_type = 'DEFAULT'
+           AND g.active
+        ON CONFLICT (user_id, group_code) DO NOTHING
+    </insert>
+
+    <!-- ===== 조회 ===== -->
+
+    <select id="findState" resultMap="userCharacterStateMap">
+        SELECT selected_character,
+               level,
+               exp
+          FROM user_character_state
+         WHERE user_id = #{userId}
+    </select>
+
+    <select id="findProgress" resultMap="userProgressMap">
+        SELECT confirmed_diary_count,
+               consecutive_days,
+               resolution_success_count,
+               max_streak_seq
+          FROM user_progress
+         WHERE user_id = #{userId}
+    </select>
+
+    <select id="findWalletBalance" resultType="java.lang.Integer">
+        SELECT balance
+          FROM user_wallets
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- 미확인 보상 수. idx_character_events_unacked(부분 인덱스)와 동일 조건. -->
+    <select id="countUnackedRewards" resultType="_int">
+        SELECT count(*)
+          FROM character_events
+         WHERE user_id = #{userId}
+           AND acked_at IS NULL
+    </select>
+
+    <select id="findOwnedGroupCodes" resultType="java.lang.String">
+        SELECT group_code
+          FROM user_item_groups
+         WHERE user_id = #{userId}
+    </select>
+
+    <select id="findEquippedGroupCodes" resultType="java.lang.String">
+        SELECT group_code
+          FROM user_equipment
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- ★★ variant 해석 조인 — 이 도메인의 핵심 SQL ★★
+         착용(user_equipment)은 group_code 로만 저장된다. 렌더에 필요한 image_url/rive_slot/render_meta 는
+         (group_code + 선택 캐릭터)로 character_items 를 조인해 "해석"한다.
+
+           JOIN character_items ci
+             ON ci.group_code = e.group_code
+            AND (ci.character_code = :selectedCharacter OR ci.character_code IS NULL)
+
+         - 캐릭터 전용 variant 와 공용 variant 가 둘 다 있으면 둘 다 매칭되므로,
+           DISTINCT ON (slot, slot_index) + ORDER BY ci.character_code NULLS LAST 로
+           **전용 variant 를 우선**하고 없을 때만 공용으로 폴백한다.
+         - uq_variant(NULLS NOT DISTINCT)가 (group, 캐릭터) 쌍당 1행을 보장하므로 후보는 최대 2행이다.
+         - selectedCharacter 가 NULL(미선택)이면 등치 비교가 NULL 이라 공용 variant 만 남는다.
+         - INNER JOIN 이므로 어느 쪽으로도 해석되지 않는 착용 행은 결과에서 빠진다
+           (조회는 조용히 감추고, 착용/캐릭터 교체 시점에 409 ITEM_VARIANT_MISSING 으로 막는다).
+         jdbcType=VARCHAR 는 selectedCharacter=null 일 때 PG 가 파라미터 타입을 추론하지 못하는 것을 막는다. -->
+    <select id="findEquippedItems" resultMap="equippedItemMap">
+        SELECT DISTINCT ON (e.slot, e.slot_index)
+               e.slot                AS slot,
+               e.slot_index          AS slot_index,
+               e.group_code          AS group_code,
+               g.name_ko             AS name_ko,
+               ci.image_url          AS image_url,
+               ci.rive_slot          AS rive_slot,
+               ci.render_meta::text  AS render_meta
+          FROM user_equipment e
+          JOIN item_groups g
+            ON g.code = e.group_code
+          JOIN character_items ci
+            ON ci.group_code = e.group_code
+           AND (ci.character_code = #{selectedCharacter,jdbcType=VARCHAR}
+                OR ci.character_code IS NULL)
+         WHERE e.user_id = #{userId}
+         ORDER BY e.slot, e.slot_index, ci.character_code NULLS LAST
+    </select>
+
+    <!-- ===== 변경 ===== -->
+
+    <!-- 캐릭터 교체. user_equipment 는 손대지 않는다(착용 유지 → 다음 조회에서 variant 만 재해석). -->
+    <update id="updateSelectedCharacter">
+        UPDATE user_character_state
+           SET selected_character = #{characterCode},
+               updated_at         = now()
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- 배치 교체 1단계: 기존 착용 전부 삭제. 2단계 INSERT 와 같은 트랜잭션이라 원자적이다. -->
+    <delete id="deleteEquipment">
+        DELETE FROM user_equipment
+         WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 배치 교체 2단계: 검증 통과 항목 일괄 INSERT(DeviceTokenMapper 의 foreach 관례). -->
+    <insert id="insertEquipment">
+        INSERT INTO user_equipment (user_id, slot, slot_index, group_code)
+        VALUES
+        <foreach collection="items" item="it" separator=",">
+            (#{userId}, #{it.slot}, #{it.slotIndex}, #{it.groupCode})
+        </foreach>
+    </insert>
+
+</mapper>

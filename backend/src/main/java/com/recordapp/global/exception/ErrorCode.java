@@ -36,6 +36,14 @@ public enum ErrorCode {
 	RESOLUTION_NOT_EXTENDABLE(HttpStatus.CONFLICT, "성공한 작심삼일만 연장할 수 있어요."),
 	RESOLUTION_ALREADY_EXTENDED(HttpStatus.CONFLICT, "이미 연장한 작심삼일이에요."),
 
+	// 캐릭터·아이템(옷장)
+	// 캐릭터는 전 사용자에게 무료 개방이므로, 없는 코드/비활성 코드 선택도 '보유하지 않은 캐릭터'로 수렴시킨다.
+	CHARACTER_NOT_OWNED(HttpStatus.CONFLICT, "선택할 수 없는 캐릭터예요."),
+	ITEM_NOT_OWNED(HttpStatus.CONFLICT, "보유하지 않은 아이템이에요."),
+	ITEM_SLOT_MISMATCH(HttpStatus.BAD_REQUEST, "해당 부위에 착용할 수 없는 아이템이에요."),
+	// (group, 선택 캐릭터) variant 가 아직 제작되지 않은 경우 — 캐릭터 교체·착용 모두에서 발생 가능.
+	ITEM_VARIANT_MISSING(HttpStatus.CONFLICT, "이 캐릭터용 아이템 이미지가 아직 준비되지 않았어요."),
+
 	// 파일 업로드
 	INVALID_FILE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일입니다."),
 	FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 너무 큽니다."),
