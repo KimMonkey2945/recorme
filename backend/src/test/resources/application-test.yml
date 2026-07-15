@@ -9,6 +9,12 @@ supabase:
 # 백그라운드 자동 구동을 끈다. Spring 의 CRON_DISABLED 마커("-")를 주입하면 해당 @Scheduled 가 등록되지 않는다
 # (리마인더 15분 주기 배치가 테스트 데이터와 경합해 비결정성을 유발하는 것을 차단).
 record:
+  # 감정 분석 flag(Task 024): 테스트 기본은 on 으로 고정한다.
+  # 운영 기본값은 false(감정 사용자 직접 입력)지만, 기존 통합 테스트(확정→PENDING→분석)의
+  # 회귀를 보존하려면 테스트에서는 분석 경로가 살아 있어야 한다. off 경로(즉시 DONE·빈 미등록)는
+  # ManualEmotionTest 가 @TestPropertySource(record.analysis.enabled=false)로 별도 컨텍스트에서 검증한다.
+  analysis:
+    enabled: true
   resolution:
     failure-cron: "-"
     reminder-cron: "-"

@@ -10,7 +10,7 @@ import '../../domain/item_group.dart';
 /// - **선택(로컬 미리보기 착용)**: primary 2px 테두리 + 우상단 체크 배지.
 /// - **보유(미착용)**: 기본 카드(hairline 테두리).
 /// - **미보유**: 흑백 처리 + 자물쇠. 미션 잠금이면 진행률("7/10")을, 코인이면 가격을 보여준다.
-///   탭 자체가 비활성이다(onTap null) — 해금은 미션/상점의 몫이다.
+///   탭하면 옷장이 해금 조건 안내 시트를 띄운다(코인 구매 실행은 다음 단계). 상점 화면은 없다.
 class ItemGridTile extends StatelessWidget {
   const ItemGridTile({
     super.key,

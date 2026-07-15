@@ -122,8 +122,6 @@ public class CharacterService {
 	 */
 	MyCharacterResponse buildMyCharacter(Long userId) {
 		UserCharacterStateRow state = userCharacterMapper.findState(userId);
-		int level = state == null ? 1 : state.level();
-		int exp = state == null ? 0 : state.exp();
 		String selected = state == null ? null : state.selectedCharacter();
 
 		CharacterRow row = catalog.character(selected);
@@ -137,8 +135,7 @@ public class CharacterService {
 				.map(this::toEquippedResponse)
 				.toList();
 
-		return new MyCharacterResponse(character, level, exp, CharacterConstants.EXP_PER_LEVEL,
-				balance == null ? 0 : balance, unacked, equipment);
+		return new MyCharacterResponse(character, balance == null ? 0 : balance, unacked, equipment);
 	}
 
 	private EquippedItemResponse toEquippedResponse(EquippedItemRow row) {

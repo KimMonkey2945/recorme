@@ -14,7 +14,7 @@
 | | `character_items` | 아이템 **렌더 단위(variant)** — `(group_code, character_code)` 조합별 이미지 |
 | | `character_lines` | 캐릭터 대사(맥락별 — 감정 아님) |
 | | `missions` / `user_missions` | 미션(업적) 마스터 + 달성 이력 — **유일한 해금 경로** |
-| | `user_character_state` | 선택 캐릭터·레벨·경험치 |
+| | `user_character_state` | 선택 캐릭터 (레벨·경험치는 V18 보상 재설계에서 드롭) |
 | | `user_item_groups` / `user_equipment` | 아이템 소유(group 단위) / 착용 슬롯 |
 | | `user_progress` | 미션 판정용 진척도 캐시(O(1)) |
 | | `user_wallets` | 코인 잔액 |
@@ -42,8 +42,8 @@ users 1───∞ diary_reactions ∞───1 diaries   (diaries.reaction_co
 
 emotion_types 1───∞ diaries (primary_emotion FK, nullable)
     ※ diaries가 감정·색·AI 필드를 직접 보유(V7). emotion_analyses 1:1 테이블은 없다.
-    ※ 감정은 현재도 LLM 비동기 분석으로 채워진다(확정 시 1회). 사용자 직접 입력 전환(diaries.emotion_label)은
-      Task 024(V18 예약) — **아직 적용 전**이다.
+    ※ 감정은 기본적으로 **사용자 직접 입력**이다(프리셋 primary_emotion FK 또는 자유 텍스트 emotion_label).
+      LLM 비동기 분석은 flag(record.analysis.enabled, 기본 false)로 꺼져 있고 true 시 복구된다 — Task 024(V19) 적용됨.
 
 ── 작심삼일 · 알림 ──────────────────────────────────────────
 users 1───∞ resolutions 1───∞ resolution_checks   (연장은 streak_group_id UUID 체인으로 self-묶음)
@@ -178,11 +178,12 @@ ALTER TABLE diaries
     CHECK (background_color IS NULL OR background_color ~ '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$');
 -- (text_color·accent_color 도 동일 형식 CHECK: chk_diaries_text_color / chk_diaries_accent_color)
 
--- ========== 감정 사용자 직접 입력 (Phase 7 — ⚠️ 미적용, V18 예약) ==========
--- [V18__diary_manual_emotion.sql] **Task 024 미착수 — 아직 적용되지 않은 설계다.**
---   현재 스키마·백엔드는 V7의 **LLM 비동기 감정 분석이 그대로 활성**이며(확정 시 1회 분석 → DONE),
---   emotion_label 컬럼도 chk_diaries_done_has_emotion DROP 도 아직 없다. 아래는 목표안이다.
--- (목표) LLM 감정 분석을 flag(record.analysis.enabled)로 끄고 감정을 **사용자가 직접 지정**하는 모델로 전환한다.
+-- ========== 감정 사용자 직접 입력 (Phase 7 — ✅ V19 적용됨, Task 024) ==========
+-- [V19__diary_manual_emotion.sql] **Task 024 구현 완료 — 적용된 스키마다.**
+--   (원래 V18 예약이었으나 V18을 보상 재설계(경험치/레벨 드롭)가 선점 → V19로 밀렸다.)
+--   LLM 감정 분석은 flag(record.analysis.enabled, 기본 false)로 꺼져 있고, 확정 시 즉시 DONE + 사용자 감정 저장이
+--   기본 동작이다. flag를 true로 켜면 기존 V7의 LLM 비동기 분석 경로가 무손상 복구된다.
+-- LLM 감정 분석을 flag(record.analysis.enabled)로 끄고 감정을 **사용자가 직접 지정**하는 모델로 전환한다.
 --   감정은 순수 기록 메타데이터이며 캐릭터 리액션·미션 판정·해금 어디에도 쓰이지 않는다(달력 점·회고 통계 전용).
 --   프리셋 6종 → 기존 diaries.primary_emotion(emotion_types FK) 재사용
 --   자유 입력   → 신규 diaries.emotion_label(FK 아님 — 마스터 오염 방지)
@@ -191,7 +192,7 @@ ALTER TABLE diaries ADD COLUMN emotion_label VARCHAR(20);   -- 직접 입력 감
 
 -- 감정을 입력하지 않아도 확정(DONE)할 수 있어야 하므로 V7의 정합 CHECK를 해제한다.
 -- (LLM 분석 시절엔 DONE ⇒ primary_emotion NOT NULL 이 불변식이었으나, 이제 감정은 선택 사항이다.)
-ALTER TABLE diaries DROP CONSTRAINT chk_diaries_done_has_emotion;
+ALTER TABLE diaries DROP CONSTRAINT IF EXISTS chk_diaries_done_has_emotion;
 
 -- ========== 친구 관계 (V11 구현본) ==========
 -- ⚠️ 구현 정정: 컬럼쌍 UNIQUE(requester_id, addressee_id)는 방향 유니크라 A→B / B→A 역방향
@@ -401,6 +402,8 @@ CREATE TABLE character_lines (
     rive_trigger   VARCHAR(40),                             -- 함께 재생할 Rive 트리거명(NULL=기본 모션)
     weight         INT NOT NULL DEFAULT 1,                  -- 가중 랜덤 선택(클수록 자주 뽑힘)
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- ⚠️ 'LEVEL_UP' 맥락은 레벨 제거(V18)로 **미사용(inert)**이나 enum·대사 시드는 유지한다
+    --    (컬럼이 아닌 CHECK enum이라 앞으로 생성되지 않아 무해). Task 028에서 이벤트 분류와 함께 정리 예정.
     CONSTRAINT chk_character_lines_context
         CHECK (context IN ('CONFIRM','STREAK_3','STREAK_7','MISSION','LEVEL_UP','IDLE')),
     CONSTRAINT chk_character_lines_weight CHECK (weight > 0)
@@ -440,7 +443,7 @@ INSERT INTO character_items (group_code, character_code, image_url, rive_slot, r
 -- ========== 미션(업적) — 유일한 해금 경로 (Phase 7 — V16 구현본) ==========
 -- [V16__add_missions.sql] 해금 규칙을 한 테이블에 모은다. 판정은 서비스(MissionEvaluator)가 수행하고
 --   DB 트리거는 쓰지 않는다(작심삼일 상태 전이와 동일 방침).
--- rule(JSONB)의 임계값 **키는 타입마다 다르다**(count/days/seq/level). 매퍼가 COALESCE 로
+-- rule(JSONB)의 임계값 **키는 타입마다 다르다**(count/days/seq). 매퍼가 COALESCE 로
 --   threshold 하나로 정규화해 읽으므로 서비스·앱은 타입별 키를 알 필요가 없다.
 CREATE TABLE missions (
     code              VARCHAR(40) PRIMARY KEY,              -- DIARY_10 등 (event_key 'MISSION:{code}' 에 사용)
@@ -457,9 +460,11 @@ CREATE TABLE missions (
     CONSTRAINT chk_missions_reward
         CHECK (coin_reward > 0 OR item_group_reward IS NOT NULL),
     -- rule 타입 오타 방어(★ 감정 규칙은 의도적으로 없음). 타입 추가 시 이 집합만 넓힌다.
+    --   ⚠️ V16에는 'LEVEL'도 있었으나 **V18(보상 재설계)에서 CHECK를 4종으로 재정의**하며 제거됐다
+    --      (경험치/레벨 개념 폐기). 아래는 V18 이후의 최종 형태다.
     CONSTRAINT chk_missions_rule_type
         CHECK (rule ->> 'type' IN
-               ('DIARY_COUNT','CONSECUTIVE_DAYS','RESOLUTION_SUCCESS','RESOLUTION_STREAK','LEVEL'))
+               ('DIARY_COUNT','CONSECUTIVE_DAYS','RESOLUTION_SUCCESS','RESOLUTION_STREAK'))
 );
 -- 미션 목록(활성 행 한정, 정렬 순).
 CREATE INDEX idx_missions_active ON missions (sort_order) WHERE active;
@@ -473,7 +478,9 @@ CREATE TABLE user_missions (
     PRIMARY KEY (user_id, mission_code)
 );
 
--- 초기 미션 시드 5종: 기록 습관(DIARY_COUNT/CONSECUTIVE_DAYS) + 작심삼일(RESOLUTION_*) + 성장(LEVEL).
+-- 초기 미션 시드 4종: 기록 습관(DIARY_COUNT/CONSECUTIVE_DAYS) + 작심삼일(RESOLUTION_*).
+--   ⚠️ V16에는 성장 미션 'LEVEL_5'(LEVEL 규칙)가 있었으나 **V18(보상 재설계)에서 제거**됐다
+--      (경험치/레벨 폐기). 아래는 V18 이후의 최종 4종이다.
 -- 아이템 보상은 V15 의 MISSION 그룹(HAT_PARTY·BG_COZY_ROOM)을 해금한다.
 INSERT INTO missions (code, title, description, rule, coin_reward, item_group_reward, sort_order) VALUES
     ('DIARY_10',      '기록 10개',       '기록을 10개 확정하면 파티 모자를 드려요.',
@@ -483,9 +490,7 @@ INSERT INTO missions (code, title, description, rule, coin_reward, item_group_re
     ('RESOL_1',       '첫 작심삼일 완주', '작심삼일을 처음으로 완주해 보세요.',
      '{"type":"RESOLUTION_SUCCESS","count":1}',  30, NULL,            30),
     ('RESOL_STREAK_3','3연속 작심삼일',  '같은 결심을 3번 연속(9일) 이어가 보세요.',
-     '{"type":"RESOLUTION_STREAK","seq":3}',    150, NULL,            40),
-    ('LEVEL_5',       '레벨 5 달성',     '캐릭터를 레벨 5까지 키워 보세요.',
-     '{"type":"LEVEL","level":5}',               80, NULL,            50)
+     '{"type":"RESOLUTION_STREAK","seq":3}',    150, NULL,            40)
 ON CONFLICT (code) DO NOTHING;
 
 -- ========== 사용자 캐릭터 상태 (Phase 7 — V17 구현본) ==========
@@ -494,16 +499,15 @@ ON CONFLICT (code) DO NOTHING;
 --   (ON CONFLICT DO NOTHING → 멱등), 소프트 삭제 컬럼을 두지 않는다(탈퇴 = 물리 CASCADE 회수).
 --   DB 트리거는 쓰지 않는다.
 
--- 선택 캐릭터 + 성장(레벨/경험치). user_id 가 PK(1:1).
+-- 선택 캐릭터만 보관. user_id 가 PK(1:1).
+--   ⚠️ V17에는 성장 컬럼 level(DEFAULT 1)·exp(DEFAULT 0)와 chk_user_character_level/exp CHECK가 있었으나
+--      **V18(보상 재설계)에서 전부 드롭**됐다 — 경험치/레벨 개념 폐기, 성장은 코인·미션 해금으로만 표현.
+--      아래는 V18 이후의 최종 형태다.
 CREATE TABLE user_character_state (
     user_id            BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     selected_character VARCHAR(30) REFERENCES characters(code),  -- NULL=온보딩 미완료(미선택)
-    level              INT NOT NULL DEFAULT 1,
-    exp                INT NOT NULL DEFAULT 0,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_user_character_level CHECK (level >= 1),
-    CONSTRAINT chk_user_character_exp   CHECK (exp >= 0)
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 소유는 **group 단위**. 캐릭터를 바꿔도 옷장이 그대로 따라온다(variant 재해석만 일어난다).
@@ -576,6 +580,8 @@ CREATE TABLE user_wallets (
 --   ④ 보상 알림함: acked_at IS NULL = 미확인 보상 → 홈 상단 뱃지, 확인 처리 API 로 ack.
 -- event_key 규약(Task 028): 'DIARY_CONFIRM:{diaryId}' / 'RESOLUTION_SUCCESS:{resolutionId}'
 --                           / 'MISSION:{missionCode}' / 'PURCHASE:{groupCode}' / 'LEVEL_UP:{level}'
+--   ⚠️ 'LEVEL_UP' 계열(event_type·event_key)은 레벨 제거(V18)로 **미사용(inert)**이나 enum은 유지한다.
+--      Task 028에서 이벤트 분류를 확정하며 함께 정리 예정(지금 CHECK 재정의는 실익 없음).
 CREATE TABLE character_events (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -618,7 +624,7 @@ CREATE INDEX idx_character_events_diary
 - **미소유 착용은 복합 FK가 DB에서 차단**: `user_equipment`는 `item_groups(code)`가 아니라 **`user_item_groups(user_id, group_code)`를 복합 FK로 참조**한다(`fk_user_equipment_owned`). "존재하는 아이템"이 아니라 "**내가 가진 아이템**"만 착용 가능하다는 규칙이 애플리케이션 검증이 아니라 스키마의 성질이 된다. 서비스는 그 앞에서 먼저 409 `ITEM_NOT_OWNED`로 거르고, FK는 최종 방어선이다. 슬롯 칸 수는 CHECK로 강제한다(`chk_user_equipment_slot_index`: `ROOM_PROP`이 아니면 `slot_index=0` 한 칸뿐 → 단일 슬롯 중복 착용 불가, `ROOM_PROP`만 0~5). 다만 **`slot`과 `item_groups.slot`의 일치(HAT 칸에 OUTFIT 그룹)는 DB로 막을 수 없어** 서비스가 검증한다(400 `ITEM_SLOT_MISMATCH`). 대신 **캐릭터를 추가하면 기존 모든 옷의 variant를 새로 그려야 하므로**(에셋 곱셈) 캐릭터 추가는 아이템이 적을 때 신중히 한다. 내 캐릭터용 variant가 아직 없는 그룹을 착용하려 하면 409 `ITEM_VARIANT_MISSING`.
 - **★ 멱등 관문 — `character_events(user_id, event_key) UNIQUE`**: 보상 시스템 전체가 이 제약 하나에 걸린다. 이 테이블은 ① **멱등 게이트** ② **코인 원장**(`coin_delta`/`balance_after`) ③ **리액션 페이로드**(`payload` — 대사·달성 미션·잔액) ④ **미확인 보상 알림함**(`acked_at IS NULL`)을 겸한다. 보상 엔진은 `INSERT ... ON CONFLICT DO NOTHING`으로 게이트를 먼저 꽂고, **1행이 들어간 경우에만** 코인 적립·진척도 갱신·미션 판정·해금을 실행한다(0행이면 즉시 return). 즉 **게이트 INSERT 성공이 모든 부작용의 유일한 진입 조건**이다. 덕분에 `@TransactionalEventListener(AFTER_COMMIT)`의 재전달, 백스톱 폴러의 중복 스캔, 앱의 재시도가 몇 번 겹쳐도 잔액·진척도는 절대 이중 반영되지 않는다. `event_key`는 사건의 자연키(`DIARY_CONFIRM:{diaryId}` / `RESOLUTION_SUCCESS:{resolutionId}` / `MISSION:{missionCode}` / `PURCHASE:{groupCode}` / `LEVEL_UP:{level}`)로 만든다. ⚠️ **테이블·제약은 V17로 구현됐지만 여기에 행을 쓰는 보상 엔진은 Task 028 미구현**이라, 현재 `character_events`는 비어 있다.
 - **미션 판정은 서비스에서, `user_progress`는 O(1) 캐시**: 해금 규칙은 `missions.rule`(JSONB) 한 곳에 모으고, 판정은 `MissionEvaluator` **순수 함수**가 수행한다(작심삼일과 동일하게 **DB 트리거 미사용** 원칙 유지 — 상태 전이는 항상 서비스/배치). 매 확정마다 `diaries`/`resolutions`를 COUNT 집계하면 기록이 쌓일수록 확정이 느려지므로, 판정 입력은 `user_progress`(확정 수·연속일·완주 수·최대 streak)에서 **O(1)로 읽는다**. 진척도는 멱등 게이트 통과 후 같은 트랜잭션에서 UPSERT + RETURNING으로 갱신하며 반환값이 곧 판정 입력이 된다.
-- **미션 rule JSONB 스키마**(감정 규칙은 **없다** — 감정은 해금과 완전 분리). ⚠️ **임계값 키는 타입마다 다르다**(`threshold` 단일 키가 아니다). 매퍼가 `COALESCE(rule->>'count', rule->>'days', rule->>'seq', rule->>'level')::int`로 **`threshold` 하나로 정규화해** 읽으므로, 서비스·앱·API 응답은 `(type, threshold)` 두 값만 본다. 타입 오타는 `chk_missions_rule_type` CHECK가 막는다:
+- **미션 rule JSONB 스키마**(감정 규칙은 **없다** — 감정은 해금과 완전 분리). ⚠️ **임계값 키는 타입마다 다르다**(`threshold` 단일 키가 아니다). 매퍼가 `COALESCE(rule->>'count', rule->>'days', rule->>'seq')::int`로 **`threshold` 하나로 정규화해** 읽으므로, 서비스·앱·API 응답은 `(type, threshold)` 두 값만 본다. 타입 오타는 `chk_missions_rule_type` CHECK가 막는다(⚠️ V16의 `LEVEL` 규칙은 **V18 보상 재설계에서 제거** — 아래 4종이 최종):
 
   | `type` | rule 임계값 키 | 의미 | 판정 입력(`user_progress`) |
   |---|---|---|---|
@@ -626,14 +632,12 @@ CREATE INDEX idx_character_events_diary
   | `CONSECUTIVE_DAYS` | `days` | 연속 기록 N일 | `consecutive_days` |
   | `RESOLUTION_SUCCESS` | `count` | 작심삼일 완주 N회 | `resolution_success_count` |
   | `RESOLUTION_STREAK` | `seq` | 연장 체인 N연속 | `max_streak_seq` (`resolutions.streak_seq` 재사용) |
-  | `LEVEL` | `level` | 캐릭터 레벨 N 도달 | `user_character_state.level` |
 
   ```jsonc
   {"type":"DIARY_COUNT","count":10}       // DIARY_10       — 확정 기록 10건 (+50코인, HAT_PARTY 해금)
   {"type":"CONSECUTIVE_DAYS","days":7}    // STREAK_7       — 7일 연속 기록 (+100코인, BG_COZY_ROOM 해금)
   {"type":"RESOLUTION_SUCCESS","count":1} // RESOL_1        — 작심삼일 첫 완주 (+30코인)
   {"type":"RESOLUTION_STREAK","seq":3}    // RESOL_STREAK_3 — 3연속 연장 (+150코인)
-  {"type":"LEVEL","level":5}              // LEVEL_5        — 레벨 5 (+80코인)
   ```
   달성은 되돌리지 않으므로 `user_missions`는 PK `(user_id, mission_code)`만 두고 갱신·삭제하지 않는다. 보상 지급도 `character_events`의 `MISSION:{code}` 게이트를 통과하므로 임계값을 여러 번 넘겨도 **1회만** 지급된다.
 - **코인 음수 방지(경합 안전)**: 소비는 `UPDATE user_wallets SET balance = balance - ? WHERE user_id = ? AND balance >= ?` 한 문장으로 하고, **0행이면 409 `COIN_INSUFFICIENT`**로 거절한다(SELECT 후 UPDATE의 TOCTOU를 원천 제거). `chk_user_wallets_balance CHECK (balance >= 0)`는 그 위의 **최종 방어선**이며, 여기에 걸리는 것은 서비스 버그를 뜻한다. 적립은 항상 수행하고(`record.character.coin-enabled`와 무관), 상점 **소비만** flag로 게이팅한다(off면 403 `FEATURE_DISABLED`).
@@ -666,7 +670,8 @@ CREATE INDEX idx_character_events_diary
     - `V15__add_character_catalog.sql` — `characters`(2종 시드: `MONKEY`·`RED_PANDA`) + `item_groups`(소유·착용·상점 단위, 5종 시드) + `character_items`(렌더 variant 8행, **`uq_variant UNIQUE NULLS NOT DISTINCT (group_code, character_code)`**) + `character_lines`(맥락별 대사 33행)
     - `V16__add_missions.sql` — `missions`(`rule` JSONB + `chk_missions_rule_type`·`chk_missions_reward`, 5종 시드) + `user_missions`(달성 이력, PK `(user_id, mission_code)`)
     - `V17__add_user_character_state.sql` — `user_character_state`, `user_item_groups`, `user_equipment`(**복합 FK → `user_item_groups`**), `user_progress`, `user_wallets`, `character_events`(**`uq_character_events_key(user_id, event_key)`** — 멱등 관문)
-  - **`V18`은 Task 024(감정 사용자 입력 전환)에 예약** — `V18__diary_manual_emotion.sql`(`diaries.emotion_label VARCHAR(20)` 추가 + `chk_diaries_done_has_emotion` DROP). ⚠️ **아직 착수 전이며 적용되지 않았다.** 그때까지 감정은 **V7의 LLM 비동기 분석이 활성**이다. `emotion_types` 6종 마스터는 어느 쪽이든 감정 코드의 단일 진실원으로 **유지**한다.
+    - **`V18__drop_level_exp.sql`(적용됨 — 2026-07-15 보상 재설계 1단계)** — 경험치/레벨 개념 폐기: `user_character_state`의 `level`/`exp` 컬럼과 `chk_user_character_level`/`chk_user_character_exp` CHECK 드롭, `missions`의 `LEVEL_5` 시드 삭제 + `chk_missions_rule_type` CHECK를 4종(`DIARY_COUNT`/`CONSECUTIVE_DAYS`/`RESOLUTION_SUCCESS`/`RESOLUTION_STREAK`)으로 재정의. 성장은 코인·미션 해금으로만 표현한다. ⚠️ `character_events.event_type`·`character_lines.context`의 `LEVEL_UP` enum·대사 시드는 **유지**(inert — 컬럼이 아닌 CHECK enum이라 무해, Task 028에서 정리 예정). 실적립·구매 엔진(코인)은 여전히 **Task 028 미구현**.
+  - **`V19__diary_manual_emotion.sql`(적용됨 — Task 024, 감정 사용자 입력 전환)** — `diaries.emotion_label VARCHAR(20)` 추가 + `chk_diaries_done_has_emotion` DROP(감정 미입력 확정 허용). LLM 감정 분석은 flag(`record.analysis.enabled`, 기본 false)로 꺼져 감정은 **사용자 직접 입력**(프리셋 `primary_emotion` 또는 자유 텍스트 `emotion_label`, 상호 배타)이 기본이며, flag를 켜면 V7의 LLM 비동기 분석 경로가 무손상 복구된다. `emotion_types` 6종 마스터는 감정 코드의 단일 진실원으로 **유지**한다.
   - 마스터 데이터 시드(`emotion_types`, `characters`)는 해당 기능 마이그레이션 안에서 `INSERT ... ON CONFLICT DO NOTHING`(멱등)으로 넣는다. 아이템·대사·미션 카탈로그처럼 **운영 중 계속 늘어나는** 데이터는 마이그레이션이 아니라 데이터 적재 경로로 관리하고, 스키마는 건드리지 않는다(아이템 추가에 앱 배포·마이그레이션 불필요 — `character_items.image_url`만 등록하면 앱이 런타임 주입).
 - **로컬 개발**: 네이티브 PostgreSQL 18(`recorme` DB/롤)에 빈 DB만 준비하면 `./gradlew bootRun` 시 Flyway가 자동 적용. DBeaver는 조회용.
-- **기배포 마이그레이션 수정 금지(재확인)**: 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 **신규 버전 마이그레이션으로만** 한다. 이미 적용된 `V1~V17`은 절대 수정하지 않는다(체크섬 불일치로 기동 실패). 그래서 Phase 7의 감정 모델 변경도 V7·V8을 고치는 대신 **V18에서 컬럼 추가 + 제약 DROP**으로 처리할 예정이며, V6가 V4의 nullable을 사후에 강화한 것과 같은 패턴이다.
+- **기배포 마이그레이션 수정 금지(재확인)**: 운영 환경에서는 `flyway.clean` 비활성화(`clean-disabled=true`), 모든 변경은 **신규 버전 마이그레이션으로만** 한다. 이미 적용된 `V1~V19`는 절대 수정하지 않는다(체크섬 불일치로 기동 실패). 그래서 보상 재설계(경험치/레벨 폐기)도 V15~V17을 고치는 대신 **V18에서 컬럼·시드·CHECK를 DROP/재정의**했고, 감정 모델 변경도 V7·V8을 고치는 대신 **V19에서 컬럼 추가 + 제약 DROP**으로 처리했다(V6가 V4의 nullable을 사후에 강화한 것과 같은 패턴).

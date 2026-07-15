@@ -87,14 +87,14 @@ class CharacterControllerTest {
 
 	/** 캐릭터 미선택 상태(신규 가입 직후) — character=null, 기본값. */
 	private MyCharacterResponse unselected() {
-		return new MyCharacterResponse(null, 1, 0, 100, 0, 0, List.of());
+		return new MyCharacterResponse(null, 0, 0, List.of());
 	}
 
 	/** MONKEY 선택 + 후드티(OUTFIT) 착용 상태. */
 	private MyCharacterResponse monkeyWithHoodie() {
 		return new MyCharacterResponse(
 				new SelectedCharacterResponse("MONKEY", "원숭이", "monkey", "assets/characters/monkey.png"),
-				3, 40, 100, 120, 2,
+				120, 2,
 				List.of(new EquippedItemResponse("OUTFIT", (short) 0, "OUTFIT_BASIC_TEE", "기본 흰 티셔츠",
 						"assets/items/outfit_basic_tee_monkey.png", "outfit",
 						objectMapper.createObjectNode().put("scale", 0.6))));
@@ -136,9 +136,9 @@ class CharacterControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.success").value(true))
 				.andExpect(jsonPath("$.data.character").doesNotExist())
-				.andExpect(jsonPath("$.data.level").value(1))
-				.andExpect(jsonPath("$.data.exp").value(0))
-				.andExpect(jsonPath("$.data.expToNext").value(100))
+				.andExpect(jsonPath("$.data.level").doesNotExist())
+				.andExpect(jsonPath("$.data.exp").doesNotExist())
+				.andExpect(jsonPath("$.data.expToNext").doesNotExist())
 				.andExpect(jsonPath("$.data.coinBalance").value(0))
 				.andExpect(jsonPath("$.data.unackedRewardCount").value(0))
 				.andExpect(jsonPath("$.data.equipment").isArray())
@@ -153,7 +153,6 @@ class CharacterControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.character.code").value("MONKEY"))
 				.andExpect(jsonPath("$.data.character.riveArtboard").value("monkey"))
-				.andExpect(jsonPath("$.data.level").value(3))
 				.andExpect(jsonPath("$.data.coinBalance").value(120))
 				.andExpect(jsonPath("$.data.unackedRewardCount").value(2))
 				.andExpect(jsonPath("$.data.equipment[0].slot").value("OUTFIT"))

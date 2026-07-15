@@ -110,7 +110,7 @@ class DiaryControllerTest {
 		DiaryResponse diary = new DiaryResponse(
 				10L, "share-token", "{\"ops\":[{\"insert\":\"오늘 하루\\n\"}]}", "오늘 하루",
 				LocalDate.of(2026, 6, 15), "PRIVATE", "PENDING",
-				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
+				null, null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
 		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
 				.thenReturn(new DiaryUpsertResult(diary, true));
 
@@ -130,7 +130,7 @@ class DiaryControllerTest {
 		DiaryResponse diary = new DiaryResponse(
 				11L, "share-token", "{\"ops\":[{\"insert\":\"확정\\n\"}]}", "확정",
 				LocalDate.of(2026, 6, 16), "PRIVATE", "PENDING",
-				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
+				null, null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
 		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
 				.thenReturn(new DiaryUpsertResult(diary, true));
 
@@ -150,7 +150,7 @@ class DiaryControllerTest {
 		DiaryResponse diary = new DiaryResponse(
 				12L, "share-token", "{\"ops\":[{\"insert\":\"등록\\n\"}]}", "등록",
 				LocalDate.of(2026, 6, 17), "PRIVATE", "DRAFT",
-				null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
+				null, null, null, null, null, null, null, null); // 감정 분석 테마 필드(미분석 → NULL)
 		when(diaryService.upsert(any(), any(SaveDiaryRequest.class)))
 				.thenReturn(new DiaryUpsertResult(diary, true));
 
@@ -171,7 +171,7 @@ class DiaryControllerTest {
 		DiaryResponse diary = new DiaryResponse(
 				10L, "share-token", "{\"ops\":[]}", "본문",
 				LocalDate.of(2026, 6, 15), "FRIENDS", "DONE",
-				null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null);
 		when(diaryService.changeVisibility(any(), any(), any(UpdateVisibilityRequest.class)))
 				.thenReturn(diary);
 

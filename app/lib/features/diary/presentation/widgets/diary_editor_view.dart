@@ -6,6 +6,7 @@ import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
 import 'package:record/features/diary/presentation/widgets/diary_image_embed_builder.dart';
 import 'package:record/features/diary/presentation/widgets/diary_quill_styles.dart';
+import 'package:record/features/diary/presentation/widgets/emotion_input_section.dart';
 import 'package:record/shared/widgets/visibility_segment.dart';
 
 /// 기록 작성/수정 화면의 순수 표현 위젯(리치 텍스트).
@@ -43,6 +44,10 @@ class DiaryEditorView extends StatelessWidget {
     required this.onRemember,
     required this.onCancel,
     required this.onPickImage,
+    required this.onEmotionChanged,
+    this.initialEmotion,
+    this.initialEmotionLabel,
+    this.recentEmotionLabels = const [],
   });
 
   /// 표시용 날짜 문자열 (예: '2026년 6월 24일').
@@ -82,6 +87,18 @@ class DiaryEditorView extends StatelessWidget {
   /// 사진 삽입 버튼 탭 콜백(상위가 picker→업로드→Delta 삽입 처리).
   final VoidCallback onPickImage;
 
+  /// 감정 입력 변경 콜백 — `(emotion, emotionLabel)`(상호 배타, 최대 하나 non-null).
+  final void Function(String? emotion, String? emotionLabel) onEmotionChanged;
+
+  /// 초기 프리셋 감정 코드(수정 진입 시).
+  final String? initialEmotion;
+
+  /// 초기 커스텀 감정 라벨(수정 진입 시).
+  final String? initialEmotionLabel;
+
+  /// 최근 사용한 커스텀 감정 라벨(추천 칩).
+  final List<String> recentEmotionLabels;
+
   /// 카드 반경과 일치하는 상수 BorderRadius.
   static const BorderRadius _kCardRadius =
       BorderRadius.all(Radius.circular(AppRadius.card));
@@ -101,6 +118,15 @@ class DiaryEditorView extends StatelessWidget {
           VisibilitySegment(
             value: visibility,
             onChanged: onVisibilityChanged,
+          ),
+          const SizedBox(height: AppSpacing.md),
+
+          // ── 감정 입력 (프리셋 6종 or 직접 입력, 선택 사항) ──────────
+          EmotionInputSection(
+            onChanged: onEmotionChanged,
+            initialEmotion: initialEmotion,
+            initialEmotionLabel: initialEmotionLabel,
+            recentLabels: recentEmotionLabels,
           ),
           const SizedBox(height: AppSpacing.md),
 

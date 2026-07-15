@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// - [primary] 계열(블루): 주 CTA·링크·선택·입력 포커스·FAB 등 "조작" 맥락.
 /// - [accent] 계열(바이올렛): 감정 분석·AI 코멘트·sparkle 등 "감정/AI" 맥락.
 ///   → 두 색을 혼용하지 말 것. 버튼은 [primary], 감정·분석 표현은 [accent].
-/// - 감정 기반 동적 테마(상세 화면)는 [DiaryTheme]가 별도 주입한다.
+/// - 감정 색은 감정 칩·달력 점에만 쓰이며 `EmotionPalette`가 관리한다(동적 배경 테마는 폐지 — Task 025).
 class AppColors {
   AppColors._();
 

@@ -9,6 +9,7 @@ import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/reset_password_page.dart';
 import '../../features/auth/presentation/signup_page.dart';
 import '../../features/character/domain/my_character.dart';
+import '../../features/character/presentation/character_home_page.dart';
 import '../../features/character/presentation/character_onboarding_page.dart';
 import '../../features/character/presentation/providers/character_providers.dart';
 import '../../features/character/presentation/wardrobe_page.dart';
@@ -150,28 +151,32 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const CharacterOnboardingPage(),
       ),
-      // 하단 탭 셸: 캘린더 / 목록
+      // 하단 탭 셸: 캐릭터(홈) / 캘린더 / 작심삼일 / 피드 / 프로필
+      // ⚠️ 브랜치 순서 = 탭 인덱스 = scaffold_with_nav_bar.dart의 destinations 순서.
+      //    세 곳을 항상 함께 맞춘다(한쪽만 바꾸면 라벨·아이콘과 화면이 어긋난다).
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ScaffoldWithNavBar(navigationShell: navigationShell),
         branches: [
+          // 0번째 탭: 캐릭터 홈(로그인 후 첫 화면, `/`)
           StatefulShellBranch(
             routes: [
               GoRoute(
                 path: '/',
+                builder: (context, state) => const CharacterHomePage(),
+              ),
+            ],
+          ),
+          // 1번째 탭: 캘린더
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/calendar',
                 builder: (context, state) => const MainCalendarPage(),
               ),
             ],
           ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/list',
-                builder: (context, state) => const DiaryListPage(),
-              ),
-            ],
-          ),
-          // 3번째 탭: 작심삼일
+          // 2번째 탭: 작심삼일
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -180,12 +185,21 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // 4번째 탭: 피드 (기존 인덱스 보존 위해 맨 뒤 append)
+          // 3번째 탭: 피드
           StatefulShellBranch(
             routes: [
               GoRoute(
                 path: '/feed',
                 builder: (context, state) => const FeedPage(),
+              ),
+            ],
+          ),
+          // 4번째 탭: 프로필(기존 셸 밖 라우트에서 탭으로 승격)
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfilePage(),
               ),
             ],
           ),
@@ -225,19 +239,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           id: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
         ),
       ),
-      // 셸 밖 전체 화면: 옷장(캐릭터 꾸미기)
-      // 캐릭터 홈 탭(Task 029)이 생기기 전까지는 프로필에서 진입한다.
+      // 셸 밖 전체 화면: 옷장(캐릭터 꾸미기) — 캐릭터 홈 탭에서 진입한다.
       GoRoute(
         path: '/wardrobe',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const WardrobePage(),
       ),
-      // 셸 밖 전체 화면: 프로필 조회 / 수정
+      // 셸 밖 전체 화면: 지난 기록 목록(캘린더 앱바에서 진입).
+      // 탭에서 빠지면서 셸 밖 push 라우트가 됐다(AppBar leading 미지정 → 뒤로가기 자동).
       GoRoute(
-        path: '/profile',
+        path: '/list',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const ProfilePage(),
+        builder: (context, state) => const DiaryListPage(),
       ),
+      // 셸 밖 전체 화면: 프로필 수정(프로필 조회는 탭, 수정은 풀스크린).
       GoRoute(
         path: '/profile/edit',
         parentNavigatorKey: _rootNavigatorKey,

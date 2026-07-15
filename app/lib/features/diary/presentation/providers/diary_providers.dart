@@ -38,3 +38,10 @@ final diaryByDateProvider =
     FutureProvider.autoDispose.family<Diary?, DateTime>((ref, date) {
   return ref.watch(diaryRepositoryProvider).getByDate(date);
 });
+
+/// 내가 최근 사용한 커스텀 감정 라벨(작성기 직접 입력 추천 칩용).
+/// 실패해도 작성을 막지 않도록, 에러 시 빈 목록으로 폴백해 소비한다.
+final recentEmotionLabelsProvider =
+    FutureProvider.autoDispose<List<String>>((ref) {
+  return ref.watch(diaryRepositoryProvider).getRecentEmotionLabels();
+});

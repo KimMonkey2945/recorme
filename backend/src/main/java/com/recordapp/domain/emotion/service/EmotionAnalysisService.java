@@ -9,6 +9,7 @@ import com.recordapp.infra.llm.LlmImage;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -26,8 +27,13 @@ import org.springframework.stereotype.Service;
  *   <li><b>역의존 없음</b>: DiaryService 를 의존하지 않고 EmotionAnalysisMapper 로 직접 재조회한다
  *       (DiaryService → 본 서비스 단방향, 순환참조 회피).</li>
  * </ul>
+ *
+ * <p><b>감정 분석 flag(Task 024)</b>: {@code record.analysis.enabled=true} 일 때만 빈으로 등록된다.
+ * off(운영 기본)면 이 빈이 아예 생성되지 않아 DiaryService 는 {@code ObjectProvider} 로 부재를 흡수하고
+ * 확정 시 즉시 DONE 으로 전이한다(감정 사용자 직접 입력).
  */
 @Service
+@ConditionalOnProperty(name = "record.analysis.enabled", havingValue = "true")
 public class EmotionAnalysisService {
 
 	private static final Logger log = LoggerFactory.getLogger(EmotionAnalysisService.class);

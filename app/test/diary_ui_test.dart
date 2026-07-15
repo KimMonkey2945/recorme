@@ -24,8 +24,6 @@ import 'package:record/features/diary/presentation/widgets/diary_detail_view.dar
 import 'package:record/features/diary/presentation/widgets/diary_editor_view.dart';
 import 'package:record/features/diary/presentation/widgets/diary_list_tile.dart';
 import 'package:record/shared/models/cursor_page.dart';
-import 'package:record/shared/widgets/emotion_avatar.dart';
-import 'package:record/shared/widgets/emotion_video.dart';
 
 /// 테스트용 결정적 더미 저장소.
 class _StubRepo implements DiaryRepository {
@@ -67,6 +65,8 @@ class _StubRepo implements DiaryRepository {
     required String contentText,
     bool confirm = false,
     String visibility = 'PRIVATE',
+    String? emotion,
+    String? emotionLabel,
   }) async =>
       items.first;
 
@@ -80,6 +80,9 @@ class _StubRepo implements DiaryRepository {
   @override
   Future<String> uploadImage(Uint8List bytes, String filename) async =>
       '/files/diaries/fake/$filename';
+
+  @override
+  Future<List<String>> getRecentEmotionLabels() async => const [];
 }
 
 /// 목록 미리보기용(평문 content) 기록.
@@ -132,10 +135,9 @@ void main() {
       expect(tapped, true);
     });
 
-    testWidgets('DiaryDetailView(DONE): 읽기전용 에디터 렌더 + 삭제만 콜백',
+    testWidgets('DiaryDetailView(DONE): 읽기전용 에디터 + 감정 칩 + 삭제만 콜백',
         (tester) async {
-      // DONE 상태에서는 수정 버튼이 없고(onEdit=null), 배지도 없다.
-      // 대신 글 하단에 감정 이모지·코멘트가 안착 행으로 표시된다.
+      // 감정 연출 제거(Task 025) 후 DONE 상세는 배지·영상 없이 본문 + 감정 칩만 렌더한다.
       var deleted = false;
       await tester.pumpWidget(MaterialApp(
         localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
@@ -149,36 +151,43 @@ void main() {
             onEdit: null,
             onDelete: () => deleted = true,
             primaryEmotion: 'JOY',
-            moodEmoji: '😊',
-            aiComment: '햇살 같은 하루',
-            aiTitle: '빛나는 오후',
           ),
         ),
       ));
-      // 시네마틱 인트로(BIG)를 시작시킨 뒤 dwell·settle을 지나 안착(REST)까지 진행.
-      // (안착까지 가야 dwell 타이머가 소진돼 위젯 정리 후 pending timer가 없다.)
-      await tester.pump(); // 첫 프레임 + 인트로 시작(postFrame)
-      await tester.pump(const Duration(milliseconds: 1900)); // BIG dwell 경과 → SETTLE
-      await tester.pumpAndSettle(); // SETTLE 완료 → REST
+      await tester.pump();
 
       // 본문은 QuillEditor로 렌더(일반 Text 아님).
       expect(find.byType(QuillEditor), findsOneWidget);
-      // DONE 상태에서는 배지 없음(감정 이모지·코멘트가 글 하단 안착 행에 표시).
-      expect(find.text('분석 완료'), findsNothing);
+      // DONE 상태에서는 배지 없음.
       expect(find.text('임시 저장'), findsNothing);
-      // 감정 마스코트 영상·코멘트 확인.
-      // 위젯 테스트 환경에서는 video_player 초기화가 실패해 EmotionVideo 내부의
-      // PNG 폴백(EmotionAvatar)이 렌더되므로 EmotionAvatar도 1개 존재한다.
-      expect(find.byType(EmotionVideo), findsOneWidget);
-      expect(find.byType(EmotionAvatar), findsOneWidget);
-      expect(find.text('햇살 같은 하루'), findsOneWidget);
-      // 수정 버튼 없음(확정), '닫기' 버튼 + 아이콘 전용 삭제 버튼 있음.
+      // 프리셋 감정 칩(이모지 + 라벨)이 표시된다.
+      expect(find.text('😊 기쁨'), findsOneWidget);
+      // 수정 버튼 없음(확정), 아이콘 전용 삭제 버튼 있음.
       expect(find.text('수정'), findsNothing);
-      // 삭제 버튼은 아이콘 전용으로 변경됨(텍스트 '삭제' 없음).
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.delete_outline));
       expect(deleted, true);
+    });
+
+    testWidgets('DiaryDetailView(DONE): 커스텀 라벨만 있는 기록도 칩 렌더',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+        supportedLocales: FlutterQuillLocalizations.supportedLocales,
+        home: Scaffold(
+          body: DiaryDetailView(
+            dateText: '2026년 6월 24일 (화)',
+            content: contentJsonFromPlain('본문'),
+            analysisStatus: 'DONE',
+            onDelete: () {},
+            emotionLabel: '설레는',
+          ),
+        ),
+      ));
+      await tester.pump();
+      // 커스텀 라벨은 이모지 없이 텍스트 그대로 칩에 렌더된다.
+      expect(find.text('설레는'), findsOneWidget);
     });
 
     testWidgets('DiaryDetailView(DRAFT): 임시 저장 배지 + 수정/삭제 콜백',
@@ -240,6 +249,7 @@ void main() {
                 onRemember: () => remembered = true,
                 onCancel: () {},
                 onPickImage: () {},
+                onEmotionChanged: (_, _) {},
               ),
             ),
           );

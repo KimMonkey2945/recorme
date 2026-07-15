@@ -60,6 +60,13 @@ public interface DiaryMapper {
 	int countRecentConfirmations(@Param("userId") Long userId);
 
 	/**
+	 * 내가 최근 사용한 커스텀 감정 라벨(emotion_label) 목록. 활성 행 중 라벨이 있는 것만,
+	 * 라벨 단위로 중복 제거하고 최근 사용(updated_at)순으로 최대 {@code limit} 건 반환한다.
+	 * 감정 직접 입력 위젯(Task 025)의 재입력 추천 후보로 쓴다.
+	 */
+	List<String> findRecentEmotionLabels(@Param("userId") Long userId, @Param("limit") int limit);
+
+	/**
 	 * 해당 월(yearMonth "yyyy-MM")에 활성 기록이 존재하는 날짜별 요약 목록(written_date 오름차순).
 	 * 캘린더 표시용 — 각 항목은 날짜·분석상태와 감정색·무드 이모지용 필드를 담는다.
 	 * 하루 1기록이라 날짜당 1건이며 한 달 ≤31건 → 페이징 없이 한 번에 반환한다.

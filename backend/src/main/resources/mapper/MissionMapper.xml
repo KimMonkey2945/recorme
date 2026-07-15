@@ -24,7 +24,7 @@
 
     <!-- 활성 미션(idx_missions_active 부분 인덱스와 동일 조건·정렬).
          rule(JSONB)의 임계값 키는 타입마다 다르다: DIARY_COUNT=count / CONSECUTIVE_DAYS=days /
-         RESOLUTION_SUCCESS=count / RESOLUTION_STREAK=seq / LEVEL=level.
+         RESOLUTION_SUCCESS=count / RESOLUTION_STREAK=seq.
          COALESCE 로 threshold 하나로 정규화해 읽어, 서비스·앱이 타입별 키를 알 필요가 없게 한다
          (chk_missions_rule_type 이 타입 오타를 막으므로 COALESCE 가 NULL 로 떨어지는 일은 없다). -->
     <select id="findMissions" resultMap="missionRowMap">
@@ -34,8 +34,7 @@
                rule ->> 'type' AS rule_type,
                COALESCE(rule ->> 'count',
                         rule ->> 'days',
-                        rule ->> 'seq',
-                        rule ->> 'level')::int AS threshold,
+                        rule ->> 'seq')::int AS threshold,
                coin_reward,
                item_group_reward
           FROM missions

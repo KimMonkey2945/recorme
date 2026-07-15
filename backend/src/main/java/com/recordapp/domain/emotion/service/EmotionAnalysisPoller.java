@@ -6,6 +6,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,8 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>잠금 전략: {@code findStalePendingIds} 가 {@code FOR UPDATE SKIP LOCKED} 로 PENDING 행을 선점하고,
  * 본 메서드의 <b>짧은 트랜잭션</b>이 dispatch 직후 커밋되며 잠금을 푼다. 실제 LLM 호출은 @Async 라
  * 트랜잭션·잠금 밖에서 일어난다(긴 작업이 커넥션을 점유하지 않음).
+ *
+ * <p><b>감정 분석 flag(Task 024)</b>: {@code record.analysis.enabled=true} 일 때만 빈으로 등록된다.
+ * off(운영 기본)면 스케줄러 자체가 미등록돼 백스톱 폴링이 돌지 않는다.
  */
 @Component
+@ConditionalOnProperty(name = "record.analysis.enabled", havingValue = "true")
 public class EmotionAnalysisPoller {
 
 	private static final Logger log = LoggerFactory.getLogger(EmotionAnalysisPoller.class);

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/config/api_config.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/diary_theme.dart';
 import '../../../shared/widgets/app_snackbar.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
 import '../../../shared/widgets/error_view.dart';
@@ -27,14 +24,12 @@ const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일']
 /// 다이얼로그 후 소프트 삭제 → 메인 복귀)를 제공한다. 표현은 [DiaryDetailView].
 ///
 /// ## 배경
-/// 상세 배경은 감정과 무관하게 항상 흰색으로 통일한다. 감정 이모지(영상)의 흰 배경과
-/// 페이지 배경 사이에 이질감이 생기지 않도록, 이전의 감정색 틴트 배경은 제거했다.
-/// 감정 팔레트는 본문·코멘트 텍스트 색상 등에만 사용한다.
+/// 상세 배경은 감정과 무관하게 항상 흰색으로 통일한다. 감정 동적 배경 테마는 제거됐고
+/// (Task 025), 감정은 감정 칩으로만 표시된다.
 ///
-/// ## PENDING 자동 갱신
-/// analysisStatus가 'PENDING'이면 3초마다 [diaryByIdProvider]를 invalidate해
-/// 서버에서 최신 상태를 재조회한다. DONE/FAILED가 되면 타이머를 중단한다.
-/// 안전 상한은 누적 60회(약 3분). 초과 시 타이머를 멈추고 안내 메시지를 표시한다.
+/// ## 폴링 없음
+/// 감정 분석을 끈(Task 024) 뒤 확정은 즉시 DONE 이므로 PENDING 자동 갱신 폴링을 제거했다.
+/// (감정 분석 flag를 켜면 PENDING이 생길 수 있으나, 그 경우 화면 재진입/새로고침으로 갱신한다.)
 class DiaryDetailPage extends ConsumerStatefulWidget {
   const DiaryDetailPage({super.key, required this.diaryId});
 
@@ -45,27 +40,6 @@ class DiaryDetailPage extends ConsumerStatefulWidget {
 }
 
 class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
-  /// 분석 중 자동 갱신 타이머.
-  Timer? _pollingTimer;
-
-  /// 누적 폴링 횟수. 상한(60회 × 3초 = 3분) 도달 시 타이머 중단.
-  int _pollCount = 0;
-
-  /// 폴링 1회 간격.
-  static const Duration _pollInterval = Duration(seconds: 3);
-
-  /// 폴링 최대 횟수(3분 상한).
-  static const int _maxPollCount = 60;
-
-  /// 폴링 상한 초과 여부. true이면 DiaryDetailView에서 "잠시 후 확인" 안내 표시.
-  bool _pollingTimedOut = false;
-
-  @override
-  void dispose() {
-    _pollingTimer?.cancel();
-    super.dispose();
-  }
-
   String _dateText(DateTime d) =>
       '${d.year}년 ${d.month}월 ${d.day}일 (${_weekdays[d.weekday - 1]})';
 
@@ -73,35 +47,6 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
-
-  // ── 폴링 제어 ─────────────────────────────────────────────────
-
-  /// PENDING 상태이면 폴링을 시작한다. 이미 실행 중이면 무시(멱등).
-  void _startPolling(int id) {
-    if (_pollingTimer != null) return;
-    _pollCount = 0;
-    _pollingTimer = Timer.periodic(_pollInterval, (_) {
-      if (!mounted) {
-        _pollingTimer?.cancel();
-        _pollingTimer = null;
-        return;
-      }
-      _pollCount++;
-      if (_pollCount >= _maxPollCount) {
-        _pollingTimer?.cancel();
-        _pollingTimer = null;
-        setState(() => _pollingTimedOut = true);
-        return;
-      }
-      ref.invalidate(diaryByIdProvider(id));
-    });
-  }
-
-  /// 폴링 타이머를 중단한다. 이미 없으면 무시.
-  void _stopPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
-  }
 
   // ── 삭제 처리 ─────────────────────────────────────────────────
 
@@ -115,14 +60,13 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     );
     if (!confirmed) return;
     try {
-      _stopPolling();
       await ref.read(diaryRepositoryProvider).delete(id);
       ref.invalidate(monthlySummaryProvider);
       ref.invalidate(monthDiariesProvider);
       ref.invalidate(diaryByDateProvider);
       if (!context.mounted) return;
       showAppSnackBar(context, '삭제했어요');
-      context.go('/');
+      context.go('/calendar');
     } catch (_) {
       if (!context.mounted) return;
       showAppSnackBar(context, '삭제에 실패했어요', isError: true);
@@ -180,34 +124,11 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
   Widget build(BuildContext context) {
     final id = int.tryParse(widget.diaryId) ?? -1;
 
-    // 상태 변화를 감지해 폴링을 제어한다.
-    ref.listen<AsyncValue<Diary>>(diaryByIdProvider(id), (_, next) {
-      final status = next.asData?.value.analysisStatus;
-      if (status == 'PENDING') {
-        _startPolling(id);
-      } else if (status != null) {
-        _stopPolling();
-      }
-    });
-
     final async = ref.watch(diaryByIdProvider(id));
-
-    // 초기 캐시 히트(PENDING) 처리 — ref.listen은 변화가 있을 때만 호출되므로
-    // 첫 빌드에서 이미 PENDING이면 프레임 종료 후 폴링을 시작한다(build는 부수효과 없이 유지).
-    if (async.asData?.value.analysisStatus == 'PENDING') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _startPolling(id);
-      });
-    }
-
-    // 감정 팔레트 — 본문·코멘트 텍스트/포인트 색상에만 사용(배경엔 미적용).
     final diary = async.asData?.value;
-    final palette = (diary?.hasTheme == true)
-        ? DiaryTheme.fromEmotion(diary!.primaryEmotion)
-        : null;
 
     return Scaffold(
-      // 상세 배경: 감정과 무관하게 흰색으로 통일(이모지 영상 흰 배경과 일치).
+      // 상세 배경: 감정과 무관하게 항상 흰색으로 통일.
       backgroundColor: AppColors.surface,
       appBar: AppBar(
         // 타이틀 없음 — 날짜·AI 제목이 본문 헤더에서 담당.
@@ -227,7 +148,6 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
             dateText: _dateText(d.writtenDate),
             content: d.content,
             analysisStatus: d.analysisStatus,
-            pollingTimedOut: _pollingTimedOut,
             // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
             onEdit: d.isDraft
                 ? () async {
@@ -238,17 +158,9 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
                   }
                 : null,
             onDelete: () => _handleDelete(context, id),
-            // 감정 코드 전달 — 무드 카드 마스코트 이미지 선택용(DONE 시에만 비-null).
-            primaryEmotion: d.hasTheme ? d.primaryEmotion : null,
-            // 팔레트 색상 전달 — DONE 아니면 null이므로 DiaryDetailView 기본값 사용.
-            // moodCardColor는 무드 카드 채움색(감정 배경색). 페이지 배경엔 쓰지 않음.
-            moodCardColor: palette?.backgroundColor,
-            textColor: palette?.textColor,
-            accentColor: palette?.accentColor,
-            // 이모지·코멘트·제목은 API 값 그대로 사용 (LLM이 잘 생성함).
-            moodEmoji: d.moodEmoji,
-            aiComment: d.aiComment,
-            aiTitle: d.aiTitle,
+            // 사용자 감정(프리셋/커스텀) — 감정 칩 표시용.
+            primaryEmotion: d.primaryEmotion,
+            emotionLabel: d.emotionLabel,
           ),
         ),
       ),

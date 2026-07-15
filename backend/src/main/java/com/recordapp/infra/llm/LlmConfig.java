@@ -3,6 +3,7 @@ package com.recordapp.infra.llm;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,7 +22,10 @@ public class LlmConfig {
 
 	private static final Logger log = LoggerFactory.getLogger(LlmConfig.class);
 
+	// 감정 분석 flag(Task 024): off(운영 기본)면 감정 파이프라인이 통째로 미등록되므로
+	// 유일 소비처(LlmEmotionAnalyzer)가 없는 LlmClient 도 함께 생성하지 않는다.
 	@Bean
+	@ConditionalOnProperty(name = "record.analysis.enabled", havingValue = "true")
 	LlmClient llmClient(LlmProperties props, ObjectMapper objectMapper) {
 		String provider = (props.provider() == null) ? "" : props.provider().toLowerCase();
 

@@ -74,9 +74,6 @@ class _FakeCharacterRepository implements CharacterRepository {
   @override
   Future<MyCharacter> fetchMyCharacter() async => const MyCharacter(
         character: null,
-        level: 1,
-        exp: 0,
-        expToNext: 100,
         coinBalance: 0,
         unackedRewardCount: 0,
       );
@@ -94,9 +91,6 @@ class _FakeCharacterRepository implements CharacterRepository {
         nameKo: code == 'MONKEY' ? '원숭이' : '레서판다',
         thumbnailUrl: 'assets/characters/monkey.png',
       ),
-      level: 1,
-      exp: 0,
-      expToNext: 100,
       coinBalance: 0,
       unackedRewardCount: 0,
     );

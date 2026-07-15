@@ -17,6 +17,7 @@ import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import com.recordapp.domain.diary.dto.UpdateDiaryRequest;
 import com.recordapp.domain.diary.dto.UpdateVisibilityRequest;
 import com.recordapp.domain.diary.mapper.DiaryMapper;
+import com.recordapp.domain.emotion.Emotion;
 import com.recordapp.domain.emotion.service.EmotionAnalysisService;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
@@ -25,8 +26,11 @@ import com.recordapp.global.exception.ErrorCode;
 import com.recordapp.infra.storage.StorageService;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,17 +54,22 @@ public class DiaryService {
 	private final DiaryMapper diaryMapper;
 	private final StorageService storageService;
 	private final ObjectMapper objectMapper;
-	private final EmotionAnalysisService emotionAnalysisService;
+	// 감정 분석 flag(Task 024) off 면 EmotionAnalysisService 빈이 미등록되므로 ObjectProvider 로 부재를 흡수한다
+	// (생성자 강결합이면 빈 부재 시 기동 실패). 단방향 의존(DiaryService → EmotionAnalysisService) 유지.
+	private final ObjectProvider<EmotionAnalysisService> emotionAnalysisServiceProvider;
+	// true 면 확정 시 PENDING→비동기 LLM 분석, false(기본)면 확정 시 즉시 DONE + 사용자 감정 저장.
+	private final boolean analysisEnabled;
 
 	public DiaryService(DiaryMapper diaryMapper,
 			StorageService storageService,
 			ObjectMapper objectMapper,
-			EmotionAnalysisService emotionAnalysisService) {
+			ObjectProvider<EmotionAnalysisService> emotionAnalysisServiceProvider,
+			@Value("${record.analysis.enabled}") boolean analysisEnabled) {
 		this.diaryMapper = diaryMapper;
 		this.storageService = storageService;
 		this.objectMapper = objectMapper;
-		// 단방향 의존(DiaryService → EmotionAnalysisService). 분석 서비스는 DiaryService 를 모름(순환참조 회피).
-		this.emotionAnalysisService = emotionAnalysisService;
+		this.emotionAnalysisServiceProvider = emotionAnalysisServiceProvider;
+		this.analysisEnabled = analysisEnabled;
 	}
 
 	/**
@@ -80,6 +89,13 @@ public class DiaryService {
 		if (newUrls.size() > DiaryConstraints.IMAGE_MAX_PER_DIARY) {
 			throw new BusinessException(ErrorCode.IMAGE_LIMIT_EXCEEDED);
 		}
+		// 사용자 직접 입력 감정(Task 024) 정규화·검증. 프리셋(primary_emotion)과 자유 텍스트(emotion_label)는
+		// 상호 배타이며 둘 다 선택이다. 빈 문자열은 미입력(null)으로 수렴시킨다.
+		String emotion = normalizeEmotionCode(req.emotion());
+		String emotionLabel = blankToNull(req.emotionLabel());
+		if (emotion != null && emotionLabel != null) {
+			throw new BusinessException(ErrorCode.EMOTION_CONFLICT);
+		}
 
 		// 같은 날짜 기존 기록(UPDATE 전환 시)의 content 를 미리 확보 — 빠진 이미지 파일 회수용.
 		// 신규 INSERT 면 existing 이 null 이라 oldUrls 는 비어 있다.
@@ -96,10 +112,12 @@ public class DiaryService {
 		}
 		List<String> oldUrls = existing == null ? List.of() : extractImageUrls(existing.content());
 
-		// confirm=true 면 '오늘을 기억하기'(PENDING·분석), 아니면 등록(DRAFT 유지).
+		// 확정 시 전이 상태: 감정 분석 on 이면 PENDING(커밋 후 LLM 분석), off(기본)면 즉시 DONE(사용자 감정 저장).
+		boolean confirm = Boolean.TRUE.equals(req.confirm());
+		String confirmStatus = analysisEnabled ? "PENDING" : "DONE";
 		DiaryUpsertCommand cmd = new DiaryUpsertCommand(
 				userId, req.content(), req.contentText(), req.writtenDate(), req.visibility(),
-				Boolean.TRUE.equals(req.confirm()));
+				confirm, confirmStatus, emotion, emotionLabel);
 		diaryMapper.upsert(cmd); // 실행 후 cmd 에 id·inserted 가 채워진다
 
 		// 경합 백스톱: 조회~upsert 사이 타 요청이 같은 날짜를 확정하면 ON CONFLICT WHERE 가드가 0행 →
@@ -171,7 +189,7 @@ public class DiaryService {
 		return new DiaryResponse(row.id(), row.shareToken(), row.content(), row.contentText(),
 				row.writtenDate(), row.visibility(), row.analysisStatus(),
 				row.primaryEmotion(), row.backgroundColor(), row.textColor(), row.accentColor(),
-				row.aiComment(), row.aiTitle(), row.moodEmoji());
+				row.aiComment(), row.aiTitle(), row.moodEmoji(), row.emotionLabel());
 	}
 
 	/**
@@ -342,18 +360,57 @@ public class DiaryService {
 		if (row == null || !"PENDING".equals(row.analysisStatus())) {
 			return;
 		}
+		// 감정 분석 flag off 면 이 빈이 미등록이라 getIfAvailable()==null. 단 off 면 확정 시 상태가 DONE 이라
+		// 애초에 위 PENDING 가드에서 걸러진다 — 이 null 가드는 방어적 이중 안전장치.
+		EmotionAnalysisService svc = emotionAnalysisServiceProvider.getIfAvailable();
+		if (svc == null) {
+			return;
+		}
 		long diaryId = row.id();
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					emotionAnalysisService.analyzeAsync(diaryId);
+					svc.analyzeAsync(diaryId);
 				}
 			});
 		} else {
-			emotionAnalysisService.analyzeAsync(diaryId);
+			svc.analyzeAsync(diaryId);
 		}
 	}
+
+	/** 프리셋 감정 코드 정규화·엄격 검증. null/공백은 미입력(null), 미정의 코드는 VALIDATION_ERROR(400). */
+	private String normalizeEmotionCode(String code) {
+		if (code == null || code.isBlank()) {
+			return null;
+		}
+		try {
+			// fromCodeOrNeutral 은 미정의를 NEUTRAL 로 흡수하므로 사용자 입력 검증엔 부적합 — 엄격 파싱한다.
+			return Emotion.valueOf(code.trim().toUpperCase(Locale.ROOT)).name();
+		} catch (IllegalArgumentException e) {
+			throw new BusinessException(ErrorCode.VALIDATION_ERROR, "감정 코드가 올바르지 않습니다.");
+		}
+	}
+
+	/** 자유 텍스트 감정 라벨 정규화: null/공백이면 미입력(null), 아니면 앞뒤 공백 제거. */
+	private String blankToNull(String s) {
+		if (s == null || s.isBlank()) {
+			return null;
+		}
+		return s.trim();
+	}
+
+	/**
+	 * 내가 최근 사용한 커스텀 감정 라벨(자유 텍스트) 목록. 중복 제거·최신 사용순으로 소수만 반환한다.
+	 * 감정 직접 입력 위젯(Task 025)이 재입력 편의를 위해 추천 후보로 쓴다.
+	 */
+	@Transactional(readOnly = true)
+	public List<String> getRecentEmotionLabels(Long userId) {
+		return diaryMapper.findRecentEmotionLabels(userId, RECENT_EMOTION_LABELS_LIMIT);
+	}
+
+	/** 최근 감정 라벨 추천 최대 개수. */
+	private static final int RECENT_EMOTION_LABELS_LIMIT = 10;
 
 	/**
 	 * 디스크 파일 회수를 커밋 이후로 미룬다(롤백 시 파일 보존). 트랜잭션 동기화가 비활성이면 즉시 회수로 폴백.

@@ -1,16 +1,15 @@
-# Task 024 — 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V18)
+# Task 024 — 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V19)
 
 - **Phase**: 7 (캐릭터 중심 전환)
 - **구현 기능**: F018·F019 축소 (감정 분석 비활성화 + 사용자 직접 입력 전환)
-- **상태**: 미착수
+- **상태**: ✅ 구현 완료 (2026-07-16)
 
-> ⚠️ **마이그레이션 번호가 V15 → V18로 바뀌었다.**
-> Task 026(캐릭터 스키마)을 먼저 착수하면서 **V15~V17을 선점**했다. 이 Task가 V15를 그대로 쓰면
-> 이미 V17까지 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다.
-> → 감정 마이그레이션은 **`V18__diary_manual_emotion.sql`**이다(본문 반영 완료).
+> ✅ **마이그레이션 번호는 최종 `V19`다.**
+> Task 026(캐릭터 스키마)이 V15~V17을, 보상 재설계가 V18(`drop_level_exp`)을 선점해 감정 마이그레이션은
+> **`V19__diary_manual_emotion.sql`**로 확정됐다(본문의 옛 "V18" 표기는 정정).
 >
-> ⚠️ **감정 LLM 분석은 지금도 활성 상태다.** 이 Task가 미착수이므로 `record.analysis.enabled` flag 자체가 아직 없고,
-> 확정 시 기존 `PENDING` → 비동기 LLM 분석 → `DONE` 경로가 **그대로 동작한다**. 비활성화는 이 Task에서 수행한다.
+> ✅ **감정 LLM 분석은 flag(`record.analysis.enabled`, 기본 false)로 꺼졌다.** 확정 시 즉시 `DONE` + 사용자 감정 저장이
+> 기본 동작이며, `ANALYSIS_ENABLED=true` 한 줄이면 기존 `PENDING`→비동기 LLM 분석→`DONE` 경로가 무손상 복구된다.
 
 ## 개요
 
@@ -83,6 +82,16 @@
 - [ ] `emotionLabel` 20자 **경계값** 정상 저장
 - [ ] V18 적용 후 기존 DONE 기록(LLM 분석 결과 보유)이 그대로 조회됨(데이터 손실 없음)
 
-## 변경 사항 요약
+## 변경 사항 요약 (2026-07-16 구현 완료)
 
-- (작성 예정) 검증 완료 후 기재
+- **DB**: `V19__diary_manual_emotion.sql` 신규 — `diaries.emotion_label VARCHAR(20)` 추가 + `chk_diaries_done_has_emotion` DROP(감정 미입력 확정 허용).
+- **설정**: `application.yml` `record.analysis.enabled: ${ANALYSIS_ENABLED:false}` 추가. `application-test.yml`은 `enabled: true`로 고정(기존 on-경로 테스트 회귀 보존).
+- **빈 게이팅**: `EmotionAnalysisService`·`EmotionAnalysisPoller`·`LlmEmotionAnalyzer`·`LlmConfig.llmClient`에 `@ConditionalOnProperty(name="record.analysis.enabled", havingValue="true")`(삭제 아닌 미등록, 코드베이스 최초 도입). `DiaryService`는 `EmotionAnalysisService`를 `ObjectProvider`로 주입해 빈 부재를 흡수.
+- **요청/검증**: `SaveDiaryRequest`에 `emotion`(프리셋 코드) + `emotionLabel`(≤20자) 추가(5-arg 호환 보조 생성자로 기존 호출부 무손상). 프리셋은 `Emotion` enum 엄격 검증(미존재 400), 프리셋+자유텍스트 동시 지정 400 `EMOTION_CONFLICT`(신규 ErrorCode).
+- **확정 분기**: `DiaryService.upsert`가 `analysisEnabled ? "PENDING" : "DONE"`으로 확정 상태 결정 → `DiaryMapper.xml upsert`가 `primary_emotion`·`emotion_label`·상태를 반영. off면 즉시 DONE + 감정 저장, AI 필드 NULL.
+- **라운드트립**: `DiaryRow`·`DiaryResponse`에 `emotionLabel` 추가(상세·by-date 응답 반환) + `GET /diaries/me/emotions/recent`(최근 커스텀 라벨 중복제거·최신순) 엔드포인트·매퍼 신설.
+- **테스트**: `ManualEmotionTest`(off 컨텍스트) + `EmotionAnalysisEnabledTest`(on 회귀) 신규. `FlywayMigrationTest`의 `doneStatusCheck`를 CHECK 제거 반영(감정 없는 DONE 허용) + `emotion_label` 컬럼 존재 검증 추가. **`./gradlew test` 전체 통과**.
+- **문서**: `database.md`·`api-contract.md`·`backend.md`·`CLAUDE.md`를 V19 적용·flag 기본 off 기준으로 갱신.
+
+### 남은 연동
+- **Task 025(앱)**: 감정 시각 연출 제거 + 작성기 감정 입력 위젯. 백엔드가 `emotionLabel`을 저장·상세응답·recent로 라운드트립하므로 앱이 이를 소비하면 된다.

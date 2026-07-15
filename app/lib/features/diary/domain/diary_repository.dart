@@ -35,9 +35,12 @@ abstract class DiaryRepository {
   /// 서식·이미지를 제거한 순수 텍스트(글자수 제한·LLM 입력용)다. 본문에 박힌
   /// 이미지 정합(diary_images 동기화·고아 파일 회수)은 서버가 content를 파싱해 처리한다.
   ///
-  /// [confirm]이 false(기본값)이면 임시 저장(DRAFT, 분석 없음), true이면 확정하여
-  /// AI 감정 분석을 요청한다(PENDING → 비동기 분석 → DONE). 확정 후에는 수정 불가.
+  /// [confirm]이 false(기본값)이면 임시 저장(DRAFT), true이면 확정한다. 감정 분석이 꺼진(기본)
+  /// 상태에서 확정은 즉시 DONE 이 되고, 감정은 사용자가 넣은 [emotion]/[emotionLabel]로 저장된다.
   /// [visibility]는 공개범위(PRIVATE/FRIENDS/PUBLIC, 기본 PRIVATE).
+  ///
+  /// [emotion](프리셋 코드)과 [emotionLabel](자유 텍스트 ≤20자)은 **상호 배타**이며 둘 다 선택 사항이다
+  /// (동시 지정 시 서버가 400 EMOTION_CONFLICT — 앱은 입력 위젯에서 사전 차단한다).
   /// POST /diaries
   Future<Diary> upsert({
     required DateTime date,
@@ -45,6 +48,8 @@ abstract class DiaryRepository {
     required String contentText,
     bool confirm = false,
     String visibility = 'PRIVATE',
+    String? emotion,
+    String? emotionLabel,
   });
 
   /// 공개범위만 변경(본문 불변과 분리). 확정 기록도 허용된다.
@@ -61,4 +66,8 @@ abstract class DiaryRepository {
   /// 임베드로 본문에 삽입한다. 저장 시 서버가 Delta를 파싱해 실제 사용 이미지를 확정한다.
   /// POST /diaries/images (part명 "file")
   Future<String> uploadImage(Uint8List bytes, String filename);
+
+  /// 내가 최근 사용한 커스텀 감정 라벨(중복 제거·최신순). 작성기 추천 칩에 쓴다.
+  /// GET /diaries/me/emotions/recent
+  Future<List<String>> getRecentEmotionLabels();
 }

@@ -31,6 +31,7 @@ class Diary {
     this.moodEmoji,
     this.aiComment,
     this.aiTitle,
+    this.emotionLabel,
   });
 
   final int id;
@@ -76,13 +77,19 @@ class Diary {
   /// AI가 생성한 기록 제목.
   final String? aiTitle;
 
+  /// 사용자 직접 입력 감정 라벨(자유 텍스트, ≤20자). 프리셋은 [primaryEmotion], 자유 입력은 여기.
+  /// LLM 감정 분석을 끈(Task 024) 뒤 감정은 이 둘 중 하나(또는 미입력)로만 채워진다.
+  final String? emotionLabel;
+
   // ── 편의 getter ──────────────────────────────────────────────
 
   /// 임시 저장 여부. DRAFT 상태면 true(수정 가능), 아니면 확정 상태(수정 불가).
   bool get isDraft => analysisStatus == 'DRAFT';
 
-  /// 감정 테마가 완전히 채워진 상태인지 여부.
-  bool get hasTheme => analysisStatus == 'DONE' && backgroundColor != null;
+  /// 표시할 감정이 있는지 여부(프리셋 코드 또는 커스텀 라벨). 감정 칩 렌더 게이트.
+  bool get hasEmotion =>
+      (primaryEmotion != null && primaryEmotion!.isNotEmpty) ||
+      (emotionLabel != null && emotionLabel!.isNotEmpty);
 
   factory Diary.fromJson(Map<String, dynamic> json) {
     return Diary(
@@ -106,6 +113,7 @@ class Diary {
       moodEmoji: json['moodEmoji'] as String?,
       aiComment: json['aiComment'] as String?,
       aiTitle: json['aiTitle'] as String?,
+      emotionLabel: json['emotionLabel'] as String?,
     );
   }
 
@@ -126,6 +134,7 @@ class Diary {
         'moodEmoji': moodEmoji,
         'aiComment': aiComment,
         'aiTitle': aiTitle,
+        'emotionLabel': emotionLabel,
       };
 
   /// 일부 필드만 바꾼 복제본. 공개범위 변경 등 부분 갱신에 사용한다.
@@ -146,6 +155,7 @@ class Diary {
         moodEmoji: moodEmoji,
         aiComment: aiComment,
         aiTitle: aiTitle,
+        emotionLabel: emotionLabel,
       );
 }
 

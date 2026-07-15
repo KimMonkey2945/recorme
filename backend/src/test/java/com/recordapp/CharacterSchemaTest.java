@@ -272,9 +272,9 @@ class CharacterSchemaTest {
 					+ " WHERE coin_reward > 0 OR item_group_reward IS NOT NULL"))
 					.isEqualTo(count(c, "SELECT count(*) FROM missions"));
 
-			// rule 타입은 5종(감정 규칙 없음)
+			// rule 타입은 4종(감정·레벨 규칙 없음)
 			assertThat(count(c, "SELECT count(*) FROM missions WHERE rule ->> 'type' IN"
-					+ " ('DIARY_COUNT','CONSECUTIVE_DAYS','RESOLUTION_SUCCESS','RESOLUTION_STREAK','LEVEL')"))
+					+ " ('DIARY_COUNT','CONSECUTIVE_DAYS','RESOLUTION_SUCCESS','RESOLUTION_STREAK')"))
 					.isEqualTo(count(c, "SELECT count(*) FROM missions"));
 
 			// DIARY_10 rule 파싱(MissionEvaluator 가 읽을 형태)
@@ -391,7 +391,7 @@ class CharacterSchemaTest {
 					st.executeUpdate(
 							"INSERT INTO missions (code, title, description, rule, coin_reward, item_group_reward)"
 									+ " VALUES ('T_ITEM_ONLY', '아이템만', '아이템 보상만',"
-									+ " '{\"type\":\"LEVEL\",\"level\":2}', 0, 'HAT_PARTY')");
+									+ " '{\"type\":\"DIARY_COUNT\",\"count\":2}', 0, 'HAT_PARTY')");
 				}
 			}).doesNotThrowAnyException();
 		}
@@ -435,12 +435,13 @@ class CharacterSchemaTest {
 				}
 			}).satisfies(e -> assertSqlState(e, "23503"));
 
-			// 시드된 캐릭터는 통과(기본값 level=1 / exp=0)
+			// 시드된 캐릭터는 통과
 			try (Statement st = c.createStatement()) {
 				st.executeUpdate("INSERT INTO user_character_state (user_id, selected_character)"
 						+ " VALUES (" + userId + ", 'MONKEY')");
 			}
-			assertThat(count(c, "SELECT level FROM user_character_state WHERE user_id = " + userId))
+			assertThat(count(c, "SELECT count(*) FROM user_character_state WHERE user_id = " + userId
+					+ " AND selected_character = 'MONKEY'"))
 					.isEqualTo(1);
 		}
 	}

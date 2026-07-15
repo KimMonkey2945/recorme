@@ -3,7 +3,6 @@ package com.recordapp.domain.character.service;
 import com.recordapp.domain.character.dto.MissionListResponse;
 import com.recordapp.domain.character.dto.MissionResponse;
 import com.recordapp.domain.character.dto.MissionRow;
-import com.recordapp.domain.character.dto.UserCharacterStateRow;
 import com.recordapp.domain.character.dto.UserMissionRow;
 import com.recordapp.domain.character.dto.UserProgressRow;
 import com.recordapp.domain.character.mapper.MissionMapper;
@@ -53,15 +52,13 @@ public class MissionService {
 
 	/**
 	 * 미션 응답 목록 조립(옷장 목록의 lockedBy 도 이 결과를 재사용한다 — 같은 진행률을 두 번 계산하지 않는다).
-	 * 상태 행은 ensureState 이후라 존재하지만, 방어적으로 null 이면 0/레벨1 스냅샷으로 취급한다.
+	 * 상태 행은 ensureState 이후라 존재하지만, 방어적으로 null 이면 0 스냅샷으로 취급한다.
 	 */
 	List<MissionResponse> buildMissions(Long userId) {
 		UserProgressRow progress = userCharacterMapper.findProgress(userId);
 		if (progress == null) {
 			progress = UserProgressRow.zero();
 		}
-		UserCharacterStateRow state = userCharacterMapper.findState(userId);
-		int level = state == null ? 1 : state.level();
 
 		Map<String, OffsetDateTime> achieved = new HashMap<>();
 		for (UserMissionRow row : missionMapper.findAchievedMissions(userId)) {
@@ -70,13 +67,13 @@ public class MissionService {
 
 		final UserProgressRow snapshot = progress;
 		return catalog.missions().stream()
-				.map(m -> toResponse(m, snapshot, level, achieved))
+				.map(m -> toResponse(m, snapshot, achieved))
 				.toList();
 	}
 
-	private MissionResponse toResponse(MissionRow m, UserProgressRow progress, int level,
+	private MissionResponse toResponse(MissionRow m, UserProgressRow progress,
 			Map<String, OffsetDateTime> achievedAtByCode) {
-		int current = progressOf(m.ruleType(), progress, level);
+		int current = progressOf(m.ruleType(), progress);
 		OffsetDateTime achievedAt = achievedAtByCode.get(m.code());
 		// achieved 는 '이력이 있는가'로만 판정한다 — 임계값 도달만으로 달성 처리하지 않는다(지급은 Task 028).
 		return new MissionResponse(
@@ -91,13 +88,12 @@ public class MissionService {
 	 * ★ 진행률 산출(순수 함수). 규칙 타입별로 스냅샷의 컬럼 하나만 읽는다 — O(1), 부작용 없음.
 	 * (Task 028 의 MissionEvaluator 가 {@code progressOf(...) >= threshold} 로 달성을 판정하면 된다.)
 	 */
-	public static int progressOf(MissionRuleType type, UserProgressRow progress, int level) {
+	public static int progressOf(MissionRuleType type, UserProgressRow progress) {
 		return switch (type) {
 			case DIARY_COUNT -> progress.confirmedDiaryCount();
 			case CONSECUTIVE_DAYS -> progress.consecutiveDays();
 			case RESOLUTION_SUCCESS -> progress.resolutionSuccessCount();
 			case RESOLUTION_STREAK -> progress.maxStreakSeq();
-			case LEVEL -> level;
 		};
 	}
 }

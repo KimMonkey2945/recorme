@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_spacing.dart';
+import 'package:record/core/theme/emotion_palette.dart';
 import 'package:record/features/diary/data/dto/diary_dto.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -402,15 +403,20 @@ class _DayCell extends StatelessWidget {
 
   /// 날짜 숫자 아래 5px 상태 점.
   ///
-  /// - DONE: accent(바이올렛) 점
+  /// - DONE + 감정 있음: 감정 색(emotion_palette) 점
+  /// - DONE + 감정 없음: accent(바이올렛) 점
   /// - DRAFT/PENDING: inkMuted 점
   /// - 기록 없음: null(빈 공간 유지)
   ///
-  /// (마스코트는 작아서 식별이 어려워 상세 화면 영상으로 옮겼고, 캘린더는 점으로 상태만 구분)
+  /// (감정 시각 연출 제거 후 캘린더는 감정 색 점으로만 감정을 드러낸다 — Task 025)
   Widget? _buildEmotionIndicator() {
     if (summaryDay == null) return null;
-    final Color dotColor =
-        summaryDay!.isDone ? AppColors.accent : AppColors.inkMuted;
+    final emotion = summaryDay!.primaryEmotion;
+    final Color dotColor = summaryDay!.isDone
+        ? (emotion != null && emotion.isNotEmpty
+            ? EmotionPalette.accentOf(emotion)
+            : AppColors.accent)
+        : AppColors.inkMuted;
     return Center(
       child: Container(
         width: 6,

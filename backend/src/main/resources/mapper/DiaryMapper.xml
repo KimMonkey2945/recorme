@@ -23,6 +23,7 @@
             <arg column="ai_comment" javaType="java.lang.String"/>
             <arg column="ai_title" javaType="java.lang.String"/>
             <arg column="mood_emoji" javaType="java.lang.String"/>
+            <arg column="emotion_label" javaType="java.lang.String"/>
         </constructor>
     </resultMap>
 
@@ -66,6 +67,22 @@
            AND updated_at >= now() - interval '24 hours'
     </select>
 
+    <!-- 내가 최근 사용한 커스텀 감정 라벨(중복 제거·최신 사용순). 자유 텍스트(emotion_label)만 대상.
+         라벨 단위로 묶고 그 라벨의 최근 사용시각(max updated_at)으로 정렬해 재입력 추천 후보를 만든다. -->
+    <select id="findRecentEmotionLabels" resultType="string">
+        SELECT emotion_label
+          FROM (
+                SELECT emotion_label, max(updated_at) AS last_used
+                  FROM diaries
+                 WHERE user_id = #{userId}
+                   AND deleted_at IS NULL
+                   AND emotion_label IS NOT NULL
+                 GROUP BY emotion_label
+               ) t
+         ORDER BY last_used DESC
+         LIMIT #{limit}
+    </select>
+
     <!-- 하루 1기록 upsert. 부분 유니크(uq_diary_user_day: user_id+written_date WHERE deleted_at IS NULL)
          충돌 시 UPDATE. 신규 INSERT 의 analysis_status 는 confirm 이면 'PENDING'(확정·분석), 아니면 'DRAFT'(미확정).
          DO UPDATE 는 미확정(DRAFT) 행만 수정 가능 — WHERE 가드로 확정 행은 0행 매칭(RETURNING 빔).
@@ -77,18 +94,24 @@
             keyColumn 으로 넘기면 pgJDBC 가 존재하지 않는 컬럼명으로 RETURNING 을 재생성해 실패한다.
             keyColumn 미지정 시 MyBatis 는 RETURN_GENERATED_KEYS 로 실행하고
             pg 드라이버가 SQL 의 명시적 RETURNING 컬럼을 순서대로 반환(id←1, inserted←2). -->
+    <!-- 확정 시 전이 상태는 서비스가 감정 분석 flag 로 결정해 confirmStatus 로 넘긴다(on='PENDING', off='DONE').
+         감정(primary_emotion/emotion_label)은 사용자 직접 입력값(Task 024) — 미입력이면 NULL. -->
     <insert id="upsert"
             parameterType="com.recordapp.domain.diary.dto.DiaryUpsertCommand"
             useGeneratedKeys="true" keyProperty="id,inserted">
-        INSERT INTO diaries (user_id, content, content_text, written_date, visibility, analysis_status)
+        INSERT INTO diaries (user_id, content, content_text, written_date, visibility, analysis_status,
+                             primary_emotion, emotion_label)
         VALUES (#{userId}, #{content}, #{contentText}, #{writtenDate}, COALESCE(#{visibility}, 'PRIVATE'),
-                CASE WHEN #{confirm} THEN 'PENDING' ELSE 'DRAFT' END)
+                CASE WHEN #{confirm} THEN #{confirmStatus} ELSE 'DRAFT' END,
+                #{emotion}, #{emotionLabel})
         ON CONFLICT (user_id, written_date) WHERE deleted_at IS NULL
         DO UPDATE SET
             content         = EXCLUDED.content,
             content_text    = EXCLUDED.content_text,
             visibility      = EXCLUDED.visibility,
-            analysis_status = CASE WHEN #{confirm} THEN 'PENDING' ELSE diaries.analysis_status END,
+            analysis_status = CASE WHEN #{confirm} THEN #{confirmStatus} ELSE diaries.analysis_status END,
+            primary_emotion = EXCLUDED.primary_emotion,
+            emotion_label   = EXCLUDED.emotion_label,
             updated_at      = now()
         WHERE diaries.analysis_status = 'DRAFT'
         RETURNING id, (xmax = 0) AS inserted
@@ -138,7 +161,8 @@
                accent_color,
                ai_comment,
                ai_title,
-               mood_emoji
+               mood_emoji,
+               emotion_label
           FROM diaries
          WHERE user_id = #{userId}
            AND written_date = #{date}
@@ -161,7 +185,8 @@
                accent_color,
                ai_comment,
                ai_title,
-               mood_emoji
+               mood_emoji,
+               emotion_label
           FROM diaries
          WHERE id = #{id}
            AND user_id = #{userId}

@@ -48,9 +48,6 @@ class CharacterDto {
     return MyCharacter(
       character:
           rawCharacter == null ? null : selectedCharacterFromJson(rawCharacter),
-      level: (json['level'] as num?)?.toInt() ?? 1,
-      exp: (json['exp'] as num?)?.toInt() ?? 0,
-      expToNext: (json['expToNext'] as num?)?.toInt() ?? 0,
       coinBalance: (json['coinBalance'] as num?)?.toInt() ?? 0,
       unackedRewardCount: (json['unackedRewardCount'] as num?)?.toInt() ?? 0,
       equipment: rawEquipment == null

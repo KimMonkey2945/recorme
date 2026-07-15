@@ -20,7 +20,7 @@ public interface UserCharacterMapper {
 
 	// ===== JIT 기본 상태(멱등) =====
 
-	/** user_character_state 기본 행(selected_character=NULL, level=1, exp=0). 이미 있으면 0행. */
+	/** user_character_state 기본 행(selected_character=NULL). 이미 있으면 0행. */
 	int insertStateIfAbsent(@Param("userId") Long userId);
 
 	/** user_wallets 기본 행(balance=0). 이미 있으면 0행. */

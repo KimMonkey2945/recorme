@@ -47,7 +47,6 @@ dependencies:
   flutter_quill: ^11.5.0  # 일기 리치 텍스트 에디터(Delta JSON, 서식·인라인 이미지)
   flutter_quill_extensions: ^11.0.0  # Quill 인라인 이미지 임베드 빌더
   video_player: ^2.9.2  # 로그인 화면 마스코트 영상 재생
-  flutter_shaders: ^0.1.3  # 감정 영상 알파 매트 합성(투명 배경) 프래그먼트 셰이더
   share_plus: ^11.1.0  # 공유 링크 OS 네이티브 공유 시트(공개범위 FRIENDS/PUBLIC 기록)
   firebase_core: ^4.11.0
   firebase_messaging: ^16.4.1
@@ -87,12 +86,6 @@ flutter:
     - assets/videos/
     - assets/characters/  # 캐릭터 PNG(원숭이·레서판다) — 온보딩 선택·캐릭터 홈 렌더
     - assets/items/  # 착용 아이템 레이어(캐릭터와 동일 프레임 투명 PNG) + 썸네일 — V15 시드 image_url과 1:1
-    - assets/emotions/  # 감정별 마스코트(레서판다) 표정 PNG (영상 포스터·폴백용)
-    - assets/emotions/video/  # 감정별 마스코트 움직이는 영상 mp4
-    - assets/emotions/video/packed/  # 알파 매트 패킹 영상([색|알파] 2:1 mp4, 셰이더 합성용)
-
-  shaders:
-    - shaders/emotion_alpha.frag  # 패킹 영상 → 투명 배경 캐릭터 합성
 
   # 커스텀 폰트 — Wanted Design System 기반.
   # Pretendard/WantedSans는 가변 폰트(Variable)라 단일 파일이 100~900 weight를 모두 커버한다.

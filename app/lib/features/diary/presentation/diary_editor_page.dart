@@ -49,6 +49,10 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   /// 공개범위(PRIVATE/FRIENDS/PUBLIC). 기존 기록이 있으면 프리필한다.
   String _visibility = 'PRIVATE';
 
+  /// 사용자 직접 입력 감정(Task 025). 프리셋 코드와 커스텀 라벨은 상호 배타 — 최대 하나만 non-null.
+  String? _emotion;
+  String? _emotionLabel;
+
   /// 기존 기록 본문을 1회만 프리필했는지 여부(rebuild 시 사용자 편집 보존).
   bool _prefilled = false;
 
@@ -103,6 +107,8 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     if (diary != null) {
       _controller.document = documentFromContent(diary.content);
       _visibility = diary.visibility;
+      _emotion = diary.primaryEmotion;
+      _emotionLabel = diary.emotionLabel;
     }
     _lastValidJson = contentJsonFromDocument(_controller.document);
     _lastValidSelection = _controller.selection;
@@ -223,6 +229,8 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
         content: content,
         contentText: plain,
         visibility: _visibility,
+        emotion: _emotion,
+        emotionLabel: _emotionLabel,
       );
 
       // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
@@ -236,7 +244,7 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
   }
 
   /// '오늘을 기억하기' 탭 — 확인 다이얼로그 후 confirm:true로 확정.
-  /// 확정 후에는 상세 화면으로 이동해 AI 분석 폴링을 노출한다.
+  /// 감정 분석이 꺼진(기본) 상태라 확정 즉시 DONE 이며, 확정 후 상세 화면으로 이동한다(분석 대기·폴링 없음).
   Future<void> _onRemember() async {
     final plain = plainTextOf(_controller.document);
     if (plain.isEmpty) return;
@@ -254,20 +262,21 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     try {
       final repo = ref.read(diaryRepositoryProvider);
       final content = contentJsonFromDocument(_controller.document);
-      // 확정: confirm=true → analysisStatus: PENDING(AI 분석 대기)
+      // 확정: confirm=true. 감정 분석 off(기본)면 즉시 DONE + 사용자 감정 저장.
       final diary = await repo.upsert(
         date: _date,
         content: content,
         contentText: plain,
         confirm: true,
         visibility: _visibility,
+        emotion: _emotion,
+        emotionLabel: _emotionLabel,
       );
 
       // 캘린더 dot·월 목록·날짜/단건 캐시 갱신.
       _invalidateAll();
       if (!mounted) return;
-      // 상세 화면으로 이동(분석 폴링 카드 표시).
-      // TODO: 로직 연결 지점 — pushReplacement로 에디터 스택 제거 후 상세 진입.
+      // 상세 화면으로 이동(즉시 DONE 렌더 — 분석 폴링 없음).
       context.pushReplacement('/diary/${diary.id}');
     } catch (e) {
       _handleSaveError(e);
@@ -317,17 +326,30 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
     );
   }
 
-  Widget _editorView() => DiaryEditorView(
-        dateText: _dateText,
-        controller: _controller,
-        plainLength: _plainLength,
-        maxLength: _maxLength,
-        saving: _saving,
-        visibility: _visibility,
-        onVisibilityChanged: (v) => setState(() => _visibility = v),
-        onRegister: _onRegister,
-        onRemember: _onRemember,
-        onCancel: () => context.pop(),
-        onPickImage: _onPickImage,
-      );
+  Widget _editorView() {
+    // 최근 커스텀 감정 라벨(추천 칩). 실패/로딩이면 빈 목록으로 폴백(작성을 막지 않는다).
+    final recent =
+        ref.watch(recentEmotionLabelsProvider).asData?.value ?? const <String>[];
+    return DiaryEditorView(
+      dateText: _dateText,
+      controller: _controller,
+      plainLength: _plainLength,
+      maxLength: _maxLength,
+      saving: _saving,
+      visibility: _visibility,
+      onVisibilityChanged: (v) => setState(() => _visibility = v),
+      onRegister: _onRegister,
+      onRemember: _onRemember,
+      onCancel: () => context.pop(),
+      onPickImage: _onPickImage,
+      onEmotionChanged: (emotion, emotionLabel) {
+        // setState 불필요 — 값만 보관하고 저장 시 payload에 싣는다(에디터 rebuild 회피).
+        _emotion = emotion;
+        _emotionLabel = emotionLabel;
+      },
+      initialEmotion: _emotion,
+      initialEmotionLabel: _emotionLabel,
+      recentEmotionLabels: recent,
+    );
+  }
 }

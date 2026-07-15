@@ -375,6 +375,15 @@ class FlywayMigrationTest {
 				assertThat(rs.next()).as("emotion_scores 컬럼 존재").isTrue();
 				assertThat(rs.getString(1)).isEqualTo("jsonb");
 			}
+			// V19: 사용자 직접 입력 감정 라벨(emotion_label VARCHAR(20)) 이 추가됐는지 확인
+			try (Statement st = c.createStatement();
+					ResultSet rs = st.executeQuery(
+							"SELECT data_type, character_maximum_length FROM information_schema.columns "
+									+ "WHERE table_name = 'diaries' AND column_name = 'emotion_label'")) {
+				assertThat(rs.next()).as("emotion_label 컬럼 존재(V19)").isTrue();
+				assertThat(rs.getString(1)).isEqualTo("character varying");
+				assertThat(rs.getInt(2)).isEqualTo(20);
+			}
 		}
 	}
 
@@ -416,27 +425,24 @@ class FlywayMigrationTest {
 		}
 	}
 
-	// (l) chk_diaries_done_has_emotion: primary_emotion NULL 인데 DONE → 위반(23514), 채우면 통과
+	// (l) V19: chk_diaries_done_has_emotion 제거 → primary_emotion NULL 이어도 DONE 허용(감정은 선택 사항).
+	//     감정 사용자 직접 입력 전환(Task 024)으로 "DONE ⇒ 주감정 NOT NULL" 불변식이 폐기됐다.
 	@Test
-	void doneStatusCheck_requiresPrimaryEmotion() throws SQLException {
+	void doneWithoutEmotion_allowedAfterV19DropsCheck() throws SQLException {
 		try (Connection c = conn()) {
 			long userId = insertUserAndGetId(
 					c, "dddddddd-dddd-dddd-dddd-dddddddddddd", "emo_done", "emodone@example.com");
 			insertDiary(c, userId, "상태 정합 검증 대상", "2026-06-20");
 
-			// primary_emotion NULL 상태에서 DONE 전환 → 체크 위반
-			assertThatThrownBy(() -> updateDiaryColumn(c, userId, "analysis_status = 'DONE'"))
-					.isInstanceOf(SQLException.class)
-					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
-
-			// 주감정을 채운 뒤 DONE 으로 전환하면 통과
-			updateDiaryColumn(c, userId, "primary_emotion = 'CALM', analysis_status = 'DONE'");
+			// primary_emotion NULL 상태에서 DONE 전환 — V19에서 CHECK를 드롭했으므로 더는 위반이 아니다.
+			updateDiaryColumn(c, userId, "analysis_status = 'DONE'");
 
 			try (Statement st = c.createStatement();
 					ResultSet rs = st.executeQuery(
-							"SELECT analysis_status FROM diaries WHERE user_id = " + userId)) {
+							"SELECT analysis_status, primary_emotion FROM diaries WHERE user_id = " + userId)) {
 				rs.next();
-				assertThat(rs.getString(1)).as("주감정 채운 뒤 DONE 적용").isEqualTo("DONE");
+				assertThat(rs.getString(1)).as("감정 없이 DONE 허용").isEqualTo("DONE");
+				assertThat(rs.getString(2)).as("주감정은 여전히 NULL").isNull();
 			}
 		}
 	}
@@ -471,7 +477,7 @@ class FlywayMigrationTest {
 					.isInstanceOf(SQLException.class)
 					.satisfies(e -> assertThat(((SQLException) e).getSQLState()).isEqualTo("23514"));
 
-			// DRAFT/PENDING/FAILED 는 통과(주감정 NULL 허용 상태들). DONE 은 별도 CHECK 가 주감정을 요구하므로 (l)에서 검증.
+			// DRAFT/PENDING/FAILED 는 통과. DONE 도 V19 이후 주감정 없이 허용된다(감정 선택 사항 — (l)에서 검증).
 			updateDiaryColumn(c, userId, "analysis_status = 'DRAFT'");
 			updateDiaryColumn(c, userId, "analysis_status = 'PENDING'");
 			updateDiaryColumn(c, userId, "analysis_status = 'FAILED'");

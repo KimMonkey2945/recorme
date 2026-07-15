@@ -132,21 +132,6 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          // 옷장 진입 — 캐릭터 꾸미기. 캐릭터 홈 탭(Task 029) 전까지의 임시 진입점.
-          OutlinedButton.icon(
-            onPressed: () => context.push('/wardrobe'),
-            icon: const Icon(Icons.checkroom_outlined, size: 18),
-            label: const Text('옷장'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.inkAlt,
-              minimumSize: const Size(double.infinity, 52),
-              side: const BorderSide(color: AppColors.hairline, width: 1.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.button),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
           // 친구 진입 — 친구 목록·요청·추가 화면으로.
           OutlinedButton.icon(
             onPressed: () => context.push('/friends'),

@@ -6,9 +6,9 @@ import '../../../core/config/api_config.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/diary_theme.dart';
+import '../../../core/theme/emotion_labels.dart';
+import '../../../core/theme/emotion_palette.dart';
 import '../../../shared/widgets/app_snackbar.dart';
-import '../../../shared/widgets/emotion_avatar.dart';
 import '../../../shared/widgets/error_view.dart';
 import '../../../shared/widgets/loading_view.dart';
 import '../../../shared/widgets/profile_avatar.dart';
@@ -129,8 +129,7 @@ class _FeedDiaryDetailViewState extends ConsumerState<_FeedDiaryDetailView> {
   @override
   Widget build(BuildContext context) {
     final d = widget.detail;
-    final palette = DiaryTheme.fromEmotion(d.primaryEmotion);
-    final textColor = palette.textColor;
+    final hasEmotion = d.primaryEmotion != null && d.primaryEmotion!.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -171,16 +170,22 @@ class _FeedDiaryDetailViewState extends ConsumerState<_FeedDiaryDetailView> {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // ── AI 제목 ──
+          // ── AI 제목(감정 분석 flag on일 때만 존재) ──
           if (d.aiTitle != null && d.aiTitle!.isNotEmpty) ...[
             Text(
               d.aiTitle!,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
-                color: textColor,
+                color: AppColors.ink,
               ),
             ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+
+          // ── 감정 칩(프리셋, 있을 때만) ──
+          if (hasEmotion) ...[
+            _FeedDetailEmotionChip(code: d.primaryEmotion!),
             const SizedBox(height: AppSpacing.sm),
           ],
 
@@ -191,41 +196,54 @@ class _FeedDiaryDetailViewState extends ConsumerState<_FeedDiaryDetailView> {
               config: QuillEditorConfig(
                 showCursor: false,
                 embedBuilders: const [DiaryImageEmbedBuilder()],
-                customStyles: diaryPaperStyles(context, color: textColor),
+                customStyles: diaryPaperStyles(context),
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // ── 감정 코멘트 ──
-          if (d.moodEmoji != null || (d.aiComment != null && d.aiComment!.isNotEmpty))
-            Row(
-              children: [
-                EmotionAvatar(
-                  emotionCode: d.primaryEmotion,
-                  size: 40,
-                  moodEmoji: d.moodEmoji,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    d.aiComment ?? '',
-                    style: TextStyle(fontSize: 14, color: textColor),
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: AppSpacing.md),
-
           // ── 공감 버튼(낙관적 토글) ──
           ReactionButton(
             reacted: _reacted,
             count: _count,
-            accentColor: palette.accentColor,
+            accentColor: EmotionPalette.accentOf(d.primaryEmotion),
             size: ReactionButtonSize.large,
             onTap: _toggleReaction,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 피드 전문의 감정 칩 — 프리셋 이모지 + 라벨(감정 색 테두리).
+class _FeedDetailEmotionChip extends StatelessWidget {
+  const _FeedDetailEmotionChip({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = EmotionPalette.accentOf(code);
+    final emoji = emotionEmojiOf(code);
+    final label = emotionLabelOf(code);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        emoji != null ? '$emoji $label' : label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }

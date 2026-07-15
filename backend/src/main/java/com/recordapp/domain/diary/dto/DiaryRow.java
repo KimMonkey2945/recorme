@@ -24,5 +24,7 @@ public record DiaryRow(
 		String accentColor,
 		String aiComment,
 		String aiTitle,
-		String moodEmoji) {
+		String moodEmoji,
+		// 사용자 직접 입력 감정 라벨(Task 024) — 자유 텍스트(≤20자), 미입력이면 NULL.
+		String emotionLabel) {
 }

@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,8 +28,12 @@ import org.springframework.stereotype.Service;
  *
  * <p>JSON 키는 camelCase(DTO·{@code StubLlmClient}와 동일)를 1차로 쓰되, 파서는 snake_case 도
  * 폴백 인식해 프롬프트 규약을 약간 벗어난 응답에도 견딘다.
+ *
+ * <p><b>감정 분석 flag(Task 024)</b>: {@code record.analysis.enabled=true} 일 때만 빈으로 등록된다
+ * (off면 유일 소비처 EmotionAnalysisService 도 미등록이라 함께 빠진다).
  */
 @Service
+@ConditionalOnProperty(name = "record.analysis.enabled", havingValue = "true")
 public class LlmEmotionAnalyzer implements EmotionAnalyzer {
 
 	private static final Logger log = LoggerFactory.getLogger(LlmEmotionAnalyzer.class);

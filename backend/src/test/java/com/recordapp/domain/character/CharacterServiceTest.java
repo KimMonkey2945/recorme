@@ -238,9 +238,6 @@ class CharacterServiceTest {
 		MyCharacterResponse me = characterService.getMyCharacter(userId);
 
 		assertThat(me.character()).as("앱은 이 null 로 온보딩을 띄운다").isNull();
-		assertThat(me.level()).isEqualTo(1);
-		assertThat(me.exp()).isZero();
-		assertThat(me.expToNext()).isEqualTo(CharacterConstants.EXP_PER_LEVEL);
 		assertThat(me.coinBalance()).isZero();
 		assertThat(me.unackedRewardCount()).isZero();
 		assertThat(me.equipment()).isEmpty();
@@ -553,18 +550,14 @@ class CharacterServiceTest {
 		// 초기: 전부 0 / 미달성.
 		List<MissionResponse> initial = missionService.getMissions(userId).items();
 		assertThat(initial).extracting(MissionResponse::code)
-				.contains("DIARY_10", "STREAK_7", "RESOL_1", "RESOL_STREAK_3", "LEVEL_5");
+				.contains("DIARY_10", "STREAK_7", "RESOL_1", "RESOL_STREAK_3");
 		assertThat(findMission(initial, "DIARY_10").progress()).isZero();
 		assertThat(findMission(initial, "DIARY_10").achieved()).isFalse();
 		assertThat(findMission(initial, "DIARY_10").achievedAt()).isNull();
-		// LEVEL 규칙은 user_character_state.level(기본 1)을 본다.
-		assertThat(findMission(initial, "LEVEL_5").progress()).isEqualTo(1);
-		assertThat(findMission(initial, "LEVEL_5").threshold()).isEqualTo(5);
 
 		// 진척도 갱신(보상 엔진의 UPSERT 를 시뮬레이션).
 		jdbc().update("UPDATE user_progress SET confirmed_diary_count = 7, consecutive_days = 7, "
 				+ "resolution_success_count = 1, max_streak_seq = 2 WHERE user_id = ?", userId);
-		jdbc().update("UPDATE user_character_state SET level = 3 WHERE user_id = ?", userId);
 
 		List<MissionResponse> after = missionService.getMissions(userId).items();
 		MissionResponse diary10 = findMission(after, "DIARY_10");
@@ -574,11 +567,10 @@ class CharacterServiceTest {
 		assertThat(diary10.rule().threshold()).isEqualTo(10);
 		assertThat(diary10.coinReward()).isEqualTo(50);
 		assertThat(diary10.itemGroupReward()).isEqualTo(HAT_PARTY);
-		// 규칙 타입별로 서로 다른 컬럼을 본다(임계값 키 정규화: count/days/seq/level → threshold).
+		// 규칙 타입별로 서로 다른 컬럼을 본다(임계값 키 정규화: count/days/seq → threshold).
 		assertThat(findMission(after, "STREAK_7").progress()).isEqualTo(7);          // consecutive_days
 		assertThat(findMission(after, "RESOL_1").progress()).isEqualTo(1);           // resolution_success_count
 		assertThat(findMission(after, "RESOL_STREAK_3").progress()).isEqualTo(2);    // max_streak_seq
-		assertThat(findMission(after, "LEVEL_5").progress()).isEqualTo(3);           // level
 
 		// 임계값을 넘겨도 달성(achieved)은 이력(user_missions)이 있어야 true — 지급은 Task 028 소관.
 		assertThat(findMission(after, "STREAK_7").achieved()).isFalse();

@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/config/api_config.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/diary_theme.dart';
-import '../../../../shared/widgets/emotion_avatar.dart';
+import '../../../../core/theme/emotion_labels.dart';
+import '../../../../core/theme/emotion_palette.dart';
 import '../../../../shared/widgets/profile_avatar.dart';
 import '../../../../shared/widgets/reaction_button.dart';
 import '../../data/dto/feed_dto.dart';
 
-/// 피드 감정 카드. 앱 정체성(감정 동적 테마)에 맞춰 카드 배경 전면에 감정 파스텔색을 입힌다.
-/// 작성자 헤더 + 무드 아바타 + AI 제목 + 본문 미리보기(3줄) + 공감 버튼으로 구성한다.
+/// 피드 카드(Task 025 — 감정 동적 배경 제거).
+///
+/// 감정 연출을 걷어낸 뒤 카드는 **중립 배경(surface + hairline)**으로 통일하고,
+/// 감정은 우상단 **감정 칩**(프리셋 이모지+라벨)으로만 표시한다. 작성자 헤더 + 감정 칩 +
+/// AI 제목(있으면) + 본문 미리보기(3줄) + 공감 버튼으로 구성한다.
 class FeedDiaryCard extends StatelessWidget {
   const FeedDiaryCard({
     super.key,
@@ -33,13 +37,14 @@ class FeedDiaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = DiaryTheme.fromEmotion(item.primaryEmotion);
-    final textColor = theme.textColor;
+    final hasEmotion =
+        item.primaryEmotion != null && item.primaryEmotion!.isNotEmpty;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.backgroundColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.hairline),
       ),
       child: Material(
         color: Colors.transparent,
@@ -51,7 +56,7 @@ class FeedDiaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── 작성자 헤더 ──
+                // ── 작성자 헤더 + 감정 칩 ──
                 Row(
                   children: [
                     ProfileAvatar(
@@ -66,41 +71,37 @@ class FeedDiaryCard extends StatelessWidget {
                         children: [
                           Text(
                             item.authorNickname,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: textColor,
+                              color: AppColors.ink,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             _dateText,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
-                              color: textColor.withValues(alpha: 0.65),
+                              color: AppColors.inkMuted,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    EmotionAvatar(
-                      emotionCode: item.primaryEmotion,
-                      size: 32,
-                      moodEmoji: item.moodEmoji,
-                    ),
+                    if (hasEmotion) _FeedEmotionChip(code: item.primaryEmotion!),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
 
-                // ── AI 제목 ──
+                // ── AI 제목(감정 분석 flag on일 때만 존재) ──
                 if (item.aiTitle != null && item.aiTitle!.isNotEmpty) ...[
                   Text(
                     item.aiTitle!,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: textColor,
+                      color: AppColors.ink,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -111,7 +112,11 @@ class FeedDiaryCard extends StatelessWidget {
                 // ── 본문 미리보기(3줄) ──
                 Text(
                   item.preview ?? '',
-                  style: TextStyle(fontSize: 14, height: 1.5, color: textColor),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: AppColors.ink,
+                  ),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -123,20 +128,53 @@ class FeedDiaryCard extends StatelessWidget {
                     ReactionButton(
                       reacted: item.reactedByMe,
                       count: item.reactionCount,
-                      accentColor: theme.accentColor,
+                      accentColor: EmotionPalette.accentOf(item.primaryEmotion),
                       onTap: onReactionTap,
                     ),
                     const Spacer(),
                     Icon(
                       Icons.chevron_right,
                       size: 18,
-                      color: textColor.withValues(alpha: 0.4),
+                      color: AppColors.inkMuted.withValues(alpha: 0.6),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 피드 카드 우상단 감정 칩 — 프리셋 이모지 + 라벨(감정 색 테두리).
+class _FeedEmotionChip extends StatelessWidget {
+  const _FeedEmotionChip({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = EmotionPalette.accentOf(code);
+    final emoji = emotionEmojiOf(code);
+    final label = emotionLabelOf(code);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        emoji != null ? '$emoji $label' : label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );

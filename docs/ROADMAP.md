@@ -364,25 +364,25 @@
 > **탭 재편(회귀 주의) — 아직 수행하지 않았다**: 목표는 `[캐릭터(홈)] [캘린더] [작심삼일] [피드] [프로필]`이며 캘린더가 index 0 → 1로 밀린다. Phase 6의 "탭은 맨 뒤 append로 인덱스 보존" 전제가 여기서 깨지므로 **FCM 딥링크·`context.go` 경로 전수 점검 + 탭 인덱스 회귀 테스트 필수**.
 > **현재 상태**: Task 029가 회귀 위험을 이유로 탭 재편을 **캐릭터 홈 구현과 함께 별도 작업으로 미뤘다.** 탭은 여전히 `[캘린더][목록][작심삼일][피드]` **4개**이고, 라우터에는 **현재 브랜치 순서(캘린더 index 0)를 못박는 가드 테스트**가 걸려 있다 — 탭을 재편하는 순간 이 가드가 실패하며 전수 점검을 강제한다.
 
-> **신규 기능 ID(진행 현황)**: **F026** 캐릭터 선택 — 🔶 **부분**(백엔드 API ✅ / 앱 온보딩 선택 ✅ / Rive 렌더 ❌) / **F027** 코스튬·옷장 — 🔶 **부분**(백엔드 착용 API ✅ / 앱 옷장 UI ❌) / **F028** 코인 — ❌ / **F029** 상점 — ❌ / **F030** 미션 해금 — 🔶 **부분**(스키마·`GET /missions` ✅ / 판정·지급 엔진 ❌) / **F031** 기록 리액션 — ❌ / **F032** 월간 회고·성장 — ❌ / **F033** 캐릭터 홈·소품 진열 — 🔶 **부분**(백엔드 ✅ / 앱 홈 화면 ❌).
+> **신규 기능 ID(진행 현황)**: **F026** 캐릭터 선택 — 🔶 **부분**(백엔드 API ✅ / 앱 온보딩 선택 ✅ / Rive 렌더 ❌) / **F027** 코스튬·옷장 — 🔶 **부분**(백엔드 착용 API ✅ / 앱 옷장 UI ❌) / **F028** 코인 — ❌ / **F029** 코인 구매(옷장 통합 — 별도 상점 화면 폐기) — ❌ / **F030** 미션 해금 — 🔶 **부분**(스키마·`GET /missions` ✅ / 판정·지급 엔진 ❌) / **F031** 기록 리액션 — ❌ / **F032** 월간 회고·성장 — ❌ / **F033** 캐릭터 홈·소품 진열 — 🔶 **부분**(백엔드 ✅ / 앱 홈 화면 ❌).
 > **F018(감정 분석)·F019(동적 테마·연출)**: 원안대로 "비활성/캐릭터로 대체됨"으로 전환할 예정이나 **Task 024·025가 미착수라 아직 활성 상태**다(Phase 4 Task 012·013 ⚠️ 주석 참조).
 
 > **순서 원칙**: 감정 걷어내기 → 스키마 → 백엔드 → 앱(대체 렌더러로 전 기능 완성) → Rive 교체(에셋 의존, 최후) → 락인. **최대 리스크는 Task 028(멱등성)** — 여기만 정확하면 나머지는 CRUD다.
 
-> **⚠️ 마이그레이션 번호 재배치(실적 반영)**: 실제로는 **Task 026을 먼저 착수**해 **V15~V17을 선점**했다. Task 024가 원안대로 V15를 쓰면 이미 V17까지 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다. → **Task 026 = V15~V17**, **Task 024 = V18**.
+> **⚠️ 마이그레이션 번호 재배치(실적 반영)**: 실제로는 **Task 026을 먼저 착수**해 **V15~V17을 선점**했고, 이어 **보상 재설계(경험치/레벨 드롭)가 V18을 선점**했다. Task 024가 원안대로 V15를 쓰면 이미 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다. → **Task 026 = V15~V17**, **보상 재설계 = V18**, **Task 024 = V19**.
 
 > **📊 Phase 7 진행 현황**(2026-07-14): **Task 026 ✅ 완료** · **Task 027 ✅ 완료** · **Task 029 🔶 부분 완료(온보딩 선택창까지 — 탭 재편·캐릭터 홈 미착수)** · Task 024·025·028·030·031·032 미착수.
 > ⚠️ Task 024가 미착수이므로 **LLM 감정 분석은 아직 활성 상태**(확정 → PENDING → 비동기 분석 → DONE)이며, `record.analysis.enabled` flag는 아직 존재하지 않는다.
 > ⚠️ Task 029가 부분 완료이므로 **탭은 아직 `[캘린더][목록][작심삼일][피드]` 4개, 캘린더 index 0 그대로**다. 탭 재편 회귀(아래)는 **아직 발생하지 않았다**.
 
-- **Task 024: 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V18)** - 우선순위 · **미착수**
+- **Task 024: 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V19)** - 우선순위 · **미착수**
   - 구현 기능: F018·F019 축소 (감정 분석 비활성화 + 사용자 직접 입력 전환)
-  - DB `V18__diary_manual_emotion.sql`(**원안 V15 → V18**: Task 026이 V15~V17 선점): `diaries`에 `emotion_label VARCHAR(20)`(직접 입력 감정) 추가 + `chk_diaries_done_has_emotion` **DROP**(감정 미입력도 확정 가능). `emotion_types` 6종 마스터는 **유지**(프리셋 라벨·정렬의 단일 진실원). 기존 감정·테마 컬럼은 **보존**(LLM 복구 대비)
+  - DB `V19__diary_manual_emotion.sql`(**원안 V15 → V18 → V19**: Task 026이 V15~V17, 보상 재설계가 V18 선점): `diaries`에 `emotion_label VARCHAR(20)`(직접 입력 감정) 추가 + `chk_diaries_done_has_emotion` **DROP**(감정 미입력도 확정 가능). `emotion_types` 6종 마스터는 **유지**(프리셋 라벨·정렬의 단일 진실원). 기존 감정·테마 컬럼은 **보존**(LLM 복구 대비)
   - 설정: `application.yml`에 `record.analysis.enabled: ${ANALYSIS_ENABLED:false}` 추가. `EmotionAnalysisService`·`EmotionAnalysisPoller`·`LlmEmotionAnalyzer`·`infra/llm/*`를 **삭제하지 않고** `@ConditionalOnProperty`로 빈 미등록 처리 → LLM 호출·비용 0, 코드 100% 보존
   - `SaveDiaryRequest`에 `emotion`(프리셋 코드, `emotion_types` FK) + `emotionLabel`(자유 텍스트 `@Size(max=20)`) 추가 — **둘 다 선택**(감정 없이도 저장·확정 가능), **동시 지정 시 400 `EMOTION_CONFLICT`**(신규 ErrorCode)
   - `DiaryService.upsert`: flag **off** → 확정 시 `analysis_status='DONE'` **즉시 전이**(대기 없음 → 리액션 지연 0) + 사용자 감정 저장, 색상·AI 필드(`background_color`/`ai_comment`/`ai_title`/`mood_emoji`/`emotion_scores`)는 NULL / flag **on** → 기존 `PENDING`+비동기 분석 경로 **무손상 유지**
   - `GET /diaries/me/emotions/recent`: 최근 사용한 커스텀 감정 목록(재입력 편의 — 앱 작성기 추천 칩)
-  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — flag off 시 확정하면 `analysis_status='DONE'` + 사용자 감정 저장 + AI 필드 NULL 검증 / 프리셋·커스텀 **동시 지정 400 `EMOTION_CONFLICT`** / **감정 미입력도 확정 성공**(CHECK 해제 확인) / `emotionLabel` 21자 → 400 / **flag on 복구 시 기존 PENDING 분석 경로 정상 동작**(회귀 방지 — 가장 중요) / flag off 시 LLM 관련 빈 **미등록** 확인 / V18 마이그레이션 적용 및 기존 확정 기록 무손상
+  - **(구현 직후 필수 테스트)** JUnit5 + Testcontainers — flag off 시 확정하면 `analysis_status='DONE'` + 사용자 감정 저장 + AI 필드 NULL 검증 / 프리셋·커스텀 **동시 지정 400 `EMOTION_CONFLICT`** / **감정 미입력도 확정 성공**(CHECK 해제 확인) / `emotionLabel` 21자 → 400 / **flag on 복구 시 기존 PENDING 분석 경로 정상 동작**(회귀 방지 — 가장 중요) / flag off 시 LLM 관련 빈 **미등록** 확인 / V19 마이그레이션 적용 및 기존 확정 기록 무손상
 
 - **Task 025: 앱 감정 연출 제거 + 작성기 감정 입력 위젯** · **미착수**
   - 구현 기능: F018·F019 축소 (모바일 — 연출 제거 + 사용자 입력 UI)
@@ -397,8 +397,8 @@
   - **실적**: V15(캐릭터 **2종**·대사 **33행**·item_group **5종**·variant **8행** 시드) / V16(미션 **5종** 시드) / V17(사용자 상태 6테이블). 로컬 PG18 `recorme` **적용 완료**(Flyway 버전 **17**), `CharacterSchemaTest`(Testcontainers) **통과**
   - **`uq_variant`는 `UNIQUE NULLS NOT DISTINCT(group_code, character_code)`** — 공용 아이템은 `character_code`가 NULL인데, 표준 UNIQUE는 NULL을 서로 다른 값으로 봐서 **공용 variant의 중복을 못 막는다**(PG15+ 문법 필수)
   - `V15__add_character_catalog.sql`: `characters`(code PK·name_ko·tagline·rive_artboard·thumbnail_url·sort_order·active) + **2종 시드**(`MONKEY` 여유롭고 느긋한 / `RED_PANDA` 부지런하고 애착 강한 — 둘 다 온보딩 무료 선택). `item_groups`(code PK·slot·name_ko·thumbnail_url·acquire_type(DEFAULT/MISSION/COIN)·coin_price·sort_order·active) = **상점·인벤토리가 다루는 단위**, slot ∈ `HAT`/`OUTFIT`/`GLASSES`/`PROP`(손)/`ROOM_PROP`(방 소품)/`BACKGROUND`. `character_items`(group_code FK·character_code FK **nullable**·image_url·rive_slot·render_meta JSONB) = **렌더 단위(variant)**, `character_code` NOT NULL=캐릭터 전용(체형·머리 크기가 달라 별도 PNG 필요) / NULL=공용(ROOM_PROP·BACKGROUND), `uq_variant UNIQUE(group_code, character_code)`. `character_lines`(character_code nullable(=공용)·context·line_ko·rive_trigger·weight) — **`context`는 감정이 아님**: `CONFIRM`/`STREAK_3`/`STREAK_7`/`MISSION`/`LEVEL_UP`/`IDLE`
-  - `V16__add_missions.sql`: `missions`(code PK·title·description·**rule JSONB**·coin_reward·item_group_reward FK·sort_order·active + `chk_missions_reward CHECK(coin_reward > 0 OR item_group_reward IS NOT NULL)`) + `user_missions(user_id, mission_code, achieved_at, PK(user_id, mission_code))`. rule 타입: `DIARY_COUNT`/`CONSECUTIVE_DAYS`/`RESOLUTION_SUCCESS`/`RESOLUTION_STREAK`/`LEVEL` — **감정 규칙 없음**. 판정은 DB 트리거가 아닌 `MissionEvaluator` 순수 함수
-  - `V17__add_user_character_state.sql`: `user_character_state`(user_id PK·selected_character FK·level·exp), `user_item_groups(user_id, group_code)` — **소유는 group 단위**(캐릭터 교체 시 옷장 유지), `user_equipment(user_id, slot, slot_index, group_code)` + `CHECK(slot='ROOM_PROP' OR slot_index=0)`(단일 슬롯 1개 / ROOM_PROP만 0~5 다중 진열), `user_progress`(confirmed_diary_count·consecutive_days·last_confirmed_date·resolution_success_count·max_streak_seq — **미션 판정 O(1) 캐시**), `user_wallets`(balance INT `CHECK >= 0`), `character_events`(user_id·event_key·event_type·coin_delta·balance_after·diary_id·payload JSONB·acked_at) + **`uq_character_events_key UNIQUE(user_id, event_key)`** — 이 한 테이블이 ① 멱등 관문 ② 코인 원장 ③ 리액션 페이로드 ④ 미확인 보상 알림함을 겸한다
+  - `V16__add_missions.sql`: `missions`(code PK·title·description·**rule JSONB**·coin_reward·item_group_reward FK·sort_order·active + `chk_missions_reward CHECK(coin_reward > 0 OR item_group_reward IS NOT NULL)`) + `user_missions(user_id, mission_code, achieved_at, PK(user_id, mission_code))`. rule 타입: `DIARY_COUNT`/`CONSECUTIVE_DAYS`/`RESOLUTION_SUCCESS`/`RESOLUTION_STREAK`(⚠️ V16엔 `LEVEL`도 있었으나 **V18 보상 재설계에서 제거** → 4종) — **감정 규칙 없음**. 판정은 DB 트리거가 아닌 `MissionEvaluator` 순수 함수
+  - `V17__add_user_character_state.sql`: `user_character_state`(user_id PK·selected_character FK — ⚠️ V17엔 `level`·`exp` 컬럼도 있었으나 **V18에서 드롭**, 경험치/레벨 폐기), `user_item_groups(user_id, group_code)` — **소유는 group 단위**(캐릭터 교체 시 옷장 유지), `user_equipment(user_id, slot, slot_index, group_code)` + `CHECK(slot='ROOM_PROP' OR slot_index=0)`(단일 슬롯 1개 / ROOM_PROP만 0~5 다중 진열), `user_progress`(confirmed_diary_count·consecutive_days·last_confirmed_date·resolution_success_count·max_streak_seq — **미션 판정 O(1) 캐시**), `user_wallets`(balance INT `CHECK >= 0`), `character_events`(user_id·event_key·event_type·coin_delta·balance_after·diary_id·payload JSONB·acked_at) + **`uq_character_events_key UNIQUE(user_id, event_key)`** — 이 한 테이블이 ① 멱등 관문 ② 코인 원장 ③ 리액션 페이로드 ④ 미확인 보상 알림함을 겸한다
   - **(구현 직후 필수 테스트 — 완료)** JUnit5 + Testcontainers — V15~V17 무오류 적용, `uq_variant(group_code, character_code)` 중복 차단, **`uq_character_events_key` 중복 삽입 차단**(멱등 관문의 물리적 근거), `user_wallets.balance` **음수 UPDATE 거부**(CHECK), `chk_missions_reward`(보상 둘 다 없으면 거부), `user_equipment` slot_index CHECK(ROOM_PROP 아닌데 index≠0 거부), **캐릭터 2종 시드 존재**(MONKEY·RED_PANDA), FK 무결성(존재하지 않는 group_code 소유 거부)
 
 - **Task 027: 백엔드 캐릭터·미션 조회/선택/착용 API (group↔variant 해석)** — ✅ **완료**
@@ -409,7 +409,7 @@
   - **부수 수정**: `FlywayMigrationTest`·`CharacterSchemaTest`의 `insertUser` 픽스처가 `users.friend_code`(V11 NOT NULL+UNIQUE)를 누락해 **Docker 실행 시 21개가 전부 실패**하던 선행 결함을 함께 고침
   - 신규 패키지 `com.recordapp.domain.character`: `controller/`(CharacterController·WardrobeController·MissionController) → `service/`(CharacterService·WardrobeService·MissionService·CatalogCache) → `mapper/`(CharacterCatalogMapper·UserCharacterMapper·MissionMapper) → `dto/`·`vo/`
   - **기본 상태 JIT 생성**: 최초 접근 시 `user_character_state`·`user_wallets`·`user_progress` 자동 생성(멱등 — `ON CONFLICT DO NOTHING`). `UserProvisioningService`와 동일 철학
-  - API: `GET /characters`(2종 + owned) · `GET /characters/me`(선택·착용·level/exp·코인·미확인 보상 수) · `PUT /characters/me/selection` · `PUT /characters/me/equipment`(**배치 교체**, `group_code` 단위) · `GET /characters/items?slot=`(group 목록 + owned + **내 캐릭터 기준 variant 이미지**) · `GET /missions`(달성 여부 + 진행률)
+  - API: `GET /characters`(2종 + owned) · `GET /characters/me`(선택·착용·코인·미확인 보상 수 — ⚠️ level/exp 필드는 V18 보상 재설계로 제거) · `PUT /characters/me/selection` · `PUT /characters/me/equipment`(**배치 교체**, `group_code` 단위) · `GET /characters/items?slot=`(group 목록 + owned + **내 캐릭터 기준 variant 이미지**) · `GET /missions`(달성 여부 + 진행률)
   - **★ group↔variant 해석**: 착용·소유는 `group_code`로만 저장하고, 응답 렌더 정보는 `(group_code + 선택 캐릭터)`로 `character_items`를 조인해 이미지/`rive_slot`/`render_meta`를 해석한다 → **캐릭터를 교체해도 착용 상태는 유지되고 variant만 재해석**된다. 해당 캐릭터용 variant가 미제작이면 409 `ITEM_VARIANT_MISSING`
   - 신규 ErrorCode: `CHARACTER_NOT_OWNED`(409), `ITEM_NOT_OWNED`(409), `ITEM_SLOT_MISMATCH`(400), `ITEM_VARIANT_MISSING`(409)
   - **(구현 직후 필수 테스트 — 완료)** JUnit5 + Testcontainers — **JIT 기본 상태 생성 멱등**(동시 2회 호출에도 1행), 미보유 group 착용 시도 **409 `ITEM_NOT_OWNED`**, slot 불일치 착용 400, **★ 캐릭터 교체 시 착용 유지 + variant만 재해석**(핵심 시나리오), 해당 캐릭터용 variant 미제작 시 **409 `ITEM_VARIANT_MISSING`**, `ROOM_PROP` 다중 진열(0~5) + 단일 슬롯 중복 착용 거부, 배치 교체가 원자적(일부 실패 시 전체 롤백), **IDOR 차단**(타인 상태 조회·수정 불가)
@@ -423,7 +423,7 @@
   - **코인 소비(경합 안전)**: `POST /characters/items/{groupCode}/purchase` → `UPDATE user_wallets SET balance = balance - ? WHERE user_id = ? AND balance >= ?` → **0행이면 409 `COIN_INSUFFICIENT`**(CHECK 제약이 최종 방어선). `record.character.coin-enabled=false`(기본)이면 403 `FEATURE_DISABLED` — **적립은 항상 동작, 상점 소비만 게이팅**
   - **백스톱 폴러** `CharacterRewardBackfillPoller`: `EmotionAnalysisPoller`와 동일 철학 — 확정됐으나 `character_events`에 게이트가 없는 기록을 주기적으로 스캔·보정(비동기 유실 대비). 게이트가 멱등하므로 중복 적립 불가
   - API: `GET /characters/me/wallet` · `GET /characters/me/rewards`(커서 — 미확인 보상함) · `POST /characters/me/rewards/ack` · `POST /characters/items/{groupCode}/purchase` · `GET /characters/me/reaction?diaryId=`(**확정 즉시 생성 → 폴링 불필요**)
-  - 설정: `record.character.{coin-enabled: false, coin-per-diary: 10, coin-per-resolution-success: 30, exp-per-diary: 10}`. 신규 ErrorCode: `COIN_INSUFFICIENT`(409), `FEATURE_DISABLED`(403)
+  - 설정: `record.character.{coin-enabled: false, coin-per-diary: 10, coin-per-resolution-success: 30}`(⚠️ `exp-per-diary`는 경험치/레벨 폐기(V18)로 제거). 신규 ErrorCode: `COIN_INSUFFICIENT`(409), `FEATURE_DISABLED`(403)
   - **(구현 직후 필수 테스트 — 가장 두껍게)** JUnit5 + Testcontainers — ① 확정 1회 → **코인·진척도·`character_events` 정확히 1행** ② **★ 같은 이벤트 3회 재전달 → 잔액·진척도·미션 전부 불변**(멱등 핵심) ③ 미션 임계값 도달 시 **보상 1회만** 지급(재판정해도 재지급 없음) ④ 작심삼일 완주 시 코인 적립 + `RESOLUTION_STREAK` 미션 판정 ⑤ **트랜잭션 롤백 시 미적립**(AFTER_COMMIT 보장 — 기록 저장 실패했는데 코인만 들어오면 안 됨) ⑥ **백스톱 폴러가 유실분 보정**(리스너 미실행 상황 시뮬레이션 → 폴러 실행 → 1회만 적립) ⑦ **구매 동시 요청 경합 시 잔액 음수 불가**(0행 UPDATE → `COIN_INSUFFICIENT`) ⑧ **연속일 계산**(연속 확정 시 증가 / **하루 건너뛰면 리셋** / 같은 날 재확정은 불변) ⑨ `coin-enabled=false`에서 구매 403 `FEATURE_DISABLED`(적립은 정상)
 
 - **Task 029: 앱 캐릭터 홈(1번 탭) + 탭 재편 + 온보딩 + 대체 렌더러 + 데이터 계층** — 🔶 **부분 완료(온보딩 선택창까지)**
@@ -436,9 +436,9 @@
   - 신규 feature `app/lib/features/character/`: `domain/`(character·item_group·my_character·mission·reward_event·retrospect + `CharacterRepository` **abstract**) → `data/`(`ApiCharacterRepository`·`FakeCharacterRepository`·dto) → `presentation/`(page·providers·widgets). **기존 컨벤션 준수**: abstract Repository → Api/Fake impl → Riverpod provider override → 라우트
   - **⚠️ 탭 재편(회귀 주의)**: `core/router/app_router.dart`·`scaffold_with_nav_bar.dart`를 `[캐릭터(홈)] [캘린더] [작심삼일] [피드] [프로필]`로 재구성 → **캘린더가 index 0 → 1로 밀린다**. **FCM 딥링크(`/resolution/:id`)·모든 `context.go` 경로 전수 점검** 필수(Phase 6의 "맨 뒤 append로 인덱스 보존" 전제가 깨짐)
   - **온보딩**: 가입 완료 후 `selectedCharacter == null`이면 go_router `redirect`로 `/onboarding/character` → **원숭이 vs 레서판다 좌우 대형 2장 비교** + 성격 소개 문구 → "이 친구와 시작하기" → `PUT /characters/me/selection`
-  - **캐릭터 홈(몰입형 풀스크린 "내 방")**: 상단 반투명 상태바(`character_home_stat_bar` — Lv·성장 게이지·코인·보상 알림 배지), 중앙 대형 캐릭터(idle 두리번거림), 주변 **소품 4슬롯 진열**, 배경은 착용 `BACKGROUND`, 하단 플로팅 패널(`character_home_bottom_actions` — **"오늘 기록하기" 주 CTA** + 옷장·미션·상점)
+  - **캐릭터 홈(몰입형 풀스크린 "내 방")**: 상단 반투명 상태바(`character_home_stat_bar` — 코인·보상 알림 배지. ⚠️ Lv·성장 게이지는 V18 보상 재설계로 폐기), 중앙 대형 캐릭터(idle 두리번거림), 주변 **소품 4슬롯 진열**, 배경은 착용 `BACKGROUND`, 하단 플로팅 패널(`character_home_bottom_actions` — **"오늘 기록하기" 주 CTA** + 옷장·미션. 별도 상점 버튼 없음 — 구매는 옷장 통합)
   - **★ 렌더러**: `character_stage.dart`(배경 카드 + 렌더러 배선) + `idle_character_view.dart`(**통짜 PNG 메시 워프**). 아이템 오버레이는 `render_meta`의 `anchorX`/`anchorY`/`scale`/`z`로 배치한다(Task 030). 외부 의존성이 없어 웹 포함 전 플랫폼 동일 동작
-  - 색 역할 준수(`primary`=선택/CTA, `success`=성장 게이지, `accent`는 AI 전용이므로 **미사용**). 코인 색은 `AppColors`에 **`currency`(골드) 토큰 신규 승격**
+  - 색 역할 준수(`primary`=선택/CTA, `accent`는 AI 전용이므로 **미사용**. ⚠️ `success`=성장 게이지 역할은 게이지 폐기(V18)로 사라짐). 코인 색은 `AppColors`에 **`currency`(골드) 토큰 신규 승격**
   - **(구현 직후 필수 테스트)** `flutter test` — **★ 탭 인덱스 회귀**(캘린더 0→1 이동 후 각 탭 라우트 정상 진입, **FCM 딥링크 `/resolution/:id` 전수 검증**), 온보딩 리다이렉트(`selectedCharacter == null` → `/onboarding/character`, 선택 후 홈 복귀·재진입 시 리다이렉트 없음), **플레이스홀더가 `render_meta` 좌표(anchor·scale·z)대로 아이템 렌더**, 미착용 슬롯은 렌더 생략, 상태바 Lv·게이지·코인 바인딩, 로딩/에러/빈 상태 / `flutter analyze` 무경고
 
 - **Task 030: 앱 옷장 · 상점 · 미션 · 보상함 UI** · **미착수**
@@ -460,7 +460,7 @@
 - **Task 032: 앱 리액션 오버레이 + 월간 회고 카드 (락인 완성)** · **미착수**
   - 구현 기능: F031(기록 리액션), F032(월간 회고·성장)
   - **리액션 오버레이**: `diary_detail_view.dart`에서 인트로·러닝 영상·PENDING 폴링을 제거한 자리(Task 025)에 `reaction_overlay.dart` + `character_speech_bubble.dart`. **확정 응답이 곧 `DONE`이므로 대기 없이 즉시** 캐릭터 등장 → 말풍선(맥락 기반 대사) + 코인/미션 획득 카드 → 탭하면 `POST /characters/me/rewards/ack`. **획득이 없어도 대사 1줄은 항상** 표시(빈손 리액션 금지). 페이로드 소스는 `GET /characters/me/reaction?diaryId=`
-  - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` — `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·연속일·**감정 분포**(사용자 입력 감정 통계)·획득 아이템·레벨 성장·캐릭터 성장 요약. **데이터가 쌓일수록 떠나기 어려워지는 구조**의 가시화. 백엔드 `RetrospectService`
+  - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` — `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·연속일·**감정 분포**(사용자 입력 감정 통계)·획득 아이템·획득 코인 요약(⚠️ 레벨 성장은 V18 보상 재설계로 폐기). **데이터가 쌓일수록 떠나기 어려워지는 구조**의 가시화. 백엔드 `RetrospectService`
   - **(구현 직후 필수 테스트)** `flutter test` — 리액션 오버레이 표시/dismiss, **획득 없어도 대사 1줄 표시**, ack 호출 후 배지 감소·재표시 안 됨, 코인/미션 카드 렌더, 회고 카드 빈 달(기록 0건) 처리, 감정 분포 집계 렌더(프리셋 + 커스텀 라벨 혼재) / **`integration_test` E2E — 가입 → 캐릭터 선택(온보딩) → 기록 작성 → 감정 입력 → 확정 → 리액션 즉시 등장 → 코인 반영 → 상점 구매 → 착용 → 홈 반영**(전 구간 관통)
 
 - **Phase 7 로컬 실행**: `cd backend && ./gradlew bootRun`(네이티브 PG 18 `recorme`) + `cd app && flutter run` + `adb reverse tcp:8080 tcp:8080`

@@ -37,7 +37,7 @@ backend/src/main/java/com/recordapp/domain/character/
 
 - [x] **기본 상태 JIT 생성**: 최초 접근 시 `user_character_state`·`user_wallets`·`user_progress`를 자동 생성(`ON CONFLICT DO NOTHING` → **멱등**). `UserProvisioningService`와 동일 철학
 - [x] `GET /characters` — 캐릭터 2종 목록 + 소유/선택 여부
-- [x] `GET /characters/me` — 선택 캐릭터·착용 상태(해석된 variant 포함)·level/exp·코인 잔액·미확인 보상 수
+- [x] `GET /characters/me` — 선택 캐릭터·착용 상태(해석된 variant 포함)·코인 잔액·미확인 보상 수 (⚠️ level/exp 필드는 이후 보상 재설계(V18)로 제거됨)
 - [x] `PUT /characters/me/selection` — 캐릭터 교체(**착용 유지 + variant 재해석**)
 - [x] `PUT /characters/me/equipment` — **배치 교체**(`group_code` 단위, 원자적). 단일 슬롯 1개 / `ROOM_PROP` 0~5 다중
 - [x] `GET /characters/items?slot=` — group 목록 + 소유 여부 + **내 캐릭터 기준 variant 이미지**

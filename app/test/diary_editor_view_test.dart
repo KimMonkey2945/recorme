@@ -45,6 +45,7 @@ Future<void> _pump(
         onRemember: onRemember ?? () {},
         onCancel: () {},
         onPickImage: onPickImage ?? () {},
+        onEmotionChanged: (_, _) {},
       ),
     ),
   ));

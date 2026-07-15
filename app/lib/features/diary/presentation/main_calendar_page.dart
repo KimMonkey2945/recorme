@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/api_config.dart';
 import '../../../core/notifications/notification_permission_prompt.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/profile_avatar.dart';
 import '../../../shared/widgets/write_choice_sheet.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../profile/presentation/providers/profile_providers.dart';
@@ -159,9 +157,12 @@ class _MainCalendarPageState extends ConsumerState<MainCalendarPage> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           actions: [
-            // 프로필 진입 버튼 — 별도 ConsumerWidget으로 watch 범위를 한정해
-            // 프로필 갱신 시 캘린더 본문 전체가 리빌드되지 않게 한다.
-            const _AppBarProfileButton(),
+            // 지난 기록 목록 진입 — 프로필이 탭으로 빠지며 남은 자리.
+            IconButton(
+              tooltip: '지난 기록',
+              onPressed: () => context.push('/list'),
+              icon: const Icon(Icons.list_alt_outlined),
+            ),
             IconButton(
               tooltip: '로그아웃',
               onPressed: () =>
@@ -340,30 +341,3 @@ class _GreetingSection extends ConsumerWidget {
   }
 }
 
-/// 앱바 프로필 진입 버튼 — 등록 이미지(없으면 닉네임 이니셜) 아바타. 탭 영역 48dp 확보.
-///
-/// `myProfileProvider`를 이 위젯에서만 watch해, 프로필 로딩/갱신 시 캘린더 본문이
-/// 아니라 이 버튼만 리빌드되게 한다.
-class _AppBarProfileButton extends ConsumerWidget {
-  const _AppBarProfileButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(myProfileProvider).asData?.value;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Center(
-          child: ProfileAvatar(
-            imageUrl: ApiConfig.resolveImageUrl(user?.profileImageUrl),
-            radius: 16,
-            initial: ProfileAvatar.initialOf(user?.nickname),
-            onTap: () => context.push('/profile'),
-          ),
-        ),
-      ),
-    );
-  }
-}

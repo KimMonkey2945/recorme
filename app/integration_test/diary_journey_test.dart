@@ -158,6 +158,8 @@ class _E2EDiaryRepository implements DiaryRepository {
     required String contentText,
     bool confirm = false,
     String visibility = 'PRIVATE',
+    String? emotion,
+    String? emotionLabel,
   }) async {
     final key = _ymd(date);
     for (final entry in _diaries.entries) {
@@ -168,8 +170,10 @@ class _E2EDiaryRepository implements DiaryRepository {
           contentText: contentText,
           writtenDate: entry.value.writtenDate,
           visibility: entry.value.visibility,
-          // E2E 테스트는 즉시 DONE으로 반환(PENDING 무한 스피너 방지).
+          // E2E 테스트는 즉시 DONE으로 반환(상태 흐름 단순화).
           analysisStatus: 'DONE',
+          primaryEmotion: emotion,
+          emotionLabel: emotionLabel,
         );
         _diaries[entry.key] = updated;
         return updated;
@@ -183,6 +187,8 @@ class _E2EDiaryRepository implements DiaryRepository {
       writtenDate: DateTime(date.year, date.month, date.day),
       visibility: 'PRIVATE',
       analysisStatus: 'DONE',
+      primaryEmotion: emotion,
+      emotionLabel: emotionLabel,
     );
     _diaries[id] = created;
     return created;
@@ -203,6 +209,9 @@ class _E2EDiaryRepository implements DiaryRepository {
   @override
   Future<String> uploadImage(Uint8List bytes, String filename) async =>
       '/files/diaries/fake/$filename';
+
+  @override
+  Future<List<String>> getRecentEmotionLabels() async => const [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

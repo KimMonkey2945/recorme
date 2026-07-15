@@ -21,6 +21,8 @@ public enum ErrorCode {
 	DIARY_NOT_FOUND(HttpStatus.NOT_FOUND, "일기를 찾을 수 없습니다."),
 	DIARY_ALREADY_CONFIRMED(HttpStatus.CONFLICT, "이미 기억한 일기는 수정할 수 없어요."),
 	IMAGE_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "사진은 일기당 최대 5장까지 첨부할 수 있습니다."),
+	// 감정 직접 입력(Task 024): 프리셋 코드와 자유 텍스트 라벨은 동시에 지정할 수 없다.
+	EMOTION_CONFLICT(HttpStatus.BAD_REQUEST, "감정은 프리셋과 직접 입력 중 하나만 고를 수 있어요."),
 
 	// 친구(소셜)
 	FRIEND_SELF(HttpStatus.BAD_REQUEST, "자기 자신에게는 친구 요청할 수 없어요."),

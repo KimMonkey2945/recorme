@@ -5,6 +5,8 @@
 - **상태**: 미착수
 - **선행**: Task 026(스키마), Task 027(캐릭터 상태·소유 모델)
 
+> 📌 **2026-07-15 보상 재설계(1단계) 반영**: 경험치/레벨·별도 상점 화면을 **폐기**하고 **코인 + 미션 해금**만 남겼다(마이그레이션 **V18** 적용 완료). 이 Task의 아래 항목 중 **경험치(exp) 관련은 모두 제외**한다 — `exp-per-diary` 설정 키는 없고, `user_character_state.level/exp`는 드롭됐으며, `LEVEL_UP` 대사 맥락·`LEVEL` 미션 규칙은 미사용(inert)이다. 코인 적립·구매·미션 판정 엔진 구현 자체는 그대로 유효하다.
+
 > ⚠️ **Phase 7 최대 리스크 지점.** 중복 적립·유실 적립·경합은 전부 여기서 발생한다.
 > **여기만 정확하면 나머지는 CRUD다.** 테스트를 가장 두껍게 작성한다.
 
@@ -56,7 +58,7 @@ backend/src/main/java/com/recordapp/
 - [ ] ② **코인 적립** + `balance_after` 원장 기록
 - [ ] ③ `user_progress` **UPSERT + RETURNING**(확정 수·연속일·마지막 확정일·완주 수·최대 streak)
 - [ ] ④ `MissionEvaluator`(**순수 함수**)로 미션 판정 — 미션도 `event_key='MISSION:{code}'` 게이트를 통과 → **보상 1회 보장**
-- [ ] ⑤ `character_lines`에서 **캐릭터별·맥락별**(CONFIRM/STREAK_3/STREAK_7/MISSION/LEVEL_UP — **감정 아님**) 대사 1줄 선택
+- [ ] ⑤ `character_lines`에서 **캐릭터별·맥락별**(CONFIRM/STREAK_3/STREAK_7/MISSION — **감정 아님**. `LEVEL_UP`은 레벨 제거로 제외·inert) 대사 1줄 선택
 - [ ] ⑥ `payload` 갱신 → **앱 리액션의 단일 소스**
 
 ### 코인 소비 / 상점
@@ -72,7 +74,9 @@ backend/src/main/java/com/recordapp/
 - [ ] `GET /characters/me/reaction?diaryId=` — **확정 즉시 생성되므로 폴링 불필요**
 
 ### 설정
-- [ ] `record.character.{coin-enabled: false, coin-per-diary: 10, coin-per-resolution-success: 30, exp-per-diary: 10}`
+- [ ] `record.character.{coin-enabled: false, coin-per-diary: 10, coin-per-resolution-success: 30}`
+      (⚠️ `exp-per-diary`는 경험치/레벨 폐기(V18)로 **제외**)
+- 📌 **코인 적립 기준값은 `docs/coin-rewards.md`가 단일 정의처**다(출석·기록·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤). 엔진 구현 시 그 표를 위 설정 블록으로 옮기고, `docs/coin-rewards.md`의 "현재 구현과의 차이"(미션 시드 `STREAK_7`=100 등)를 정렬한다.
 
 ## 수락 기준
 

@@ -13,6 +13,7 @@ import '../domain/my_character.dart';
 import 'providers/character_providers.dart';
 import 'widgets/character_stage.dart';
 import 'widgets/item_grid_tile.dart';
+import 'widgets/locked_item_sheet.dart';
 import 'widgets/wardrobe_save_bar.dart';
 import 'widgets/wardrobe_slot_tabs.dart';
 
@@ -170,7 +171,10 @@ class _WardrobePageState extends ConsumerState<WardrobePage> {
                     return ItemGridTile(
                       item: item,
                       selected: codes.contains(item.groupCode),
-                      onTap: item.owned ? () => _onToggle(item) : null,
+                      // 보유: 착용 토글(로컬 미리보기) / 미보유: 해금 조건 안내 시트.
+                      onTap: item.owned
+                          ? () => _onToggle(item)
+                          : () => showLockedItemSheet(context, item),
                     );
                   },
                 ),

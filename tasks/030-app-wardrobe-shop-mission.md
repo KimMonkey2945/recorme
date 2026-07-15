@@ -5,6 +5,8 @@
 - **상태**: **부분 구현 — 옷장 완료** (상점·미션·보상함은 Task 028 보상 엔진 선행 필요로 잔여)
 - **선행**: Task 027(착용 API) ✅, Task 028(코인·구매·미션·보상함 API) ⏳, Task 029(데이터 계층·홈) ⏳
 
+> 📌 **2026-07-15 보상 재설계(1단계) 반영**: 경험치/레벨·**별도 상점 화면**을 폐기하고 코인 + 미션 해금만 남겼다. → **`shop_page.dart`는 폐기(옷장 통합)** — 옷장이 소유/해금/구매 노출의 단일 지점이 되어, 미보유 아이템 탭 시 **안내 시트**로 미션 진행률(`acquire_type=MISSION`) 또는 코인 가격·구매(`acquire_type=COIN`)를 노출한다. **미션 화면도 이 옷장 잠금 안내 시트로 대체**(별도 `mission_page` 진행률 화면은 후순위). 구매 API·`coin-enabled` 게이팅·에러 계약(`COIN_INSUFFICIENT`/`FEATURE_DISABLED`)은 옷장 안내 시트에서 그대로 재사용한다.
+
 ## 옷장 구현 노트 (완료분)
 
 - **렌더 방식(확정)**: 착용형(HAT/OUTFIT/GLASSES/PROP) 아이템 PNG는 **캐릭터와 동일 프레임의 풀프레임
@@ -44,11 +46,11 @@ app/lib/features/character/presentation/
 - [x] **옷장** `wardrobe_page.dart`: slot 탭(`HAT`/`OUTFIT`/`GLASSES`/`PROP`/`ROOM_PROP`/`BACKGROUND`) +
       `item_grid_tile`(보유/미보유·착용중 표시) → 착용/해제 → **`PUT /characters/me/equipment` 배치 교체**(`group_code` 단위).
       `ROOM_PROP`은 **0~5 다중 진열 슬롯 UI** ✅ (+ `wardrobe_slot_tabs`·`wardrobe_save_bar`, 착용 오버레이 렌더 포함)
-- [ ] **상점** `shop_page.dart`: `acquire_type=COIN` group 목록 + 가격·잔액 표시 → 구매 확인 다이얼로그 →
-      `POST /characters/items/{groupCode}/purchase`. 성공 시 잔액 차감·소유 반영·옷장 invalidate
-- [ ] **상점 에러 UI**: 잔액 부족 → `COIN_INSUFFICIENT` 안내 / `coin-enabled=false` → **`FEATURE_DISABLED`(준비 중) 안내**
-- [ ] **미션** `mission_page.dart`: `mission_tile` + **`unlock_progress_bar`**(진행률 — "10개 중 7개 기록") + 달성 시 보상(코인·아이템) 표시.
-      **해금은 미션 단일 경로**임을 UI 카피로 명확히
+- [ ] ~~**상점** `shop_page.dart`~~ **폐기(보상 재설계 — 옷장 통합)**: 별도 상점 화면 대신 **옷장 안내 시트**에서
+      `acquire_type=COIN` 아이템의 가격·구매(`POST /characters/items/{groupCode}/purchase`)를 처리한다. 성공 시 잔액 차감·소유 반영·옷장 invalidate
+- [ ] **구매 에러 UI(옷장 안내 시트)**: 잔액 부족 → `COIN_INSUFFICIENT` 안내 / `coin-enabled=false` → **`FEATURE_DISABLED`(준비 중) 안내**
+- [ ] **미션 해금 노출** — 우선 **옷장 안내 시트**에서 `acquire_type=MISSION` 아이템의 **`unlock_progress_bar`**(진행률 — "10개 중 7개 기록") + 보상 표시.
+      **해금은 미션 단일 경로**임을 UI 카피로 명확히. (별도 `mission_page.dart` 진행률 목록 화면은 후순위)
 - [ ] **보상함** `reward_box_page.dart`: 미확인 `character_events` 목록(커서 페이징) → 확인 시 `POST /characters/me/rewards/ack`
       → 홈 상태바 배지 감소(`invalidate`)
 - [ ] 코인 표시는 `AppColors.currency`(골드) 토큰 사용, `accent`(AI 전용)는 미사용
@@ -137,7 +139,7 @@ app/lib/features/character/presentation/
   - 두 캐릭터 캔버스를 **848×1400으로 통일**(몸 중심·발선 정렬) — 몸에 붙는 의류(상의·하의·신발)를
     **공용 variant 1장**으로 쓰기 위한 전제. 캐릭터 N이 늘어도 의류 이미지는 안 늘어난다(모자·안경만 캐릭터별).
   - 옷장 슬롯에 **BOTTOM(하의)·SHOES(신발)** 추가, OUTFIT 라벨을 "상의"로. z 겹침: SHOES 26 < BOTTOM 28
-    < OUTFIT 30 < GLASSES 35 < HAT 40. ⚠️ 백엔드 V15 슬롯은 미변경 — 실서비스 반영 시 V18 필요.
+    < OUTFIT 30 < GLASSES 35 < HAT 40. ⚠️ 백엔드 V15 슬롯은 미변경 — 실서비스 반영 시 신규 마이그레이션 필요(⚠️ V18은 보상 재설계·V19는 감정 입력 전환이 선점 → 그 다음 번호).
   - 부위별 아이템 방식 확정(실측 반복 끝 결론):
     - **의류(상의·하의·신발) = 착용샷 diff 추출** + 후처리(구멍 채움·털색 게이트·경계 침식).
       ⚠️ 공용 1장 공유는 **기각**(원숭이 픽셀 조각이 판다에 노출) — 캐릭터별 착용샷 필요.

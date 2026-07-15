@@ -7,8 +7,6 @@
     <resultMap id="userCharacterStateMap" type="com.recordapp.domain.character.dto.UserCharacterStateRow">
         <constructor>
             <arg column="selected_character" javaType="java.lang.String"/>
-            <arg column="level" javaType="_int"/>
-            <arg column="exp" javaType="_int"/>
         </constructor>
     </resultMap>
 
@@ -69,9 +67,7 @@
     <!-- ===== 조회 ===== -->
 
     <select id="findState" resultMap="userCharacterStateMap">
-        SELECT selected_character,
-               level,
-               exp
+        SELECT selected_character
           FROM user_character_state
          WHERE user_id = #{userId}
     </select>

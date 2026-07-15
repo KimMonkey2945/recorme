@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// 하단 탭(캘린더/목록) 셸. StatefulShellRoute의 각 브랜치를 IndexedStack으로 유지한다.
+/// 하단 탭(캐릭터/캘린더/작심삼일/피드/프로필) 셸.
+/// StatefulShellRoute의 각 브랜치를 IndexedStack으로 유지한다.
+///
+/// ⚠️ destinations 순서 = 브랜치 순서(app_router.dart) = 탭 인덱스. 한쪽만 바꾸면 어긋난다.
 class ScaffoldWithNavBar extends StatelessWidget {
   const ScaffoldWithNavBar({super.key, required this.navigationShell});
 
@@ -24,14 +27,14 @@ class ScaffoldWithNavBar extends StatelessWidget {
         onDestinationSelected: _onTap,
         destinations: const [
           NavigationDestination(
+            icon: Icon(Icons.pets_outlined),
+            selectedIcon: Icon(Icons.pets),
+            label: '홈',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.calendar_month_outlined),
             selectedIcon: Icon(Icons.calendar_month),
             label: '캘린더',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.list_alt_outlined),
-            selectedIcon: Icon(Icons.list_alt),
-            label: '목록',
           ),
           NavigationDestination(
             icon: Icon(Icons.flag_outlined),
@@ -42,6 +45,11 @@ class ScaffoldWithNavBar extends StatelessWidget {
             icon: Icon(Icons.dynamic_feed_outlined),
             selectedIcon: Icon(Icons.dynamic_feed),
             label: '피드',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: '프로필',
           ),
         ],
       ),

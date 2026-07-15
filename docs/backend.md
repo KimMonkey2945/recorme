@@ -30,7 +30,7 @@ com.recordapp
 │  │  ├─ dto/        (DiaryCreateRequest, DiaryUpdateRequest, DiaryResponse, DiaryFeedItem)
 │  │  └─ vo/         (Diary)
 │  ├─ character      ★ Phase 7 — 캐릭터·옷장·미션 (조회·선택·착용 구현 / 보상은 Task 028 예정)
-│  │  ├─ CharacterConstants.java  (EXP_PER_LEVEL=100, EQUIPMENT_MAX_ITEMS=12)
+│  │  ├─ CharacterConstants.java  (EQUIPMENT_MAX_ITEMS=12 — EXP_PER_LEVEL은 경험치/레벨 폐기(V18)로 제거)
 │  │  ├─ controller/ (CharacterController, WardrobeController, MissionController)
 │  │  │                  ⏳ CharacterRewardController — Task 028
 │  │  ├─ service/    (CharacterService, WardrobeService, MissionService, CatalogCache)
@@ -48,7 +48,7 @@ com.recordapp
 │  │  ├─ service/    (EmotionAnalysisService, EmotionAnalyzer(if), EmotionAnalysisPoller)
 │  │  ├─ mapper/     (EmotionAnalysisMapper)
 │  │  └─ dto/        (EmotionResult)
-│  │  ⏳ 수동 감정 입력 전환(플래그로 LLM off)은 Task 024 — **미착수**. 지금은 확정 시 LLM이 분석한다.
+│  │  ✅ 수동 감정 입력 전환(플래그로 LLM off)은 Task 024 — **적용됨**(기본 off: 확정 시 즉시 DONE + 사용자 감정 저장).
 │  ├─ theme
 │  │  └─ service/ mapper/ dto/
 │  ├─ music
@@ -288,11 +288,11 @@ eventMapper.updatePayload(gate, payload(line, achieved, balance)); // 앱 리액
 - **JIT 프로비저닝**: 백엔드는 `social_accounts`/`refresh_tokens` 테이블을 두지 않는다. `users.supabase_uid`(UNIQUE)로 Supabase 사용자를 매핑하고, 최초 인증 요청 시 JWT 클레임(email)·`user_metadata`(닉네임·프로필)로 `users` 행을 생성한다.
 - **검증 방식**: 프로젝트 **JWKS(ES256 비대칭)**. Supabase가 JWT Signing Keys(ES256)로 서명하므로, 백엔드는 `{supabase.url}/auth/v1/.well-known/jwks.json`의 공개키로 검증한다(`NimbusJwtDecoder` + audience `authenticated`). 대칭 secret을 보관하지 않으므로 키 회전에 자동 대응하고 유출 위험이 없다. (참고: legacy HS256 secret 방식은 이 프로젝트에 미적용.)
 
-## 6. LLM 연동 추상화 (감정 분석) — ✅ 현재 활성
+## 6. LLM 연동 추상화 (감정 분석) — ⏸ 기본 비활성(Task 024, 플래그로 복구)
 
-> **현재 상태: LLM 자동 감정 분석은 그대로 동작한다.** 확정(`DRAFT`→`PENDING`) 시 멀티모달 LLM이 감정·테마를 분석해 `DONE`으로 갱신한다(§7). `record.analysis.*`에는 폴러 주기·배치 크기 설정만 있고 **on/off 플래그(`record.analysis.enabled`)는 존재하지 않는다.**
+> **현재 상태: LLM 자동 감정 분석은 플래그(`record.analysis.enabled`, 기본 `false`)로 꺼져 있다.** 기본 경로에서 확정(`DRAFT`→`DONE`)은 즉시 전이되고 감정은 **사용자 직접 입력**(프리셋 6종 = `emotion_types` FK `primary_emotion`, 또는 자유 텍스트 `diaries.emotion_label` ≤20자, 상호 배타)으로 저장된다. 동시 지정은 400 `EMOTION_CONFLICT`.
 >
-> ⏳ **Task 024(미착수)** 가 이 절을 바꿀 예정이다 — LLM 분석을 플래그로 끄고 **감정을 사용자가 직접 입력**하는 방식(프리셋 6종 = `emotion_types` FK 또는 자유 텍스트 `diaries.emotion_label` ≤20자)으로 전환한다. `EmotionAnalysisService`·`EmotionAnalyzer`·`EmotionAnalysisPoller`·`infra/llm/*`는 **삭제하지 않고** `@ConditionalOnProperty`로 빈 미등록 처리해 플래그 한 줄로 되돌릴 수 있게 한다.
+> ✅ **Task 024 적용됨.** `EmotionAnalysisService`·`LlmEmotionAnalyzer`·`EmotionAnalysisPoller`·`infra/llm/LlmConfig`의 `LlmClient` 빈은 **삭제하지 않고** `@ConditionalOnProperty(name="record.analysis.enabled", havingValue="true")`로 게이팅했다 — `ANALYSIS_ENABLED=true` 한 줄이면 확정 시 `PENDING`→멀티모달 LLM 분석→`DONE`(§7) 경로가 무손상 복구된다(빈이 다시 등록됨). `DiaryService`는 빈 부재를 `ObjectProvider`로 흡수한다.
 > - 전환 후: flag off면 확정 시 `analysis_status`가 **즉시 `DONE`**(PENDING 대기 없음) + 사용자 감정 저장, AI 산출 필드(`ai_title`·`background_color`·`accent_color` 등)는 NULL → 캐릭터 리액션 지연 0.
 > - 결정 번복의 배경 → [`architecture.md`](./architecture.md) §3.
 >
@@ -359,7 +359,7 @@ public interface LlmClient {
 
 ### 8-4. 미션 진행률은 O(1)
 
-매 조회마다 `diaries`/`resolutions`를 세지 않는다. `MissionRuleType`별로 `user_progress`(또는 레벨) 스냅샷의 **컬럼 하나만** 읽는다 — `MissionService.progressOf(type, progress, level)`는 부작용 없는 **순수 함수**(static)라 Task 028의 `MissionEvaluator`가 그대로 재사용한다. 달성 판정·지급은 하지 않고, **이미 기록된 달성 이력(`user_missions`)과 현재 진행률만** 보여준다.
+매 조회마다 `diaries`/`resolutions`를 세지 않는다. `MissionRuleType`별로 `user_progress` 스냅샷의 **컬럼 하나만** 읽는다 — `MissionService.progressOf(type, progress)`는 부작용 없는 **순수 함수**(static)라 Task 028의 `MissionEvaluator`가 그대로 재사용한다. 달성 판정·지급은 하지 않고, **이미 기록된 달성 이력(`user_missions`)과 현재 진행률만** 보여준다. (⚠️ `LEVEL` 규칙은 경험치/레벨 폐기(V18)로 제거 — 규칙은 4종.)
 
 | 규칙 | 참조 컬럼 |
 |---|---|
@@ -367,7 +367,6 @@ public interface LlmClient {
 | `CONSECUTIVE_DAYS` | `user_progress.consecutive_days` |
 | `RESOLUTION_SUCCESS` | `user_progress.resolution_success_count` |
 | `RESOLUTION_STREAK` | `user_progress.max_streak_seq` |
-| `LEVEL` | `user_character_state.level` |
 
 ### 8-5. 착용 배치 교체는 원자적
 

@@ -18,9 +18,6 @@ import 'package:record/features/character/presentation/providers/character_provi
 /// 미선택 상태(온보딩 필요).
 const _unselected = MyCharacter(
   character: null,
-  level: 1,
-  exp: 0,
-  expToNext: 100,
   coinBalance: 0,
   unackedRewardCount: 0,
 );
@@ -33,9 +30,6 @@ const _selected = MyCharacter(
     thumbnailUrl: 'assets/characters/monkey.png',
     riveArtboard: 'monkey',
   ),
-  level: 1,
-  exp: 0,
-  expToNext: 100,
   coinBalance: 0,
   unackedRewardCount: 0,
 );
@@ -136,7 +130,7 @@ void main() {
       expect(paths, contains(characterOnboardingRoute));
     });
 
-    test('기존 탭 브랜치 순서 회귀 없음(캘린더 index 0 유지)', () {
+    test('탭 브랜치 순서: 캐릭터 홈 index 0', () {
       final router = buildRouter(AuthStatus.authenticated);
       final shell = router.configuration.routes
           .whereType<StatefulShellRoute>()
@@ -146,8 +140,9 @@ void main() {
           .map((b) => (b.routes.first as GoRoute).path)
           .toList();
 
-      // FCM 딥링크가 인덱스에 의존하므로 순서를 절대 바꾸지 않는다.
-      expect(branchPaths, ['/', '/list', '/resolution', '/feed']);
+      // 브랜치 순서 = scaffold_with_nav_bar.dart의 destinations 순서. 함께 유지한다.
+      // (FCM 딥링크는 경로 문자열 push라 탭 인덱스에 의존하지 않는다.)
+      expect(branchPaths, ['/', '/calendar', '/resolution', '/feed', '/profile']);
     });
   });
 }

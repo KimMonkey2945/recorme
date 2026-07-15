@@ -27,13 +27,10 @@ class SelectedCharacter {
 /// **미선택 사용자도 200으로 응답하며, [character]가 null인 것이 온보딩 신호다(404 아님).**
 /// 라우터의 온보딩 리다이렉트 가드는 이 필드만 보고 분기한다.
 ///
-/// 레벨·코인·미확인 보상·장착 아이템은 캐릭터 홈/옷장(Task 029 본편·030) 범위이며,
-/// 이번 온보딩 범위에서는 계약만 파싱해 둔다.
+/// 코인·미확인 보상·장착 아이템은 캐릭터 홈/옷장 범위다.
+/// 레벨·경험치는 보상 재설계(1단계)에서 제거됐다 — 성장은 코인·미션 해금으로만 표현한다.
 class MyCharacter {
   const MyCharacter({
-    required this.level,
-    required this.exp,
-    required this.expToNext,
     required this.coinBalance,
     required this.unackedRewardCount,
     this.character,
@@ -42,12 +39,6 @@ class MyCharacter {
 
   /// 선택한 캐릭터. **null이면 아직 선택 전(= 온보딩 필요)**.
   final SelectedCharacter? character;
-
-  final int level;
-  final int exp;
-
-  /// 다음 레벨까지 필요한 누적 경험치.
-  final int expToNext;
 
   final int coinBalance;
 

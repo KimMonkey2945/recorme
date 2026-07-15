@@ -68,6 +68,10 @@ record:
   # poll-interval-ms: fixedDelay(이전 실행 종료 후 간격), initial-delay-ms: 기동 후 첫 실행 지연,
   # batch-size: 1회 폴링당 선점(FOR UPDATE SKIP LOCKED)·dispatch 할 PENDING 최대 건수.
   analysis:
+    # 감정 LLM 자동 분석 on/off 스위치(Task 024). 기본 false — 감정은 사용자가 직접 입력한다.
+    #   false: 확정 시 즉시 DONE(분석 대기 0, 리액션 지연 0). LLM/감정 분석 빈이 아예 미등록된다.
+    #   true : 기존 경로 복구 — 확정 시 PENDING → 커밋 밖 @Async 로 LLM 분석 → DONE. 코드·테이블은 보존돼 있어 이 한 줄로 복구된다.
+    enabled: ${ANALYSIS_ENABLED:false}
     poll-interval-ms: ${ANALYSIS_POLL_INTERVAL_MS:60000}
     initial-delay-ms: ${ANALYSIS_INITIAL_DELAY_MS:30000}
     batch-size: ${ANALYSIS_BATCH_SIZE:20}

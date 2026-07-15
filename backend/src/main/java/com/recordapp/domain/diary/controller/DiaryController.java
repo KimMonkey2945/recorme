@@ -86,6 +86,16 @@ public class DiaryController {
 		return ApiResponse.ok(diaryService.getList(principal.userId(), new CursorRequest(cursor, size)));
 	}
 
+	/**
+	 * GET /diaries/me/emotions/recent — 내가 최근 사용한 커스텀 감정 라벨 목록(중복 제거·최신순).
+	 * 감정 직접 입력 위젯(Task 024/025)의 재입력 추천 후보로 쓴다. 정적 경로라 {@code /{id}} 와 충돌 없음.
+	 */
+	@GetMapping("/me/emotions/recent")
+	public ApiResponse<java.util.List<String>> getRecentEmotionLabels(
+			@AuthenticationPrincipal SecurityUser principal) {
+		return ApiResponse.ok(diaryService.getRecentEmotionLabels(principal.userId()));
+	}
+
 	/** GET /diaries/me/summary — 해당 월 작성일 요약(캘린더 표시용). yearMonth="yyyy-MM". */
 	@GetMapping("/me/summary")
 	public ApiResponse<DiarySummaryResponse> getSummary(

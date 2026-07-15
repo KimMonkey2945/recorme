@@ -112,20 +112,23 @@ class ApiDiaryRepository implements DiaryRepository {
     required String contentText,
     bool confirm = false,
     String visibility = 'PRIVATE',
+    String? emotion,
+    String? emotionLabel,
   }) async {
     try {
       // 신규 201 / 갱신 200 모두 success=true라 동일하게 처리한다.
-      // confirm=false → DRAFT(분석 없음), confirm=true → PENDING(AI 분석 요청).
-      final res = await _dio.post(
-        '/diaries',
-        data: {
-          'content': content,
-          'contentText': contentText,
-          'writtenDate': _yyyyMMdd(date),
-          'confirm': confirm,
-          'visibility': visibility,
-        },
-      );
+      // confirm=false → DRAFT, confirm=true → 확정(분석 off면 즉시 DONE). 감정은 사용자 입력값.
+      // emotion/emotionLabel은 상호 배타. null이면 키를 아예 보내지 않아 서버 검증을 단순화한다.
+      final data = <String, dynamic>{
+        'content': content,
+        'contentText': contentText,
+        'writtenDate': _yyyyMMdd(date),
+        'confirm': confirm,
+        'visibility': visibility,
+      };
+      if (emotion != null) data['emotion'] = emotion;
+      if (emotionLabel != null) data['emotionLabel'] = emotionLabel;
+      final res = await _dio.post('/diaries', data: data);
       return _unwrap(
         res.data,
         (json) => Diary.fromJson(json as Map<String, dynamic>),
@@ -190,6 +193,20 @@ class ApiDiaryRepository implements DiaryRepository {
       return _unwrap(
         res.data,
         (json) => (json as Map<String, dynamic>)['url'] as String,
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<List<String>> getRecentEmotionLabels() async {
+    try {
+      final res = await _dio.get('/diaries/me/emotions/recent');
+      return _unwrap(
+        res.data,
+        (json) =>
+            (json as List<dynamic>).map((e) => e as String).toList(),
       );
     } on DioException catch (e) {
       throw _toFailure(e);

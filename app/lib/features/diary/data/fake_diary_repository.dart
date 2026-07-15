@@ -226,9 +226,14 @@ class FakeDiaryRepository implements DiaryRepository {
     required String contentText,
     bool confirm = false,
     String visibility = 'PRIVATE',
+    String? emotion,
+    String? emotionLabel,
   }) async {
     await Future<void>.delayed(_latency);
     final key = _dateKey(date);
+
+    // 감정 분석이 꺼진 기본 동작을 흉내낸다: 확정(confirm=true)이면 즉시 DONE + 사용자 감정 저장.
+    final status = confirm ? 'DONE' : 'DRAFT';
 
     // 같은 날짜의 활성 기록이 있으면 UPDATE(같은 id 유지).
     for (final entry in _diaries.entries) {
@@ -246,9 +251,10 @@ class FakeDiaryRepository implements DiaryRepository {
           contentText: contentText,
           writtenDate: entry.value.writtenDate,
           visibility: visibility,
-          // confirm=true → 확정(PENDING, 분석 요청), false → 임시 저장(DRAFT)
-          analysisStatus: confirm ? 'PENDING' : 'DRAFT',
+          analysisStatus: status,
           shareToken: entry.value.shareToken,
+          primaryEmotion: emotion,
+          emotionLabel: emotionLabel,
         );
         _diaries[entry.key] = updated;
         return updated;
@@ -263,9 +269,10 @@ class FakeDiaryRepository implements DiaryRepository {
       contentText: contentText,
       writtenDate: DateTime(date.year, date.month, date.day),
       visibility: visibility,
-      // confirm=true → PENDING, false → DRAFT
-      analysisStatus: confirm ? 'PENDING' : 'DRAFT',
+      analysisStatus: status,
       shareToken: 'token-$id',
+      primaryEmotion: emotion,
+      emotionLabel: emotionLabel,
     );
     _diaries[id] = created;
     return created;
@@ -295,6 +302,23 @@ class FakeDiaryRepository implements DiaryRepository {
     // 인메모리 더미: 실제 저장 없이 가짜 상대 경로를 돌려준다.
     await Future<void>.delayed(_latency);
     return '/files/diaries/fake/${_nextId++}_$filename';
+  }
+
+  @override
+  Future<List<String>> getRecentEmotionLabels() async {
+    await Future<void>.delayed(_latency);
+    // 활성 기록의 커스텀 라벨을 중복 제거·최신순으로 반환(서버 동작 흉내).
+    final seen = <String>{};
+    final labels = <String>[];
+    final sorted = _diaries.values.toList()
+      ..sort((a, b) => b.writtenDate.compareTo(a.writtenDate));
+    for (final d in sorted) {
+      final label = d.emotionLabel;
+      if (label != null && label.isNotEmpty && seen.add(label)) {
+        labels.add(label);
+      }
+    }
+    return labels;
   }
 }
 

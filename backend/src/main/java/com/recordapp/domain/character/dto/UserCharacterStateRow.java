@@ -5,7 +5,5 @@ package com.recordapp.domain.character.dto;
  * 앱은 이 null 을 보고 온보딩으로 리다이렉트하므로, 미선택 사용자에게도 404 가 아니라 200 을 준다.
  */
 public record UserCharacterStateRow(
-		String selectedCharacter,
-		int level,
-		int exp) {
+		String selectedCharacter) {
 }
