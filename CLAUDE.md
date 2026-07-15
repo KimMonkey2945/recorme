@@ -30,17 +30,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MVP(Phase 1~6)는 **구현 완료**이고, 현재 **Phase 7(캐릭터 도메인)이 진행 중**이다. 작업 전 다음을 인지할 것:
 
 - `backend/`: Spring Boot 3.5.x. 패키지 `com.recordapp` 아래 `domain.{auth,user,diary,emotion,resolution,device,social,feed,character}` + `infra.{llm,push,storage}` + `global.*`(보안/예외/표준 응답)이 실제 구현돼 있다. Flyway **`V1~V17`** 마이그레이션 실재(캐릭터는 `V15`=카탈로그, `V16`=미션, `V17`=사용자 캐릭터 상태). 로컬은 네이티브 PostgreSQL 18(`recorme` DB)로 `bootRun` 실측됨. 백엔드 테스트 **202개 통과**(Testcontainers 포함).
-- `app/`: Flutter feature-first 앱. `lib/features/{auth,diary,profile,resolution,feed,friend,character}` + `lib/core/*` + `lib/shared/*`. flutter_quill 리치 에디터·감정 동적 테마·마스코트/영상 연출·FCM 연동 포함. 앱 테스트 **112개 통과**, `flutter analyze` 무경고.
+- `app/`: Flutter feature-first 앱. `lib/features/{auth,diary,profile,resolution,feed,friend,character}` + `lib/core/*` + `lib/shared/*`. flutter_quill 리치 에디터·감정 동적 테마·마스코트/영상 연출·FCM 연동 포함. 앱 테스트 **127개 통과**, `flutter analyze` 무경고.
 - 그래도 **`docs/`가 설계의 단일 진실 공급원(source of truth)**이다. 구현·수정 시 항상 `docs/`와 정합을 맞추고, 신규 기능은 로드맵 순서를 따른다.
   - ⚠️ `docs/`는 **Phase 7 전체를 앞서 설계**해 둔 상태라, 일부 절이 "이미 된 것처럼" 읽힌다. **구현 여부는 `docs/architecture.md` §3.3(Phase 7 구현 현황) 표를 기준**으로 판단할 것.
 
 ### Phase 7 진행 상황 (캐릭터)
 
-- **구현됨**: DB(`V15~V17`) / 백엔드 `domain.character`(캐릭터 조회·선택, 옷장 아이템 목록·착용, 미션 조회 — `CatalogCache` 마스터 캐시, group↔variant 2단 해석, 기본 상태 JIT) / 앱 `features/character`(**캐릭터 선택 온보딩** `/onboarding/character` + 라우터 redirect 가드 + `CharacterStage`·`IdleCharacterView` PNG 메시 워프 렌더러).
+- **구현됨**: DB(`V15~V17`) / 백엔드 `domain.character`(캐릭터 조회·선택, 옷장 아이템 목록·착용, 미션 조회 — `CatalogCache` 마스터 캐시, group↔variant 2단 해석, 기본 상태 JIT) / 앱 `features/character`(**캐릭터 선택 온보딩** `/onboarding/character` + 라우터 redirect 가드 + `CharacterStage`·`IdleCharacterView` PNG 메시 워프 렌더러 + **옷장 UI `/wardrobe`**(Task 030 옷장분) — 착용형 아이템은 **캐릭터와 동일 프레임 풀프레임 PNG를 같은 메시 워프에 z순 오버레이**, BACKGROUND/ROOM_PROP은 스테이지 정적 배치, 탭=로컬 미리보기·저장=배치 커밋. ⚠️ `app/assets/items/*`는 **도형 플레이스홀더** — 실제 에셋은 인페인팅(원본 위 생성→diff 추출)으로 교체 예정. 진입점은 캐릭터 홈 전까지 프로필의 임시 버튼).
 - **남은 Task**:
   - **024/025 — 감정 축소**: LLM 자동 분석을 플래그로 끄고 사용자 직접 입력으로 전환(백엔드/앱). ⚠️ **미착수 — 감정 LLM 분석은 지금도 활성**이다. "비활성화됐다"고 전제하고 코드를 짜지 말 것.
   - **028 — 보상 엔진**: 코인 적립·구매·미션 판정·보상함·리액션. `character_events` 테이블(V17)은 있으나 **엔진 코드는 전혀 없다**(`global/event/`·`CharacterEventListener`·`characterExecutor` 모두 미존재).
-  - **029(본편)/030 — 탭 재편 + 캐릭터 홈·옷장·상점·미션 UI**: ⚠️ **탭은 아직 `[캘린더][목록][작심삼일][피드]` 4개이고 캘린더가 index 0**이다. 캐릭터 홈을 index 0에 삽입하면 인덱스가 밀려 **FCM 딥링크가 회귀**하므로 별도 Task로 분리했다.
+  - **029(본편)/030 잔여 — 탭 재편 + 캐릭터 홈·상점·미션·보상함 UI**: (옷장은 구현 완료, 상점·미션·보상함은 Task 028 선행 필요) ⚠️ **탭은 아직 `[캘린더][목록][작심삼일][피드]` 4개이고 캘린더가 index 0**이다. 캐릭터 홈을 index 0에 삽입하면 인덱스가 밀려 **FCM 딥링크가 회귀**하므로 별도 Task로 분리했다.
   - ~~**031 — Rive 전환**~~ → **완료 (Rive·파츠 조립 둘 다 미채택)**: 렌더러는 기존 **`IdleCharacterView`(통짜 PNG 12×16 메시 워프)** 를 그대로 쓰고, **에셋만 고해상도 투명 PNG로 교체**했다. Rive는 `.riv` export 유료 + 리깅이 GUI 수작업이라 접었고, 파츠 조립은 구현까지 갔지만 **파츠들이 각각 따로 생성된 이미지라 서로 맞지 않아**(눈 간격 101 vs 117, 몸통 색·소켓 크기 불일치, 겹침 여유 없음) 캐릭터가 조각나 보여 되돌렸다. ⚠️ **눈 깜빡임(F033)은 미지원** — 통짜 이미지로는 불가능하며, 되살리려면 코드가 아니라 **에셋**을 다시 만들어야 한다. 경위: `tasks/031-app-parts-character-renderer.md`.
   - **032 — 리액션·회고**.
 - **남은 검증**: 작심삼일 **FCM 실기기(Z Flip3) 라이브 검증**(딥링크·팬아웃).

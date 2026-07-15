@@ -20,6 +20,7 @@ import 'package:record/core/theme/app_colors.dart';
 import 'package:record/core/theme/app_theme.dart';
 import 'package:record/features/character/domain/character.dart';
 import 'package:record/features/character/domain/character_repository.dart';
+import 'package:record/features/character/domain/item_group.dart';
 import 'package:record/features/character/domain/my_character.dart';
 import 'package:record/features/character/presentation/character_onboarding_page.dart';
 import 'package:record/features/character/presentation/providers/character_providers.dart';
@@ -100,6 +101,15 @@ class _FakeCharacterRepository implements CharacterRepository {
       unackedRewardCount: 0,
     );
   }
+
+  // 옷장은 이 테스트의 관심사가 아니다 — 인터페이스 충족용 최소 구현.
+  @override
+  Future<List<ItemGroup>> fetchItems({String? slot}) async => const [];
+
+  @override
+  Future<MyCharacter> replaceEquipment(
+          List<EquipmentSelection> equipment) async =>
+      fetchMyCharacter();
 }
 
 /// 온보딩 → 메인('/') 이동을 검증하기 위한 최소 라우터.

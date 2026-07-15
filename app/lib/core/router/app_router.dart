@@ -11,6 +11,7 @@ import '../../features/auth/presentation/signup_page.dart';
 import '../../features/character/domain/my_character.dart';
 import '../../features/character/presentation/character_onboarding_page.dart';
 import '../../features/character/presentation/providers/character_providers.dart';
+import '../../features/character/presentation/wardrobe_page.dart';
 import '../../features/diary/presentation/diary_detail_page.dart';
 import '../../features/diary/presentation/diary_editor_page.dart';
 import '../../features/diary/presentation/diary_list_page.dart';
@@ -223,6 +224,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => ResolutionDetailPage(
           id: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
         ),
+      ),
+      // 셸 밖 전체 화면: 옷장(캐릭터 꾸미기)
+      // 캐릭터 홈 탭(Task 029)이 생기기 전까지는 프로필에서 진입한다.
+      GoRoute(
+        path: '/wardrobe',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const WardrobePage(),
       ),
       // 셸 밖 전체 화면: 프로필 조회 / 수정
       GoRoute(

@@ -1,4 +1,5 @@
 import 'character.dart';
+import 'item_group.dart';
 import 'my_character.dart';
 
 /// 캐릭터 데이터 접근 추상화.
@@ -19,4 +20,15 @@ abstract class CharacterRepository {
   /// 캐릭터 선택(온보딩 확정). 미보유 코드면 `CHARACTER_NOT_OWNED` 실패.
   /// PUT /characters/me/selection
   Future<MyCharacter> selectCharacter(String code);
+
+  /// 아이템 그룹 목록(옷장·상점 공용). [slot] 지정 시 해당 슬롯만, 생략 시 전체.
+  /// 이미지·renderMeta는 내 선택 캐릭터 기준으로 해석돼 내려온다.
+  /// GET /characters/items?slot=
+  Future<List<ItemGroup>> fetchItems({String? slot});
+
+  /// 착용 배치 교체 — [equipment]가 착용 **전체 스냅샷**이다(빈 배열 = 전 슬롯 비움).
+  /// 미보유 아이템이 섞이면 `ITEM_NOT_OWNED`(전체 롤백), variant 미제작이면
+  /// `ITEM_VARIANT_MISSING`으로 실패한다.
+  /// PUT /characters/me/equipment
+  Future<MyCharacter> replaceEquipment(List<EquipmentSelection> equipment);
 }

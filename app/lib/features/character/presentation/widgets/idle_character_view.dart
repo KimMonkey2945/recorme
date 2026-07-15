@@ -2,11 +2,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// 정적 PNG 한 장을 "살아 있는" 캐릭터로 보이게 하는 절차적 idle 애니메이션.
-///
-/// Rive 아트보드(Task 031)가 준비되기 전까지 쓰는 실동작 렌더러다.
 ///
 /// ## 왜 메시 변형인가
 /// 이미지를 통째로 `Transform.rotate`/`scale` 하면 **딱딱한 판자가 흔들리는** 모양이 된다.
@@ -14,6 +13,13 @@ import 'package:flutter/material.dart';
 /// 그래서 같은 원리를 Flutter에서 직접 구현한다 — PNG를 격자 메시로 쪼개고
 /// [Canvas.drawVertices] + [ImageShader]로 **정점마다 다르게** 변형한다.
 /// 발은 바닥에 붙어 있고, 위로 갈수록 크게 흔들리며, 숨쉴 때 몸이 눌렸다 늘어난다.
+///
+/// ## 착용 아이템 오버레이 ([overlayAssetPaths])
+/// 아이템 PNG는 **캐릭터와 동일한 프레임**(같은 캔버스 비율, 아이템 외 영역 투명)으로
+/// 제작한다는 전제다. 그러면 같은 정점 배열에 아이템 텍스처만 바꿔 [Canvas.drawVertices]를
+/// 반복하는 것으로 아이템이 캐릭터와 **함께 숨쉬고 흔들린다**(앵커 계산이 필요 없다).
+/// 목록 순서 = 그리는 순서(z 오름차순으로 정렬해 넘길 것). 로드 실패한 레이어는 조용히
+/// 건너뛴다 — 아이템이 캐릭터 렌더 자체를 막아서는 안 된다.
 ///
 /// ## 합성하는 움직임 (전부 정규화 높이 v = 발 0 → 머리 1 에 따라 가중된다)
 /// - **스웨이**: 상체일수록 크게 좌우로 흔들린다(`v^1.6` 가중 → 발은 고정).
@@ -33,6 +39,7 @@ class IdleCharacterView extends StatefulWidget {
   const IdleCharacterView({
     super.key,
     required this.assetPath,
+    this.overlayAssetPaths = const [],
     this.animate = true,
     this.phase = 0,
   });
@@ -40,6 +47,10 @@ class IdleCharacterView extends StatefulWidget {
   /// 캐릭터 이미지 에셋 경로('assets/characters/monkey.png').
   /// 서버가 내려주는 thumbnailUrl이 곧 이 경로다(URL 아님).
   final String assetPath;
+
+  /// 착용 아이템 레이어 경로 목록(z 오름차순 = 그리는 순서).
+  /// 캐릭터와 동일 프레임의 투명 PNG여야 같은 메시에 정확히 얹힌다.
+  final List<String> overlayAssetPaths;
 
   /// idle 애니메이션 재생 여부. false면 정지(캐러셀 비중앙 카드·테스트).
   final bool animate;
@@ -64,10 +75,16 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
   ImageStream? _stream;
   ImageStreamListener? _listener;
 
+  /// 오버레이 레이어. 경로별로 해석 상태를 따로 들고, 실패(null)는 그릴 때 건너뛴다.
+  final Map<String, ui.Image?> _overlayImages = {};
+  final Map<String, ImageStream> _overlayStreams = {};
+  final Map<String, ImageStreamListener> _overlayListeners = {};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _resolveImage();
+    _resolveOverlays();
   }
 
   @override
@@ -76,6 +93,9 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
     if (oldWidget.assetPath != widget.assetPath) {
       _image = null;
       _resolveImage();
+    }
+    if (!listEquals(oldWidget.overlayAssetPaths, widget.overlayAssetPaths)) {
+      _resolveOverlays();
     }
   }
 
@@ -103,6 +123,37 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
     _listener = listener;
   }
 
+  /// 오버레이 경로 목록을 현재 위젯 상태에 맞춘다.
+  /// 빠진 경로는 구독 해제, 새 경로는 해석 시작. 실패한 레이어는 null로 남아 스킵된다.
+  void _resolveOverlays() {
+    final wanted = widget.overlayAssetPaths.toSet();
+
+    for (final path in _overlayStreams.keys.toList()) {
+      if (!wanted.contains(path)) _detachOverlay(path);
+    }
+
+    for (final path in wanted) {
+      if (_overlayStreams.containsKey(path)) continue;
+      final stream =
+          AssetImage(path).resolve(createLocalImageConfiguration(context));
+      final listener = ImageStreamListener(
+        (info, _) {
+          if (!mounted) {
+            info.image.dispose();
+            return;
+          }
+          setState(() => _overlayImages[path] = info.image);
+        },
+        // 아이템 로드 실패는 캐릭터 렌더를 막지 않는다 — 해당 레이어만 빠진다.
+        onError: (_, _) {
+          if (mounted) setState(() => _overlayImages[path] = null);
+        },
+      );
+      _overlayStreams[path] = stream..addListener(listener);
+      _overlayListeners[path] = listener;
+    }
+  }
+
   void _detachStream() {
     if (_stream != null && _listener != null) {
       _stream!.removeListener(_listener!);
@@ -111,11 +162,27 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
     _listener = null;
   }
 
+  void _detachOverlay(String path) {
+    final stream = _overlayStreams.remove(path);
+    final listener = _overlayListeners.remove(path);
+    if (stream != null && listener != null) stream.removeListener(listener);
+    _overlayImages.remove(path);
+  }
+
   @override
   void dispose() {
     _detachStream();
+    for (final path in _overlayStreams.keys.toList()) {
+      _detachOverlay(path);
+    }
     super.dispose();
   }
+
+  /// 현재 로드된 오버레이를 위젯의 경로 순서(z 오름차순)대로 돌려준다.
+  List<ui.Image> _loadedOverlays() => [
+        for (final path in widget.overlayAssetPaths)
+          if (_overlayImages[path] != null) _overlayImages[path]!,
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -128,12 +195,20 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
     // 정지 상태(옆 카드·테스트)에서는 Ticker를 아예 만들지 않는다.
     if (!shouldAnimate) {
       return CustomPaint(
-        painter: _MeshCharacterPainter(image: image, t: 0),
+        painter: _MeshCharacterPainter(
+          image: image,
+          overlays: _loadedOverlays(),
+          t: 0,
+        ),
         size: Size.infinite,
       );
     }
 
-    return _AnimatedMesh(image: image, phase: widget.phase);
+    return _AnimatedMesh(
+      image: image,
+      overlays: _loadedOverlays(),
+      phase: widget.phase,
+    );
   }
 
   /// 이미지가 아직 없을 때(로딩/실패/테스트)의 폴백.
@@ -150,9 +225,14 @@ class _IdleCharacterViewState extends State<IdleCharacterView> {
 /// 컨트롤러를 [IdleCharacterView]가 아니라 여기서 들고 있는 이유:
 /// 정지 상태에서는 이 위젯 자체가 트리에 없으므로 **Ticker가 생성조차 되지 않는다**.
 class _AnimatedMesh extends StatefulWidget {
-  const _AnimatedMesh({required this.image, required this.phase});
+  const _AnimatedMesh({
+    required this.image,
+    required this.overlays,
+    required this.phase,
+  });
 
   final ui.Image image;
+  final List<ui.Image> overlays;
   final double phase;
 
   @override
@@ -182,7 +262,11 @@ class _AnimatedMeshState extends State<_AnimatedMesh>
       builder: (context, _) {
         final t = (_controller.value + widget.phase) % 1.0;
         return CustomPaint(
-          painter: _MeshCharacterPainter(image: widget.image, t: t),
+          painter: _MeshCharacterPainter(
+            image: widget.image,
+            overlays: widget.overlays,
+            t: t,
+          ),
           size: Size.infinite,
         );
       },
@@ -193,10 +277,19 @@ class _AnimatedMeshState extends State<_AnimatedMesh>
 /// PNG를 격자 메시로 변형해 그리는 페인터.
 ///
 /// 정점 좌표만 매 프레임 다시 계산하고, UV(텍스처 좌표)와 인덱스는 불변이다.
+/// [overlays]는 캐릭터와 같은 정점 배열을 공유해 **같은 워프 필드**로 그려진다 —
+/// 아이템이 캐릭터에 붙어 함께 움직이는 이유가 이것이다.
 class _MeshCharacterPainter extends CustomPainter {
-  _MeshCharacterPainter({required this.image, required this.t});
+  _MeshCharacterPainter({
+    required this.image,
+    this.overlays = const [],
+    required this.t,
+  });
 
   final ui.Image image;
+
+  /// 착용 아이템 레이어(z 오름차순). 캐릭터와 동일 프레임 전제.
+  final List<ui.Image> overlays;
 
   /// 정규화 시간(0~1). 12초 주기 안의 위치.
   final double t;
@@ -255,7 +348,6 @@ class _MeshCharacterPainter extends CustomPainter {
 
     final vertexCount = (_cols + 1) * (_rows + 1);
     final positions = Float32List(vertexCount * 2);
-    final texCoords = Float32List(vertexCount * 2);
 
     var i = 0;
     for (var row = 0; row <= _rows; row++) {
@@ -283,10 +375,33 @@ class _MeshCharacterPainter extends CustomPainter {
 
         positions[i] = x;
         positions[i + 1] = y;
+        i += 2;
+      }
+    }
 
+    // 캐릭터 → 아이템 순서(z 오름차순)로 같은 정점 배열에 텍스처만 바꿔 그린다.
+    _drawLayer(canvas, positions, image);
+    for (final overlay in overlays) {
+      _drawLayer(canvas, positions, overlay);
+    }
+  }
+
+  /// 한 레이어를 공유 정점 배열로 그린다. UV는 레이어 자신의 픽셀 크기로 만든다 —
+  /// 해상도가 캐릭터와 달라도 프레임 비율만 같으면 정확히 겹친다.
+  void _drawLayer(Canvas canvas, Float32List positions, ui.Image layer) {
+    final layerW = layer.width.toDouble();
+    final layerH = layer.height.toDouble();
+
+    final vertexCount = (_cols + 1) * (_rows + 1);
+    final texCoords = Float32List(vertexCount * 2);
+    var i = 0;
+    for (var row = 0; row <= _rows; row++) {
+      final rowRatio = row / _rows;
+      for (var col = 0; col <= _cols; col++) {
+        final colRatio = col / _cols;
         // UV는 이미지 픽셀 좌표계(ImageShader가 identity 행렬이므로 그대로 매핑된다).
-        texCoords[i] = imageW * colRatio;
-        texCoords[i + 1] = imageH * rowRatio;
+        texCoords[i] = layerW * colRatio;
+        texCoords[i + 1] = layerH * rowRatio;
         i += 2;
       }
     }
@@ -300,7 +415,7 @@ class _MeshCharacterPainter extends CustomPainter {
 
     final paint = Paint()
       ..shader = ImageShader(
-        image,
+        layer,
         TileMode.clamp,
         TileMode.clamp,
         Matrix4.identity().storage,
@@ -313,7 +428,7 @@ class _MeshCharacterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MeshCharacterPainter old) =>
-      old.t != t || old.image != image;
+      old.t != t || old.image != image || !listEquals(old.overlays, overlays);
 }
 
 /// 격자 삼각형 인덱스. 격자 크기가 고정이라 한 번만 만들어 재사용한다.

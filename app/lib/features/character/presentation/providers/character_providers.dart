@@ -8,6 +8,7 @@ import '../../data/api_character_repository.dart';
 import '../../data/fake_character_repository.dart';
 import '../../domain/character.dart';
 import '../../domain/character_repository.dart';
+import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
 
 /// 웹 UI 프리뷰/수동 확인용 스위치.
@@ -41,8 +42,11 @@ final charactersProvider = FutureProvider.autoDispose<CharacterList>((ref) {
 /// - `null`      : 아직 조회 대상이 아님(미인증) → 가드는 아무 판단도 하지 않는다.
 /// - `character == null` : 인증됐고 캐릭터 미선택 → 온보딩으로 보낸다.
 final myCharacterProvider = FutureProvider<MyCharacter?>((ref) async {
-  final status = ref.watch(authControllerProvider);
-  if (status != AuthStatus.authenticated) return null;
+  // Fake 모드(웹 프리뷰)는 인증 없이도 조회한다 — 백엔드 없이 온보딩·옷장을 확인하는 용도.
+  if (!useFakeCharacterRepo) {
+    final status = ref.watch(authControllerProvider);
+    if (status != AuthStatus.authenticated) return null;
+  }
   return ref.watch(characterRepositoryProvider).fetchMyCharacter();
 });
 
@@ -75,3 +79,42 @@ class SelectCharacterController extends AsyncNotifier<void> {
 final selectCharacterControllerProvider =
     AsyncNotifierProvider<SelectCharacterController, void>(
         SelectCharacterController.new);
+
+/// 아이템 그룹 전체 목록(옷장·상점 공용).
+///
+/// 슬롯 필터는 서버가 아니라 화면에서 한다 — 옷장의 slot 탭 전환마다 왕복하지 않고
+/// 한 번 받아 6개 탭이 나눠 쓴다. 착용/구매 후에는 invalidate로 갱신한다.
+final wardrobeItemsProvider =
+    FutureProvider.autoDispose<List<ItemGroup>>((ref) {
+  return ref.watch(characterRepositoryProvider).fetchItems();
+});
+
+/// 착용 배치 교체 제출 상태(로딩/에러)를 담당한다.
+///
+/// [SelectCharacterController]와 같은 관례 — 성공 시 내 캐릭터(홈·스테이지가 구독)와
+/// 아이템 목록(equipped 플래그)을 invalidate한다.
+class ReplaceEquipmentController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  /// 착용 전체 스냅샷을 제출한다. 성공 시 갱신된 [MyCharacter]를 돌려준다.
+  Future<MyCharacter> submit(List<EquipmentSelection> equipment) async {
+    state = const AsyncLoading();
+    try {
+      final updated = await ref
+          .read(characterRepositoryProvider)
+          .replaceEquipment(equipment);
+      state = const AsyncData(null);
+      ref.invalidate(myCharacterProvider);
+      ref.invalidate(wardrobeItemsProvider);
+      return updated;
+    } on Object catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+}
+
+final replaceEquipmentControllerProvider =
+    AsyncNotifierProvider<ReplaceEquipmentController, void>(
+        ReplaceEquipmentController.new);

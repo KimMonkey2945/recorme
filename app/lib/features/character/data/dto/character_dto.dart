@@ -1,5 +1,6 @@
 import '../../domain/character.dart';
 import '../../domain/equipment_item.dart';
+import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
 import '../../domain/render_meta.dart';
 
@@ -94,10 +95,66 @@ class CharacterDto {
         z: (json['z'] as num?)?.toInt() ?? 0,
       );
 
+  /// ItemGroupListResponse → [List<ItemGroup>].
+  /// `{items[]}`
+  static List<ItemGroup> itemGroupsFromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List<dynamic>?;
+    return rawItems == null
+        ? const []
+        : rawItems
+            .map((e) => itemGroupFromJson(e as Map<String, dynamic>))
+            .toList();
+  }
+
+  /// ItemGroupResponse → [ItemGroup].
+  /// `{groupCode, slot, nameKo, thumbnailUrl, acquireType, coinPrice,
+  ///   owned, equipped, imageUrl, renderMeta, lockedBy}`
+  static ItemGroup itemGroupFromJson(Map<String, dynamic> json) {
+    final rawMeta = json['renderMeta'] as Map<String, dynamic>?;
+    final rawLock = json['lockedBy'] as Map<String, dynamic>?;
+    return ItemGroup(
+      groupCode: json['groupCode'] as String? ?? '',
+      slot: json['slot'] as String? ?? '',
+      nameKo: json['nameKo'] as String? ?? '',
+      thumbnailUrl: json['thumbnailUrl'] as String? ?? '',
+      acquireType: json['acquireType'] as String? ?? '',
+      coinPrice: (json['coinPrice'] as num?)?.toInt() ?? 0,
+      owned: json['owned'] as bool? ?? false,
+      equipped: json['equipped'] as bool? ?? false,
+      imageUrl: json['imageUrl'] as String? ?? '',
+      renderMeta: rawMeta == null ? null : renderMetaFromJson(rawMeta),
+      lockedBy: rawLock == null ? null : missionLockFromJson(rawLock),
+    );
+  }
+
+  /// MissionLockResponse → [MissionLock].
+  /// `{missionCode, title, progress, threshold}`
+  static MissionLock missionLockFromJson(Map<String, dynamic> json) =>
+      MissionLock(
+        missionCode: json['missionCode'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        progress: (json['progress'] as num?)?.toInt() ?? 0,
+        threshold: (json['threshold'] as num?)?.toInt() ?? 0,
+      );
+
   // ── 요청 직렬화(입력 → JSON) ─────────────────────────────────
 
   /// PUT /characters/me/selection 요청 바디.
   static Map<String, dynamic> selectionRequest(String characterCode) => {
         'characterCode': characterCode,
+      };
+
+  /// PUT /characters/me/equipment 요청 바디(착용 전체 스냅샷).
+  static Map<String, dynamic> equipmentRequest(
+          List<EquipmentSelection> equipment) =>
+      {
+        'equipment': [
+          for (final e in equipment)
+            {
+              'slot': e.slot,
+              'slotIndex': e.slotIndex,
+              'groupCode': e.groupCode,
+            },
+        ],
       };
 }

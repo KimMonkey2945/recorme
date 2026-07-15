@@ -4,6 +4,7 @@ import '../../../core/error/failure.dart';
 import '../../../shared/models/api_response.dart';
 import '../domain/character.dart';
 import '../domain/character_repository.dart';
+import '../domain/item_group.dart';
 import '../domain/my_character.dart';
 import 'dto/character_dto.dart';
 
@@ -57,6 +58,40 @@ class ApiCharacterRepository implements CharacterRepository {
       );
     } on DioException catch (e) {
       // 미보유 캐릭터 선택 시 CHARACTER_NOT_OWNED가 error.code로 내려온다.
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<List<ItemGroup>> fetchItems({String? slot}) async {
+    try {
+      final res = await _dio.get(
+        '/characters/items',
+        queryParameters: {'slot': ?slot},
+      );
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.itemGroupsFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<MyCharacter> replaceEquipment(
+      List<EquipmentSelection> equipment) async {
+    try {
+      final res = await _dio.put(
+        '/characters/me/equipment',
+        data: CharacterDto.equipmentRequest(equipment),
+      );
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.myCharacterFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      // 미보유면 ITEM_NOT_OWNED, 캐릭터용 variant 미제작이면 ITEM_VARIANT_MISSING.
       throw _toFailure(e);
     }
   }
