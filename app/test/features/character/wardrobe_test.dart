@@ -86,7 +86,7 @@ void main() {
       expect(find.byType(LoadingView), findsOneWidget);
       await tester.pumpAndSettle();
 
-      expect(find.text('파티 모자'), findsOneWidget);
+      expect(find.text('이미스 볼캡'), findsOneWidget);
       expect(find.text('밀짚모자'), findsOneWidget);
       // 미보유 코인 아이템은 가격 캡션 + 잠금 아이콘.
       expect(find.text('120코인'), findsOneWidget);
@@ -103,7 +103,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('기본 흰 티셔츠'), findsOneWidget);
-      expect(find.text('파티 모자'), findsNothing);
+      expect(find.text('이미스 볼캡'), findsNothing);
     });
 
     testWidgets('빈 슬롯(PROP) → 빈 상태 안내', (tester) async {
@@ -125,11 +125,11 @@ void main() {
 
       expect(overlayPaths(tester), isEmpty);
 
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
 
       // 미리보기에 원숭이용 variant가 얹혔다.
-      expect(overlayPaths(tester), const ['assets/items/hat_party_monkey.png']);
+      expect(overlayPaths(tester), const ['assets/items/hat_cap_emis_monkey.png']);
       expect(saveBarVisible(tester), isTrue);
       expect(find.text('변경사항이 있어요'), findsOneWidget);
     });
@@ -138,9 +138,9 @@ void main() {
       await pumpWardrobe(tester, FakeCharacterRepository(selectedCode: 'MONKEY'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
 
       expect(overlayPaths(tester), isEmpty);
@@ -175,7 +175,7 @@ void main() {
       await pumpWardrobe(tester, FakeCharacterRepository(selectedCode: 'MONKEY'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
       expect(overlayPaths(tester), isNotEmpty);
 
@@ -193,7 +193,7 @@ void main() {
       await pumpWardrobe(tester, repo);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('wardrobe-save')));
       await tester.pumpAndSettle();
@@ -205,7 +205,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       final my = await myFuture;
       expect(my.equipment, hasLength(1));
-      expect(my.equipment.first.groupCode, 'HAT_PARTY');
+      expect(my.equipment.first.groupCode, 'HAT_CAP_EMIS');
       expect(my.equipment.first.slot, 'HAT');
       // 커밋 후에는 변경사항이 없다.
       expect(saveBarVisible(tester), isFalse);
@@ -219,7 +219,7 @@ void main() {
       await pumpWardrobe(tester, repo);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_PARTY')));
+      await tester.tap(find.byKey(const ValueKey('item-tile-HAT_CAP_EMIS')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('wardrobe-save')));
       await tester.pumpAndSettle();
@@ -228,7 +228,7 @@ void main() {
       expect(find.text('아직 보유하지 않은 아이템이에요.'), findsOneWidget);
       // 로컬 변경은 날아가지 않는다 — 다시 저장을 시도할 수 있어야 한다.
       expect(saveBarVisible(tester), isTrue);
-      expect(overlayPaths(tester), const ['assets/items/hat_party_monkey.png']);
+      expect(overlayPaths(tester), const ['assets/items/hat_cap_emis_monkey.png']);
 
       await tester.pumpAndSettle(const Duration(seconds: 4));
     });

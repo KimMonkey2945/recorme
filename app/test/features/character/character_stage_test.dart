@@ -27,9 +27,9 @@ Widget _wrap(List<EquipmentItem> equipment) => MaterialApp(
 const _hat = EquipmentItem(
   slot: 'HAT',
   slotIndex: 0,
-  groupCode: 'HAT_PARTY',
-  nameKo: '파티 모자',
-  imageUrl: 'assets/items/hat_party_monkey.png',
+  groupCode: 'HAT_CAP_EMIS',
+  nameKo: '이미스 볼캡',
+  imageUrl: 'assets/items/hat_cap_emis_monkey.png',
   renderMeta: RenderMeta(anchorX: 0.5, anchorY: 0.18, scale: 0.42, z: 40),
 );
 
@@ -83,7 +83,7 @@ void main() {
 
     expect(rendererOf(tester).overlayAssetPaths, const [
       'assets/items/outfit_basic_tee_monkey.png',
-      'assets/items/hat_party_monkey.png',
+      'assets/items/hat_cap_emis_monkey.png',
     ]);
   });
 
@@ -94,7 +94,7 @@ void main() {
 
     // 캐릭터 몸에 얹는 오버레이는 모자뿐이다.
     expect(rendererOf(tester).overlayAssetPaths, const [
-      'assets/items/hat_party_monkey.png',
+      'assets/items/hat_cap_emis_monkey.png',
     ]);
 
     // 배경·소품은 Image 위젯으로 스테이지에 깔린다.
@@ -111,9 +111,9 @@ void main() {
     const bareHat = EquipmentItem(
       slot: 'HAT',
       slotIndex: 0,
-      groupCode: 'HAT_PARTY',
-      nameKo: '파티 모자',
-      imageUrl: 'assets/items/hat_party_monkey.png',
+      groupCode: 'HAT_CAP_EMIS',
+      nameKo: '이미스 볼캡',
+      imageUrl: 'assets/items/hat_cap_emis_monkey.png',
     );
     const bareProp = EquipmentItem(
       slot: 'ROOM_PROP',
@@ -129,7 +129,7 @@ void main() {
     // 기본 z: OUTFIT 30 < HAT 40 순서가 유지된다.
     expect(rendererOf(tester).overlayAssetPaths, const [
       'assets/items/outfit_basic_tee_monkey.png',
-      'assets/items/hat_party_monkey.png',
+      'assets/items/hat_cap_emis_monkey.png',
     ]);
     expect(tester.takeException(), isNull);
   });

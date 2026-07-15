@@ -65,10 +65,10 @@ class FakeCharacterRepository implements CharacterRepository {
       coinPrice: 0,
     ),
     (
-      groupCode: 'HAT_PARTY',
+      groupCode: 'HAT_CAP_EMIS',
       slot: 'HAT',
-      nameKo: '파티 모자',
-      thumbnailUrl: 'assets/items/hat_party.png',
+      nameKo: '이미스 볼캡',
+      thumbnailUrl: 'assets/items/hat_cap_emis.png',
       acquireType: 'MISSION',
       coinPrice: 0,
     ),
@@ -108,7 +108,7 @@ class FakeCharacterRepository implements CharacterRepository {
     (
       groupCode: 'OUTFIT_LOVE_SET',
       slot: 'OUTFIT',
-      nameKo: '러브 후드 세트',
+      nameKo: '러브 풀룩 세트',
       thumbnailUrl: 'assets/items/outfit_love_set.png',
       acquireType: 'DEFAULT',
       coinPrice: 0,
@@ -156,15 +156,15 @@ class FakeCharacterRepository implements CharacterRepository {
       meta: (anchorX: 0.5, anchorY: 0.58, scale: 0.66, z: 30),
     ),
     (
-      groupCode: 'HAT_PARTY',
+      groupCode: 'HAT_CAP_EMIS',
       character: 'MONKEY',
-      imageUrl: 'assets/items/hat_party_monkey.png',
+      imageUrl: 'assets/items/hat_cap_emis_monkey.png',
       meta: (anchorX: 0.5, anchorY: 0.18, scale: 0.42, z: 40),
     ),
     (
-      groupCode: 'HAT_PARTY',
+      groupCode: 'HAT_CAP_EMIS',
       character: 'RED_PANDA',
-      imageUrl: 'assets/items/hat_party_red_panda.png',
+      imageUrl: 'assets/items/hat_cap_emis_red_panda.png',
       meta: (anchorX: 0.5, anchorY: 0.16, scale: 0.48, z: 40),
     ),
     (
@@ -268,11 +268,11 @@ class FakeCharacterRepository implements CharacterRepository {
   ];
 
   /// 보유 group 집합. 시드 규칙과 동일하게 DEFAULT만 기본 보유이며,
-  /// 프리뷰에서 옷장을 채워 볼 수 있도록 미션 보상(HAT_PARTY)도 보유로 둔다.
+  /// 프리뷰에서 옷장을 채워 볼 수 있도록 미션 보상(HAT_CAP_EMIS)도 보유로 둔다.
   final Set<String> _ownedGroups = {
     'OUTFIT_BASIC_TEE',
     'ROOM_PROP_PLANT',
-    'HAT_PARTY',
+    'HAT_CAP_EMIS',
     'HAT_CAP_BLACK',
     'GLASSES_ROUND',
     'OUTFIT_LOVE_SET',
