@@ -15,12 +15,14 @@ import com.recordapp.domain.resolution.vo.CheckStatus;
 import com.recordapp.domain.resolution.vo.ResolutionStatus;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
+import com.recordapp.global.event.ResolutionProgressEvent;
 import com.recordapp.global.exception.BusinessException;
 import com.recordapp.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,10 +46,14 @@ public class ResolutionService {
 
 	private final ResolutionMapper resolutionMapper;
 	private final ResolutionPushNotifier pushNotifier;
+	// 보상 엔진(Task 028)으로 1·2일차·완주 이벤트를 발행한다. resolution 은 character 도메인을 모르며, 이벤트 클래스만 의존한다.
+	private final ApplicationEventPublisher eventPublisher;
 
-	public ResolutionService(ResolutionMapper resolutionMapper, ResolutionPushNotifier pushNotifier) {
+	public ResolutionService(ResolutionMapper resolutionMapper, ResolutionPushNotifier pushNotifier,
+			ApplicationEventPublisher eventPublisher) {
 		this.resolutionMapper = resolutionMapper;
 		this.pushNotifier = pushNotifier;
+		this.eventPublisher = eventPublisher;
 	}
 
 	/**
@@ -123,12 +129,21 @@ public class ResolutionService {
 				throw new BusinessException(ErrorCode.RESOLUTION_CHECK_NOT_TODAY);
 			}
 			// 이미 DONE → 멱등 통과(중복 완료 요청 허용).
+		} else {
+			// 이번 요청으로 새 일차가 완료됐다 → 1·2일차 부분 달성 보상 이벤트 발행(3일차는 아래 완주 보상으로).
+			// event_key=RESOLUTION_DAY:{id}:{day} 로 멱등하며, AFTER_COMMIT 에 코인이 적립된다(docs/coin-rewards.md).
+			int doneCount = resolutionMapper.countDoneChecks(id);
+			if (doneCount == 1 || doneCount == 2) {
+				eventPublisher.publishEvent(
+						new ResolutionProgressEvent(userId, id, doneCount, false, row.streakSeq()));
+			}
 		}
 
 		// 3일 모두 DONE 이면 SUCCESS 로 조건부 전이(status='ONGOING' 가드로 정확히 1회).
-		// 1행 반환 = 이 요청이 ONGOING→SUCCESS 를 확정 → 커밋 후 완주 축하 푸시 1회 발송.
+		// 1행 반환 = 이 요청이 ONGOING→SUCCESS 를 확정 → 커밋 후 완주 축하 푸시 + 완주 보상 이벤트 1회.
 		if (resolutionMapper.markResolutionSuccessIfAllDone(id) == 1) {
 			registerSuccessPushAfterCommit(userId, id);
+			eventPublisher.publishEvent(new ResolutionProgressEvent(userId, id, 3, true, row.streakSeq()));
 		}
 		return buildDetail(userId, id);
 	}

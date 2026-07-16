@@ -1,9 +1,13 @@
 # Task 028 — ★ 백엔드 보상 엔진 (이벤트 훅 + 멱등 게이트 + 미션 판정 + 코인 + 백스톱 폴러)
 
 - **Phase**: 7 (캐릭터 중심 전환)
-- **구현 기능**: F028(코인), F029(상점), F030(미션 해금)
-- **상태**: 미착수
+- **구현 기능**: F028(코인) — 적립 부분
+- **상태**: ✅ **부분 완료(2026-07-16, V20)** — 코인 적립 엔진만. 상점 구매·미션 아이템 지급은 범위 밖(아이템 미확정)
 - **선행**: Task 026(스키마), Task 027(캐릭터 상태·소유 모델)
+
+> 📌 **2026-07-16 구현 범위 축소(사용자 지시)**: **코인 적립만** 구현하고 **아이템 보상 지급·상점 구매는 전부 제외**했다(파티모자·볼캡·배경 등 아이템 에셋이 미확정). 적립 트리거는 `docs/coin-rewards.md` 표 그대로(출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤). 값·마일스톤은 `record.character.coin.*` 설정으로 **코드 변경 없이 조정**한다. 아래 원문의 "구매 API/coin-enabled 게이팅/미션 판정·해금"은 **미구현(범위 밖)**이며, 나머지(멱등 게이트·코인·진척·대사·payload·백스톱)는 구현됐다.
+> - 미션(DIARY_10·STREAK_7 등)은 **조회만** 되고 판정·지급 없음. 연속 7일은 미션이 아니라 설정 마일스톤 `streak.7`로 지급.
+> - event_type 고정 CHECK 는 트리거 확장 유연성을 위해 **V20 에서 제거**(무결성은 event_key UNIQUE·balance CHECK 유지).
 
 > 📌 **2026-07-15 보상 재설계(1단계) 반영**: 경험치/레벨·별도 상점 화면을 **폐기**하고 **코인 + 미션 해금**만 남겼다(마이그레이션 **V18** 적용 완료). 이 Task의 아래 항목 중 **경험치(exp) 관련은 모두 제외**한다 — `exp-per-diary` 설정 키는 없고, `user_character_state.level/exp`는 드롭됐으며, `LEVEL_UP` 대사 맥락·`LEVEL` 미션 규칙은 미사용(inert)이다. 코인 적립·구매·미션 판정 엔진 구현 자체는 그대로 유효하다.
 
@@ -130,6 +134,37 @@ backend/src/main/java/com/recordapp/
 - [ ] 미보유 group 구매 후 **소유 반영**(`user_item_groups` 1행) / 이미 보유한 group 재구매 시 차감 없음
 - [ ] `diary`·`resolution` 패키지에 `domain.character` **import 0건**(단방향 아키텍처 정적 검증)
 
-## 변경 사항 요약
+## 변경 사항 요약 (2026-07-16 구현)
 
-- (작성 예정) 검증 완료 후 기재
+### 마이그레이션
+- `V20__reward_engine_event_types.sql` — `character_events.chk_character_events_type` CHECK **제거**(트리거 확장 유연성). event_type 은 자유 라벨이 됨. 무결성은 `uq_character_events_key`·balance CHECK 유지.
+
+### 신규 (`domain/character/`)
+- `config/CharacterCoinProperties` — `@ConfigurationProperties("record.character.coin")`. 코인 값 + `streak` 마일스톤 `Map<Integer,Integer>`. (RecordApplication 에 `@ConfigurationPropertiesScan`.)
+- `mapper/CharacterRewardMapper`(+XML) — 게이트(`INSERT … ON CONFLICT DO NOTHING`), 코인 적립(`UPDATE … RETURNING`), 원장 확정(balance_after+payload), 연속일 UPSERT+RETURNING, 완주 진척, 대사 후보, 보상함/리액션/ack, 백필 스캔.
+- `service/CharacterRewardService` — 멱등 보상 엔진(`REQUIRES_NEW`). 트리거: `handleDiaryConfirmed`(연속일·마일스톤 포함)·`handleResolutionProgress`(1·2일차·완주)·`grantAttendance`. 조회: 지갑·보상함·리액션·ack.
+- `service/LineService` — character_lines 가중 랜덤(전용 우선→공용 폴백).
+- `service/CharacterEventListener` — `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("characterExecutor")`.
+- `service/CharacterRewardBackfillPoller` — 유실 적립 보정(cron, 게이트 멱등이라 중복 불가).
+- `controller/CharacterRewardController` — `GET /me/wallet`·`GET /me/rewards`·`POST /me/rewards/ack`·`GET /me/reaction?diaryId=`·`POST /me/attendance`.
+- DTO: `RewardEventRow`·`ConfirmedDiaryRef`·`LineRow`·`WalletResponse`·`RewardResponse`·`AttendanceResponse`·`AckRewardsResponse`.
+- `global/event/DiaryConfirmedEvent`·`ResolutionProgressEvent` — 단방향 디커플링.
+
+### 수정(한 줄 훅 — 단방향 유지, character import 없음)
+- `AsyncConfig` — `characterExecutor`(core2/max4/queue200/CallerRunsPolicy) 추가.
+- `DiaryService.upsert` — 확정 시 `ApplicationEventPublisher.publishEvent(new DiaryConfirmedEvent(...))`.
+- `ResolutionService.completeToday` — 1·2일차(`countDoneChecks`)·완주 시 `ResolutionProgressEvent` 발행.
+- `ResolutionMapper`(+XML) — `countDoneChecks` 추가.
+- `application.yml` — `record.character.coin.*` + `record.character.reward.backfill-*`. 테스트 프로파일은 `backfill-cron: "-"`.
+
+### 테스트 (Testcontainers PG18, 15개 통과)
+- `CharacterRewardServiceTest` — ①확정 적립·②멱등 재전달·⑧연속일(증가/리셋/같은날 불변)·**소급 확정 스트릭 불변**·연속 마일스톤(7일 1회)·작심삼일 1·2일차·완주·출석 하루 1회·⑥백스톱 폴러 보정(1회)·DRAFT 무시·보상함/ack/리액션·IDOR 격리.
+- `OneWayDependencyTest` — diary·resolution 소스가 `domain.character` 를 import 하지 않음(단방향 정적 검증).
+
+### 코드 리뷰 반영
+- **소급(과거) 확정 시 연속 기록 리셋 버그 수정**: `upsertDiaryProgress` 의 연속일 CASE 는 순방향만 가정해, 이미 최근 날짜를 확정한 뒤 과거 draft 를 뒤늦게 확정하면 무관한 스트릭이 1로 리셋돼 마일스톤 자격이 유실됐다. `이번 확정일 < last_confirmed_date → 스트릭 불변` 분기를 추가하고 회귀 테스트를 넣었다(유실 적립 방어).
+
+### 범위 밖(미구현)
+- 상점 구매 API(`POST /items/{groupCode}/purchase`)·`coin-enabled` 게이팅·`COIN_INSUFFICIENT`/`FEATURE_DISABLED` — 아이템 미확정.
+- 미션 판정·아이템 해금 지급(`MissionEvaluator`)·`RESOLUTION_STREAK` 등 미션 보상.
+- ⑦(구매 경합)·⑨(coin-enabled) 테스트 시나리오 — 구매 미구현으로 보류.

@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.character.mapper.CharacterRewardMapper">
+
+    <!-- ⚠️ constructor 매핑 — <arg> 순서가 record 표준 생성자와 정확히 일치해야 한다(도메인 공통 관례).
+         map-underscore-to-camel-case 는 constructor <arg> 엔 auto-apply 되지 않는다. -->
+    <resultMap id="userProgressMap" type="com.recordapp.domain.character.dto.UserProgressRow">
+        <constructor>
+            <arg column="confirmed_diary_count" javaType="_int"/>
+            <arg column="consecutive_days" javaType="_int"/>
+            <arg column="resolution_success_count" javaType="_int"/>
+            <arg column="max_streak_seq" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="lineRowMap" type="com.recordapp.domain.character.dto.LineRow">
+        <constructor>
+            <arg column="character_code" javaType="java.lang.String"/>
+            <arg column="line_ko" javaType="java.lang.String"/>
+            <arg column="rive_trigger" javaType="java.lang.String"/>
+            <arg column="weight" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="rewardEventMap" type="com.recordapp.domain.character.dto.RewardEventRow">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="event_type" javaType="java.lang.String"/>
+            <arg column="coin_delta" javaType="_int"/>
+            <arg column="balance_after" javaType="java.lang.Integer"/>
+            <arg column="payload" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="confirmedDiaryRefMap" type="com.recordapp.domain.character.dto.ConfirmedDiaryRef">
+        <constructor>
+            <arg column="user_id" javaType="_long"/>
+            <arg column="diary_id" javaType="_long"/>
+            <arg column="written_date" javaType="java.time.LocalDate"/>
+        </constructor>
+    </resultMap>
+
+    <!-- ===== ★ 멱등 게이트 ===== -->
+    <!-- 모든 부작용의 유일한 진입 조건. ON CONFLICT DO NOTHING → 반환 0행이면 이미 처리된 이벤트.
+         balance_after 는 여기서 NULL 로 두고, 코인 적립 후 finalizeEvent 가 되쓴다. -->
+    <insert id="insertGate">
+        INSERT INTO character_events (user_id, event_key, event_type, coin_delta, diary_id)
+        VALUES (#{userId}, #{eventKey}, #{eventType}, #{coinDelta}, #{diaryId,jdbcType=BIGINT})
+        ON CONFLICT (user_id, event_key) DO NOTHING
+    </insert>
+
+    <!-- ===== 코인 적립(경합 안전, RETURNING) ===== -->
+    <!-- UPDATE … RETURNING 은 결과셋을 돌려주므로 <select> 로 매핑한다(PG JDBC). 적립(+)만 사용. -->
+    <select id="creditWallet" resultType="java.lang.Integer">
+        UPDATE user_wallets
+           SET balance    = balance + #{delta},
+               updated_at = now()
+         WHERE user_id = #{userId}
+        RETURNING balance
+    </select>
+
+    <!-- ===== 원장 확정: 잔액 스냅샷 + 리액션 페이로드 ===== -->
+    <update id="finalizeEvent">
+        UPDATE character_events
+           SET balance_after = #{balanceAfter,jdbcType=INTEGER},
+               payload       = #{payload,jdbcType=VARCHAR}::jsonb
+         WHERE user_id = #{userId}
+           AND event_key = #{eventKey}
+    </update>
+
+    <!-- ===== 기록 확정 진척 UPSERT + 연속일 계산(RETURNING) ===== -->
+    <!-- 게이트 통과 뒤에만 호출한다(정확히 1회 증가). 연속일(순서 무관 방어):
+           last == 이번 확정일      → 불변(같은 날 재확정)
+           이번 확정일 < last       → 불변(소급/과거 확정 — 현재 진행 중인 스트릭을 건드리지 않는다)
+           last == 이번 확정일 - 1  → +1(연속)
+           그 외(하루 이상 건너뜀)  → 1 로 리셋
+         confirmed_diary_count 는 항상 +1(누적). last_confirmed_date 는 GREATEST 로 소급 확정에도 후퇴하지 않는다.
+         ⚠️ 소급 확정 분기가 없으면 과거 draft 를 뒤늦게 확정할 때 무관한 스트릭이 1로 리셋돼 마일스톤 자격이 유실된다. -->
+    <select id="upsertDiaryProgress" resultMap="userProgressMap">
+        INSERT INTO user_progress (user_id, confirmed_diary_count, consecutive_days, last_confirmed_date)
+        VALUES (#{userId}, 1, 1, #{writtenDate}::date)
+        ON CONFLICT (user_id) DO UPDATE SET
+            confirmed_diary_count = user_progress.confirmed_diary_count + 1,
+            consecutive_days = CASE
+                WHEN user_progress.last_confirmed_date = EXCLUDED.last_confirmed_date
+                    THEN user_progress.consecutive_days
+                WHEN EXCLUDED.last_confirmed_date &lt; user_progress.last_confirmed_date
+                    THEN user_progress.consecutive_days
+                WHEN user_progress.last_confirmed_date = EXCLUDED.last_confirmed_date - 1
+                    THEN user_progress.consecutive_days + 1
+                ELSE 1
+            END,
+            last_confirmed_date = GREATEST(user_progress.last_confirmed_date, EXCLUDED.last_confirmed_date),
+            updated_at = now()
+        RETURNING confirmed_diary_count, consecutive_days, resolution_success_count, max_streak_seq
+    </select>
+
+    <!-- ===== 작심삼일 완주 진척 갱신 ===== -->
+    <update id="bumpResolutionProgress">
+        UPDATE user_progress
+           SET resolution_success_count = resolution_success_count + 1,
+               max_streak_seq           = GREATEST(max_streak_seq, #{streakSeq}),
+               updated_at               = now()
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- ===== 대사 후보(전용 + 공용) ===== -->
+    <!-- jdbcType=VARCHAR: characterCode=null(미선택) 이어도 PG 가 파라미터 타입을 추론하게 한다. -->
+    <select id="findLines" resultMap="lineRowMap">
+        SELECT character_code, line_ko, rive_trigger, weight
+          FROM character_lines
+         WHERE context = #{context}
+           AND (character_code = #{characterCode,jdbcType=VARCHAR}
+                OR character_code IS NULL)
+    </select>
+
+    <!-- ===== 확정 리액션(그 기록의 DIARY_CONFIRM payload) ===== -->
+    <select id="findReaction" resultMap="rewardEventMap">
+        SELECT id,
+               event_type,
+               coin_delta,
+               balance_after,
+               payload::text AS payload,
+               created_at
+          FROM character_events
+         WHERE user_id = #{userId}
+           AND diary_id = #{diaryId}
+           AND event_type = 'DIARY_CONFIRM'
+         ORDER BY id DESC
+         LIMIT 1
+    </select>
+
+    <!-- ===== 미확인 보상함(커서, id DESC) ===== -->
+    <!-- idx_character_events_unacked(부분 인덱스, user_id, id DESC WHERE acked_at IS NULL)와 동일 조건. -->
+    <select id="findUnackedRewards" resultMap="rewardEventMap">
+        SELECT id,
+               event_type,
+               coin_delta,
+               balance_after,
+               payload::text AS payload,
+               created_at
+          FROM character_events
+         WHERE user_id = #{userId}
+           AND acked_at IS NULL
+        <if test="cursor != null">
+           AND id &lt; #{cursor}
+        </if>
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 미확인 보상 전체 확인 처리. 반환 = 확인된 행 수(미확인 뱃지가 이만큼 줄어든다). -->
+    <update id="ackAllRewards">
+        UPDATE character_events
+           SET acked_at = now()
+         WHERE user_id = #{userId}
+           AND acked_at IS NULL
+    </update>
+
+    <!-- ===== 백스톱: 확정됐으나 적립 게이트가 없는 기록 ===== -->
+    <!-- analysis_status <> 'DRAFT' = 확정된 기록(off: 즉시 DONE / on: PENDING→DONE 모두 포함).
+         NOT EXISTS 는 idx_character_events_diary(user_id, diary_id) 부분 인덱스를 탄다. -->
+    <select id="findUnrewardedConfirmedDiaries" resultMap="confirmedDiaryRefMap">
+        SELECT d.user_id      AS user_id,
+               d.id           AS diary_id,
+               d.written_date AS written_date
+          FROM diaries d
+         WHERE d.analysis_status &lt;&gt; 'DRAFT'
+           AND d.deleted_at IS NULL
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM character_events e
+                WHERE e.user_id = d.user_id
+                  AND e.diary_id = d.id
+                  AND e.event_type = 'DIARY_CONFIRM'
+           )
+         ORDER BY d.id
+         LIMIT #{limit}
+    </select>
+
+</mapper>

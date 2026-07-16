@@ -165,6 +165,14 @@
         )
     </select>
 
+    <!-- 해당 결심의 DONE 체크 수(0~3). markCheckDone 직후 호출하면 방금 완료한 일차 순번이 된다(보상 판정). -->
+    <select id="countDoneChecks" resultType="_int">
+        SELECT count(*)
+          FROM resolution_checks
+         WHERE resolution_id = #{resolutionId}
+           AND status = 'DONE'
+    </select>
+
     <!-- 오늘자 체크 DONE 전이. PENDING 행만 대상이라 이미 DONE/MISSED 면 0행(서비스가 멱등 판정). -->
     <update id="markCheckDone">
         UPDATE resolution_checks

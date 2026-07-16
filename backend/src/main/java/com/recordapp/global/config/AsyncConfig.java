@@ -60,6 +60,24 @@ public class AsyncConfig implements AsyncConfigurer {
 		return executor;
 	}
 
+	/**
+	 * 캐릭터 보상 적립 전용 스레드풀. 기록 확정·작심삼일 진척 이벤트(AFTER_COMMIT)의 코인 적립·미션 판정·
+	 * 대사 생성을 트랜잭션·요청 스레드 밖에서 처리한다. 보상 로직이 느리거나 터져도 기록/결심 저장에 영향이 없다.
+	 * 큐가 차면 {@code CallerRunsPolicy} 로 제출 스레드가 직접 실행해 백프레셔를 건다(적립 유실 대신 처리량 조절).
+	 */
+	@Bean("characterExecutor")
+	public Executor characterExecutor() {
+		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+		executor.setCorePoolSize(2);
+		executor.setMaxPoolSize(4);
+		executor.setQueueCapacity(200);
+		executor.setThreadNamePrefix("character-");
+		executor.setRejectedExecutionHandler(
+				new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+		executor.initialize();
+		return executor;
+	}
+
 	@Override
 	public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
 		return new LoggingAsyncUncaughtExceptionHandler();

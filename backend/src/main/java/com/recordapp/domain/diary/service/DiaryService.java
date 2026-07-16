@@ -21,6 +21,7 @@ import com.recordapp.domain.emotion.Emotion;
 import com.recordapp.domain.emotion.service.EmotionAnalysisService;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
+import com.recordapp.global.event.DiaryConfirmedEvent;
 import com.recordapp.global.exception.BusinessException;
 import com.recordapp.global.exception.ErrorCode;
 import com.recordapp.infra.storage.StorageService;
@@ -31,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -57,6 +59,8 @@ public class DiaryService {
 	// 감정 분석 flag(Task 024) off 면 EmotionAnalysisService 빈이 미등록되므로 ObjectProvider 로 부재를 흡수한다
 	// (생성자 강결합이면 빈 부재 시 기동 실패). 단방향 의존(DiaryService → EmotionAnalysisService) 유지.
 	private final ObjectProvider<EmotionAnalysisService> emotionAnalysisServiceProvider;
+	// 보상 엔진(Task 028)으로 확정 이벤트를 발행한다. diary 는 character 도메인을 모르며, 이벤트 클래스만 의존한다.
+	private final ApplicationEventPublisher eventPublisher;
 	// true 면 확정 시 PENDING→비동기 LLM 분석, false(기본)면 확정 시 즉시 DONE + 사용자 감정 저장.
 	private final boolean analysisEnabled;
 
@@ -64,11 +68,13 @@ public class DiaryService {
 			StorageService storageService,
 			ObjectMapper objectMapper,
 			ObjectProvider<EmotionAnalysisService> emotionAnalysisServiceProvider,
+			ApplicationEventPublisher eventPublisher,
 			@Value("${record.analysis.enabled}") boolean analysisEnabled) {
 		this.diaryMapper = diaryMapper;
 		this.storageService = storageService;
 		this.objectMapper = objectMapper;
 		this.emotionAnalysisServiceProvider = emotionAnalysisServiceProvider;
+		this.eventPublisher = eventPublisher;
 		this.analysisEnabled = analysisEnabled;
 	}
 
@@ -136,6 +142,12 @@ public class DiaryService {
 		reclaimFilesAfterCommit(removed(oldUrls, newUrls));
 		// 확정(confirm=true)이면 PENDING → 커밋 후 비동기 감정 분석 트리거. DRAFT(등록)면 PENDING 아님 → 스킵.
 		triggerAnalysisIfPending(row);
+		// 확정 시 보상 이벤트 발행(코인 적립·연속 마일스톤·리액션). @TransactionalEventListener(AFTER_COMMIT)가
+		// 커밋 후에만 처리하므로 롤백 시 미적립. 감정 분석 on/off 와 무관하게 '확정 행위' 자체를 트리거로 삼는다
+		// (event_key=DIARY_CONFIRM:{diaryId} 멱등이라 재발행에도 1회). diary→character 단방향(이벤트 클래스만 의존).
+		if (confirm) {
+			eventPublisher.publishEvent(new DiaryConfirmedEvent(userId, row.id(), req.writtenDate()));
+		}
 		return new DiaryUpsertResult(toResponse(row), cmd.isInserted());
 	}
 

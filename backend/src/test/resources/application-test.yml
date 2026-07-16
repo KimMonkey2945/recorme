@@ -18,3 +18,7 @@ record:
   resolution:
     failure-cron: "-"
     reminder-cron: "-"
+  # 코인 적립 백스톱 폴러도 자동 구동을 끈다(테스트가 backfill()을 직접 호출해 결정론적으로 검증).
+  character:
+    reward:
+      backfill-cron: "-"

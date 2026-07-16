@@ -36,8 +36,8 @@
 | 감정 분석 (개정) ⏳ **미착수** | **LLM 자동 분석 비활성화**(`record.analysis.enabled=false`, `@ConditionalOnProperty`로 빈 미등록). **감정은 사용자 직접 입력**(프리셋 6종 / 자유 텍스트 ≤20자). **감정은 순수 기록 메타데이터** — 캐릭터 리액션·미션 판정·해금 어디에도 쓰지 않는다 | ① 제품 중심축을 "AI가 분석해준다"에서 **"내 캐릭터에 애착이 생긴다"**로 전환 — 리텐션 동력이 분석 정확도가 아니라 캐릭터 성장이라고 판단 ② **LLM 호출 비용·레이턴시·출력 불안정**을 0으로 제거 ③ 확정 즉시 `DONE` → **리액션 지연 0**(PENDING 대기·클라 폴링 소멸) ④ 감정을 캐릭터에서 분리해야 리액션 대사가 **맥락**(확정/연속/미션) 기반으로 단순해짐(레벨업 맥락은 경험치/레벨 폐기로 미사용). **코드·테이블은 보존**하여 `ANALYSIS_ENABLED=true` 한 줄로 복구 가능(되돌릴 수 있는 번복)<br>⚠️ **결정만 됐고 코드는 그대로다** — `record.analysis.enabled` 플래그는 **아직 존재하지 않으며 LLM 분석이 활성**이다(Task 024/025) |
 | 캐릭터 렌더 | **Rive 비트맵 리깅** (원본 PNG 파츠를 본에 바인딩, 벡터 재작화 없음) + Data Binding 이미지 슬롯 런타임 주입 | 후보 비교는 아래 "캐릭터 렌더 방식 비교" 참조.<br>⏳ **`.riv` 미제작(Task 031)** — 현재는 `IdleCharacterView`(PNG **메시 워프**)가 렌더한다. `rive` 패키지는 재생할 `.riv`가 생길 때 추가한다 |
 | 아이템 모델 | **group(소유·착용) ↔ variant(렌더)** 2단 구조 | 원숭이·레서판다는 **체형이 달라 옷 PNG를 캐릭터별로 따로** 그려야 한다. 사용자에게는 group("빨간 후드티")만 노출하고 렌더 시점에만 `(group + 내 캐릭터)`로 variant를 해석 → **캐릭터를 바꿔도 옷장이 그대로 따라온다** |
-| 보상 멱등 ⏳ **미구현** | **단일 관문 `character_events(user_id, event_key) UNIQUE`** | 코인 적립·미션 달성·해금·구매가 전부 이 게이트를 통과 → 이벤트 재전달·백스톱 폴러 중복에도 **중복 적립 불가**. 게이트 1행 삽입 성공이 모든 부작용의 유일한 진입 조건.<br>**테이블(V17)은 있고 보상 엔진 코드는 없다**(Task 028) |
-| 도메인 결합 ⏳ **미구현** | **`ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` + `@Async`** | diary/resolution은 character를 **모른다**(단방향). 보상 로직이 터져도 기록 저장이 롤백되지 않는다. 대가(커밋 후 유실)는 백스톱 폴러로 보정 → 상세는 [`backend.md`](./backend.md) §2-1.<br>**`global/event/`·리스너·`characterExecutor` 모두 Task 028에서 추가**된다 |
+| 보상 멱등 ✅ | **단일 관문 `character_events(user_id, event_key) UNIQUE`** | 코인 적립·마일스톤이 전부 이 게이트(`INSERT … ON CONFLICT DO NOTHING`)를 통과 → 이벤트 재전달·백스톱 폴러 중복에도 **중복 적립 불가**. 게이트 1행 삽입 성공이 모든 부작용의 유일한 진입 조건.<br>event_type 고정 CHECK 는 트리거 확장 유연성을 위해 **V20 에서 제거**(무결성은 event_key UNIQUE·balance CHECK 가 유지). 미션 달성·해금·구매 게이트는 아이템 확정 후 추가 |
+| 도메인 결합 ✅ | **`ApplicationEventPublisher` + `@TransactionalEventListener(AFTER_COMMIT)` + `@Async("characterExecutor")`** | diary/resolution은 character를 **모른다**(단방향 — `global/event/`의 이벤트 클래스만 의존, 정적 테스트로 강제). 보상 로직이 터져도 기록 저장이 롤백되지 않는다(REQUIRES_NEW). 커밋 후 유실은 `CharacterRewardBackfillPoller` 로 보정 |
 | 아이템 소유 ✅ **구현** | 소유·착용은 **group_code로만** 저장, 렌더 이미지는 **선택 캐릭터로 해석** | 캐릭터를 바꿔도 `user_equipment`를 손대지 않고 variant만 재해석 → **옷장이 캐릭터를 따라온다**. 해석은 SQL 조인(`DISTINCT ON` + `NULLS LAST`)과 `CatalogCache` 메모리 두 경로 → [`backend.md`](./backend.md) §8 |
 | 인증 | **Supabase Auth(이메일 + 소셜: 카카오·구글) → 백엔드 Supabase JWT 검증** | 자체 소셜 검증·JWT 발급/회전 구현 부담 제거(Supabase 위임). 이메일·소셜 모두 동일 토큰이라 백엔드 분기 없음. 트레이드오프: Auth만 Supabase 종속(데이터는 무관). 애플은 추후 확장 |
 | 데이터 저장소 | **별도 PostgreSQL(Supabase 미사용)** | 인증만 Supabase, 데이터는 별도 PG로 분리해 DB 통제권 확보·종속을 Auth로 한정. 대가: 배포 DB 운영(백업·리전·패치) 직접 부담. 인증↔데이터는 `users.supabase_uid` 컬럼 매핑으로 연결(FK·RLS·트리거 미사용) |
@@ -85,7 +85,8 @@
 | 앱 — 착용 아이템 오버레이 렌더 | ✅ | 착용형은 캐릭터와 **동일 프레임 풀프레임 PNG를 같은 메시 워프에 z순으로 겹침**(`IdleCharacterView.overlayAssetPaths`), BACKGROUND/ROOM_PROP은 `CharacterStage` 정적 배치. `assets/items/*`는 현재 **플레이스홀더**(도형) — 인페인팅 제작 에셋으로 교체 예정 |
 | 앱 — 옷장 UI(`/wardrobe`) | ✅ | slot 탭 + 3상태 타일 + 로컬 미리보기 → 저장 시 배치 커밋. 진입점은 캐릭터 홈(Task 029) 전까지 **프로필의 임시 버튼** |
 | **감정 LLM 분석 비활성화 + 수동 입력 전환** | ⏳ **미착수** | Task 024(백엔드)·025(앱). **지금은 LLM 분석이 활성**이다 |
-| **보상 엔진**(코인·구매·미션 판정·보상함·리액션) | ⏳ **미구현** | Task 028. `character_events` 테이블만 존재 |
+| **보상 엔진 — 코인 적립·진척·마일스톤·보상함·리액션·출석** | ✅ | Task 028. `CharacterRewardService`(멱등 게이트→코인→진척→마일스톤→대사→payload, REQUIRES_NEW) + `CharacterEventListener`(AFTER_COMMIT·@Async) + `CharacterRewardBackfillPoller`(백스톱) + `CharacterRewardController`(지갑·보상함·ack·리액션·출석). 적립 기준값은 `record.character.coin.*`(= `docs/coin-rewards.md`). 트리거: 출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤 |
+| **보상 엔진 — 상점 구매(코인 소비)·미션 아이템 지급** | ⏳ **범위 밖** | 아이템(파티모자·볼캡·배경 등)이 미확정이라 미구현. 미션(DIARY_10·STREAK_7 등)은 조회만 되고 **판정·지급은 아직 없다**. 아이템 확정 시 `CharacterRewardService.grant` 뒤 소유 부여 한 줄 + 구매 API 추가 |
 | **탭 재편 + 캐릭터 홈·미션 UI** | ⏳ **미구현** | Task 029 본편·030 잔여(구매·미션·보상함은 Task 028 선행 필요). ⚠️ 별도 상점 화면은 보상 재설계로 폐기 → 구매는 옷장 통합. FCM 딥링크 회귀 위험으로 분리 |
 | **Rive `.riv` 아트보드 전환** | ⏳ **미제작** | Task 031. `rive` 패키지 미도입 |
 
@@ -155,7 +156,7 @@ record/
 - ~~**캐릭터 PNG 배경 불투명**~~ **해소됨**: Task 031에서 `assets/characters/*.png`를 고해상도 **투명 배경 PNG**로 교체했고, 그 위에 아이템 오버레이(옷장)까지 구현됐다. 단 **아이템 에셋은 현재 코드 생성 플레이스홀더**라, 인페인팅(캐릭터 원본 위에 아이템을 입혀 생성 → diff로 아이템만 추출) 방식의 실제 에셋 제작이 남아 있다.
 - **APK 용량 증가**: `rive_native` 바이너리(네이티브 FFI)가 앱 크기를 키운다. → **아직 `rive`를 pubspec에 넣지 않았다**(재생할 `.riv`가 없어 빌드 리스크만 커지므로). Task 031에서 증가분을 실측·기록한다.
 - **웹 미지원**: `rive_native`의 wasm 이슈 가능 → `kIsWeb`이면 무조건 비-Rive 경로로 폴백한다. 웹이 상시 개발·확인 경로라 이 폴백은 계속 유지한다.
-- **보상 멱등성(최대 리스크)** ⏳ **미구현**: `AFTER_COMMIT` 리스너는 커밋 후 크래시 시 이벤트가 유실될 수 있다 → `character_events` 게이트 + `CharacterRewardBackfillPoller` 백스톱으로 보정한다. **Task 028에서 구현하며, 이 도메인 최대 리스크 지점이다.**
+- **보상 멱등성(최대 리스크)** ✅ **구현**: `AFTER_COMMIT` 리스너는 커밋 후 크래시 시 이벤트가 유실될 수 있다 → `character_events` 게이트 + `CharacterRewardBackfillPoller` 백스톱으로 보정한다(Task 028). 게이트가 멱등하므로 리스너·폴러가 동시에 돌아도 중복 적립은 불가능하다. 다만 **미션 판정·아이템 지급·상점 구매는 아직 범위 밖**(아이템 미확정)이다.
 - **LLM 비용·레이턴시·출력 불안정** *(현재도 유효)*: 구조화 JSON 출력 강제·검증·폴백(`NEUTRAL`)으로 완화 중. **감정 분석은 아직 비활성화되지 않았다** — Task 024로 끄면 해소되고, 되살리면 다시 유효해진다.
 - **애플 로그인(추후 확장 시)**: JWKS 서명 검증·클라이언트 시크릿(`.p8` ES256 JWT, ~6개월 회전)·Android 웹 OAuth redirect 처리 복잡 → 현재 범위에서 제외하고 카카오·구글 2종으로 시작.
 - **에셋 라이선스**: 손글씨 폰트 임베딩 라이선스/용량, 외부 음악 전환 시 저작권·약관.

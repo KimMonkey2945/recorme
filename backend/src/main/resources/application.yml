@@ -75,6 +75,30 @@ record:
     poll-interval-ms: ${ANALYSIS_POLL_INTERVAL_MS:60000}
     initial-delay-ms: ${ANALYSIS_INITIAL_DELAY_MS:30000}
     batch-size: ${ANALYSIS_BATCH_SIZE:20}
+  # ===== 캐릭터 코인 적립(보상 엔진 Task 028) =====
+  # 단일 기준 문서 = docs/coin-rewards.md. 값 조정·보상 추가/제거는 여기만 고친다(코드 변경 없음).
+  #   attendance : 출석(앱 접속) — 하루 1회
+  #   diary      : 기록 확정 — 하루 1회 (coin-rewards.md 의 daily.record. record 는 Java 예약어라 diary 로 명명)
+  #   resolution-day1/day2/complete : 작심삼일 1일차/2일차/완주 — 챌린지당 각 1회
+  #   streak     : 연속 기록 마일스톤(연속일 → 코인, 계정당 최초 1회). 줄을 넣고 빼서 마일스톤을 추가/제거한다.
+  #   coin-enabled : 상점 구매(코인 소비) 게이팅용 — 적립과 무관(적립은 항상 동작). 구매 API 는 아직 범위 밖.
+  # backfill-cron : 즉시 적립(커밋 후 이벤트) 유실·재시작·다중 인스턴스 보강 폴러 주기(zone=Asia/Seoul).
+  #   "-" 이면 스케줄 비활성(테스트에서 직접 호출). 게이트가 멱등하므로 폴러가 돌아도 중복 적립 불가.
+  character:
+    coin:
+      coin-enabled: ${CHARACTER_COIN_ENABLED:false}
+      attendance: ${COIN_ATTENDANCE:10}
+      diary: ${COIN_DIARY:10}
+      resolution-day1: ${COIN_RESOLUTION_DAY1:15}
+      resolution-day2: ${COIN_RESOLUTION_DAY2:15}
+      resolution-complete: ${COIN_RESOLUTION_COMPLETE:50}
+      streak:
+        7: 200
+        30: 500
+        60: 1000
+    reward:
+      backfill-cron: "${CHARACTER_REWARD_BACKFILL_CRON:0 */10 * * * *}"
+      backfill-batch-size: ${CHARACTER_REWARD_BACKFILL_BATCH_SIZE:100}
   # ===== 서버 푸시(FCM) =====
   # firebase-credentials: 서비스 계정 JSON 파일 경로 또는 Base64 인코딩된 JSON 문자열.
   #   비어 있으면 PushConfig가 자동으로 StubPushService를 선택(무키 로컬/CI 동작 보장, 실제 발송 없음).

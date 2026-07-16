@@ -3,7 +3,9 @@
 캐릭터 코인을 **어떤 행동에 얼마씩** 지급할지 정의하는 **단일 기준 문서**다.
 값을 바꾸고 싶으면 이 문서의 표 숫자만 고치고, 새 보상을 추가하려면 표에 행을 추가하면 된다.
 
-> ⚠️ **현재 상태**: 코인 적립 엔진(Task 028)은 **아직 미구현**이다. 따라서 지금 앱/서버의 런타임 코인 잔액은 **항상 0**이며, 이 문서는 **"이렇게 지급한다"는 목표 기준값**이다. 엔진을 구현할 때 아래 표를 그대로 `application.yml` 설정으로 옮긴다(→ [엔진 연동 시 설정 매핑](#엔진-연동-시-설정-매핑-제안)).
+> ✅ **현재 상태**: 코인 적립 엔진(Task 028)은 **구현 완료**다. 아래 표의 트리거(출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤)가 실제로 적립된다. 값은 `application.yml`의 `record.character.coin.*` 설정에 있으며, **이 표의 숫자를 바꾸면 코드 변경 없이 지급액이 바뀐다**(→ [엔진 연동 설정 매핑](#엔진-연동-설정-매핑)).
+>
+> ⚠️ **아직 안 되는 것**: 미션(DIARY_10·STREAK_7 등)의 **아이템 보상 지급**과 **상점 구매(코인 소비)**는 범위 밖이다(아이템 에셋 미확정). 미션은 조회만 되고 판정·지급은 없다. 연속 7일 보상은 미션이 아니라 **설정 마일스톤(`streak.7`)**으로 지급된다.
 
 ---
 
@@ -48,44 +50,43 @@
 
 ---
 
-## 엔진 연동 시 설정 매핑 (제안)
+## 엔진 연동 설정 매핑
 
-Task 028에서 적립 엔진을 만들 때, 위 표를 아래 형태의 단일 설정 블록으로 옮기면 값 조정이 코드 수정 없이 가능해진다.
+값 조정·보상 추가/제거는 아래 설정 블록(`backend/src/main/resources/application.yml`)만 고친다 — 코드 변경 없이.
+`CharacterCoinProperties`(`@ConfigurationProperties("record.character.coin")`)로 바인딩된다.
 
 ```yaml
 record:
   character:
-    coin-enabled: false   # 상점 구매 게이팅용(적립은 항상 동작). Task 028 참조.
     coin:
-      daily:
-        attendance: 10     # 출석(앱 접속) — 하루 1회
-        record: 10         # 기록 확정 — 하루 1회
-      resolution:
-        day1: 15           # 작심삼일 1일차
-        day2: 15           # 작심삼일 2일차
-        complete: 50       # 작심삼일 완주
-      streak:              # 연속 기록 마일스톤(일회성)
+      coin-enabled: false   # 상점 구매(코인 소비) 게이팅용. 적립과 무관(적립은 항상 동작). 구매 API 는 아직 범위 밖.
+      attendance: 10         # 출석(앱 접속) — 하루 1회
+      diary: 10              # 기록 확정 — 하루 1회 (표의 daily.record. record 는 Java 예약어라 diary 로 명명)
+      resolution-day1: 15    # 작심삼일 1일차
+      resolution-day2: 15    # 작심삼일 2일차
+      resolution-complete: 50 # 작심삼일 완주
+      streak:                # 연속 기록 마일스톤(일회성). 줄을 넣고 빼서 마일스톤을 추가/제거한다.
         7: 200
         30: 500
         60: 1000
+    reward:
+      backfill-cron: "0 */10 * * * *"  # 즉시 적립 유실 보정 폴러 주기(zone=Asia/Seoul). "-" 면 비활성.
 ```
 
-- Task 028 문서가 앞서 정한 키 `coin-per-diary`(10) / `coin-per-resolution-success`(30)는 각각 위 `coin.daily.record` / `coin.resolution.complete`로 **대체·세분화**된다(작심삼일이 완주 단일 30 → 1·2일차 + 완주로 확장됐고, 완주액도 50으로 상향).
-- 이 블록은 `@ConfigurationProperties`(예: `CharacterCoinProperties`)로 바인딩해 타입·검증을 건다.
+- **값 0 = 그 트리거 끄기**: 예를 들어 `attendance: 0` 이면 출석 이벤트를 만들지 않는다.
+- **마일스톤 추가**: `streak:` 아래에 `100: 2000` 처럼 줄을 넣으면 100일 연속 마일스톤이 생긴다(엔진 코드 무수정).
+- **새 트리거 추가**(예: 친구 초대): `CharacterCoinProperties`에 필드를 하나 늘리고, 발생 지점에서 `CharacterRewardService.grant` 계열을 한 번 호출하면 된다. event_type 은 자유 라벨이라(V20 에서 CHECK 제거) 마이그레이션이 필요 없다.
 
 ---
 
-## 현재 구현과의 차이 (엔진 구현 시 정렬 대상)
+## 구현 범위와 한계 (2026-07-16 Task 028)
 
-이 기준과 **지금 코드/DB에 박혀 있는 값**이 다른 지점이 있다. 엔진을 만들 때 아래를 이 문서 기준으로 맞춘다.
-
-- **연속 7일 보상 불일치**: 미션 시드(`V16__add_missions.sql`)의 `STREAK_7`은 `coin_reward=100` + 아이템(BG_COZY_ROOM) 해금이다. 본 기준의 "7일 연속 = 200"과 다르다. 연속 마일스톤 코인을 **미션 보상으로 줄지 / 설정 기반 적립으로 줄지** 엔진 구현 시 확정하고 값을 정렬한다.
-- **30·60일 연속 보상 부재**: 현재 미션·설정 어디에도 30/60일 연속 보상이 없다(신규).
-- **작심삼일 1·2일차 보상 부재**: 현재는 "완주"만 개념적으로 존재(`RESOL_1` 미션 30코인). 1·2일차 부분 달성 보상은 신규다.
-- **출석(attendance) 트리거 부재**: 현재 아키텍처의 코인 훅은 **기록 확정·작심삼일 완주** 둘뿐이다. "앱 접속 출석"은 새 트리거라 엔진에서 추가해야 한다.
+- ✅ **구현**: 위 표의 모든 코인 적립 트리거 + 멱등 게이트 + 연속일 계산 + 백스톱 폴러 + 보상함/리액션/출석 API.
+- **연속 7일**: 미션 시드(`STREAK_7`, coin 100 + BG_COZY_ROOM)와 별개로, **설정 마일스톤 `streak.7`(200)**로 지급된다. 미션 `STREAK_7`은 조회만 되고 **판정·지급되지 않는다**(inert). 30/60일·작심삼일 1·2일차·출석은 모두 신규로 구현됐다.
+- ⏳ **범위 밖(아이템 미확정)**: 미션의 **아이템 보상 지급**, **상점 구매(코인 소비)**, `coin-enabled` 게이팅. 아이템 에셋이 정해지면 `CharacterRewardService.grant` 뒤에 소유 부여 한 줄 + 구매 API 를 붙인다.
 
 ### 참고 — 저장 위치
 
 - 코인 잔액: `user_wallets.balance` (음수 불가 CHECK)
-- 적립·차감 원장 + 멱등 게이트: `character_events` (`user_id, event_key` UNIQUE)
-- 미션·마일스톤 판정용 누적값: `user_progress`(`confirmed_diary_count`, `consecutive_days`, `resolution_success_count`, `max_streak_seq`) — ⚠️ **`consecutive_days`를 증가/리셋시키는 로직은 아직 미구현**이라, 연속 기록 마일스톤을 붙이려면 이 갱신부터 만들어야 한다.
+- 적립 원장 + 멱등 게이트 + 리액션 페이로드 + 보상함: `character_events` (`user_id, event_key` UNIQUE)
+- 마일스톤 판정용 누적값: `user_progress`(`confirmed_diary_count`, `consecutive_days`, `last_confirmed_date`, `resolution_success_count`, `max_streak_seq`) — 연속일 증가/리셋 로직은 `CharacterRewardMapper.upsertDiaryProgress`가 담당한다.

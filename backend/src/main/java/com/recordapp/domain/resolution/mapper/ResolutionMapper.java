@@ -58,6 +58,12 @@ public interface ResolutionMapper {
 	ResolutionCheckView findCheck(@Param("resolutionId") Long resolutionId, @Param("date") LocalDate date);
 
 	/**
+	 * 해당 결심의 DONE 체크 수(0~3). 방금 완료한 일차(1·2일차 부분 달성 보상)를 판정하는 데 쓴다
+	 * (markCheckDone 이 1행을 반환한 직후 호출 → 이 값이 방금 완료한 일차 순번이다).
+	 */
+	int countDoneChecks(@Param("resolutionId") Long resolutionId);
+
+	/**
 	 * 같은 체인에 지정 순번(streakSeq)의 결심이 이미 있는지 여부. 연장 전 이중 연장 선검사용
 	 * (최종 방어는 uq_resolutions_streak_seq 제약).
 	 */

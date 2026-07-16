@@ -323,18 +323,26 @@
 | GET | `/characters/items?slot=` | 아이템 그룹 목록(슬롯 필터, 보유 여부 + 내 캐릭터 기준 variant 이미지) | ○ |
 | GET | `/missions` | 미션 목록(달성 여부 + 진행률) | ○ |
 
-**미구현 — 보상 엔진(Task 028) 이후**
+**구현본 (Task 028 — 코인 적립 엔진)**
 
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매 | ○ |
-| GET | `/characters/me/wallet` | 코인 잔액 | ○ |
-| GET | `/characters/me/rewards?cursor=&size=` | 보상 이벤트함(커서 페이징, id DESC) | ○ |
-| POST | `/characters/me/rewards/ack` | 보상 확인 처리(멱등) | ○ |
-| GET | `/characters/me/reaction?diaryId=` | 확정 기록에 대한 캐릭터 리액션(대사·획득 보상) | ○ |
-| GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록·감정 분포·성장 요약) | ○ |
+| GET | `/characters/me/wallet` | 코인 잔액 + 미확인 보상 수 | ○ |
+| GET | `/characters/me/rewards?cursor=&size=` | 미확인 보상함(커서 페이징, id DESC) | ○ |
+| POST | `/characters/me/rewards/ack` | 미확인 보상 전체 확인(뱃지 리셋) | ○ |
+| GET | `/characters/me/reaction?diaryId=` | 확정 기록 리액션(대사·코인). 확정 즉시 생성 — 폴링 불필요(없으면 data=null) | ○ |
+| POST | `/characters/me/attendance` | 출석 적립(하루 1회). 홈 진입 시 호출 | ○ |
 
-> ⚠️ **현재 구현 범위(Task 027)**: 캐릭터 선택·옷장(조회·착용)·미션 조회까지다. **코인 적립·구매·보상함·리액션은 보상 엔진(Task 028) 소관으로 아직 없다** — 그래서 `coinBalance`·`unackedRewardCount`는 **항상 0**이고, 미션의 `achieved`는 항상 false다(달성 이력을 쓰는 주체가 없다). `progress`는 `user_progress` 스냅샷을 그대로 읽으므로 이 역시 Task 028 전에는 0이다. 아이템은 **기본 지급(`DEFAULT`)분만 보유**한 상태로 시작한다.
+**미구현 — 아이템 확정 후 (범위 밖)**
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매(코인 소비·`coin-enabled` 게이팅) | ○ |
+| GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록·감정 분포·성장 요약) — Task 032 | ○ |
+
+> ✅ **코인 적립 엔진 구현(Task 028, 2026-07-16)**: 출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤이 실제로 적립된다(멱등 게이트 `character_events`). `/characters/me` 의 `coinBalance`·`unackedRewardCount`가 실데이터로 채워진다. 적립액·마일스톤은 `record.character.coin.*` 설정으로 조정한다(`docs/coin-rewards.md`).
+>
+> ⚠️ **아직 없는 것(아이템 미확정)**: **상점 구매(코인 소비)**·`coin-enabled` 게이팅, **미션 판정·아이템 해금 지급**. 그래서 미션의 `achieved`는 여전히 false이고(달성 이력을 쓰는 주체 없음), 미션 아이템 보상(HAT_PARTY·BG_COZY_ROOM)은 지급되지 않는다. `progress`는 이제 `user_progress` 스냅샷이 갱신되므로 실값을 반영한다. 연속 7일 보상은 미션이 아니라 설정 마일스톤 `streak.7`로 지급된다. 아이템은 **기본 지급(`DEFAULT`)분만 보유**한 상태로 시작한다.
 >
 > ⚠️ **`thumbnailUrl`·`imageUrl`은 서버 URL이 아니라 앱 로컬 에셋 경로다**(`assets/characters/monkey.png`, `assets/items/hat_party_monkey.png`). 다른 도메인의 이미지 필드(`/files/...` 상대경로 → 앱이 호스트 조립)와 **의미가 다르다.** 캐릭터·아이템 아트는 앱 번들에 동봉되고, 서버는 "어떤 에셋을 그릴지"만 알려준다.
 >
