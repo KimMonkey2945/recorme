@@ -1,9 +1,11 @@
 # Task 030 — 앱 옷장 · 상점 · 미션 · 보상함 UI
 
 - **Phase**: 7 (캐릭터 중심 전환)
-- **구현 기능**: F027(코스튬·옷장), F029(상점), F030(미션 해금)
-- **상태**: **부분 구현 — 옷장 완료** (상점·미션·보상함은 Task 028 보상 엔진 선행 필요로 잔여)
-- **선행**: Task 027(착용 API) ✅, Task 028(코인·구매·미션·보상함 API) ⏳, Task 029(데이터 계층·홈) ⏳
+- **구현 기능**: F027(코스튬·옷장), F028(코인 — 앱 배선), F029(상점), F030(미션 해금)
+- **상태**: **옷장 + 보상 배선 완료** (상점 구매·미션 화면은 잔여 — 아이템 에셋·구매 API 미확정)
+- **선행**: Task 027(착용 API) ✅, Task 028(코인·보상함·리액션·출석 API) ✅, Task 029(데이터 계층·홈) ✅
+
+> 📌 **2026-07-16 앱 보상 배선 완료**: 홈 상태바 코인·미확인 배지가 `GET /characters/me` 실데이터로 채워지고(백엔드 Task 028 완료), **보상함 화면(`/rewards`)·홈 배지 탭 진입·홈 진입 시 출석 적립**을 붙였다. 상점 구매·미션 진행률 화면은 여전히 잔여(구매 백엔드 미구현·아이템 에셋 미확정).
 
 > 📌 **2026-07-15 보상 재설계(1단계) 반영**: 경험치/레벨·**별도 상점 화면**을 폐기하고 코인 + 미션 해금만 남겼다. → **`shop_page.dart`는 폐기(옷장 통합)** — 옷장이 소유/해금/구매 노출의 단일 지점이 되어, 미보유 아이템 탭 시 **안내 시트**로 미션 진행률(`acquire_type=MISSION`) 또는 코인 가격·구매(`acquire_type=COIN`)를 노출한다. **미션 화면도 이 옷장 잠금 안내 시트로 대체**(별도 `mission_page` 진행률 화면은 후순위). 구매 API·`coin-enabled` 게이팅·에러 계약(`COIN_INSUFFICIENT`/`FEATURE_DISABLED`)은 옷장 안내 시트에서 그대로 재사용한다.
 
@@ -104,6 +106,14 @@ app/lib/features/character/presentation/
 - [ ] 보상함 빈 상태 / 미션 0건 / 옷장 slot 빈 상태 렌더
 
 ## 변경 사항 요약
+
+### 2026-07-16 — 앱 보상 배선(Task 028 연동) 완료
+
+- **데이터**: `Reward`/`AttendanceResult` 도메인 + `character_dto`에 `rewardFromJson`·`rewardsPageFromJson`·`attendanceFromJson`. `CharacterRepository`에 `fetchRewards({cursor,size})`·`ackRewards()`·`markAttendance()` 추가(Api/Fake 양쪽). Fake는 인메모리 코인·보상함·출석 시뮬레이션(홈 배지가 웹 프리뷰에서도 실제로 오른다).
+- **provider**: `rewardsProvider`(`RewardsNotifier` — 커서 무한스크롤, `FeedNotifier` 미러) + `AckRewardsController`(ack → `myCharacterProvider`·`rewardsProvider` invalidate) + `AttendanceController`(홈 진입 1회, granted 시 `myCharacterProvider` invalidate, 실패는 조용히 흡수).
+- **UI/배선**: `rewards_page.dart`(보상함 — 종류별 아이콘·대사·코인, "모두 확인", 커서 페이징·빈/에러/새로고침) + 홈 상태바 보상 배지를 `IconButton`으로 바꿔 탭 시 `/rewards` push + `CharacterHomePage`를 `ConsumerStatefulWidget`으로 전환해 진입 시 출석 도장(적립 시 잔잔한 스낵바) + `/rewards` 라우트(셸 밖 풀스크린) 등록. 코인색은 `AppColors.warning`(골드) 재사용.
+- **검증**: `flutter analyze` 무경고 · `flutter test` **141개 통과**(신규: `rewards_test.dart` 4개 — 페이징/빈/ack/출석, `character_home_test`에 배지→보상함 이동 1개, 온보딩·홈 Fake에 신규 메서드 스텁).
+- **잔여**: 상점 코인 구매(구매 백엔드 미구현)·미션 진행률 화면·캐릭터 리액션 오버레이(Task 032).
 
 ### 2026-07-14 — 옷장(F027) 구현 완료
 

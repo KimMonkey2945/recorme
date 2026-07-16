@@ -2,10 +2,12 @@ import 'package:dio/dio.dart';
 
 import '../../../core/error/failure.dart';
 import '../../../shared/models/api_response.dart';
+import '../../../shared/models/cursor_page.dart';
 import '../domain/character.dart';
 import '../domain/character_repository.dart';
 import '../domain/item_group.dart';
 import '../domain/my_character.dart';
+import '../domain/reward.dart';
 import 'dto/character_dto.dart';
 
 /// Dio 기반 캐릭터 저장소. 표준 응답 래퍼(`{success, data, error}`)를 언랩한다.
@@ -92,6 +94,48 @@ class ApiCharacterRepository implements CharacterRepository {
       );
     } on DioException catch (e) {
       // 미보유면 ITEM_NOT_OWNED, 캐릭터용 variant 미제작이면 ITEM_VARIANT_MISSING.
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<CursorPage<Reward>> fetchRewards({int? cursor, int? size}) async {
+    try {
+      final res = await _dio.get(
+        '/characters/me/rewards',
+        queryParameters: {'cursor': ?cursor, 'size': ?size},
+      );
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.rewardsPageFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<int> ackRewards() async {
+    try {
+      final res = await _dio.post('/characters/me/rewards/ack');
+      return _unwrap(
+        res.data,
+        (json) => ((json as Map<String, dynamic>)['acked'] as num?)?.toInt() ?? 0,
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<AttendanceResult> markAttendance() async {
+    try {
+      final res = await _dio.post('/characters/me/attendance');
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.attendanceFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
       throw _toFailure(e);
     }
   }

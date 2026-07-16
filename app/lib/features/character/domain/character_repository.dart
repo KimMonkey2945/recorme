@@ -1,6 +1,8 @@
+import '../../../shared/models/cursor_page.dart';
 import 'character.dart';
 import 'item_group.dart';
 import 'my_character.dart';
+import 'reward.dart';
 
 /// 캐릭터 데이터 접근 추상화.
 ///
@@ -31,4 +33,16 @@ abstract class CharacterRepository {
   /// `ITEM_VARIANT_MISSING`으로 실패한다.
   /// PUT /characters/me/equipment
   Future<MyCharacter> replaceEquipment(List<EquipmentSelection> equipment);
+
+  /// 미확인 보상함(커서 페이징, 최신순). [cursor] 생략 시 첫 페이지.
+  /// GET /characters/me/rewards?cursor=&size=
+  Future<CursorPage<Reward>> fetchRewards({int? cursor, int? size});
+
+  /// 미확인 보상 전체 확인(뱃지 리셋). 확인된 개수를 돌려준다.
+  /// POST /characters/me/rewards/ack
+  Future<int> ackRewards();
+
+  /// 출석 적립(하루 1회). 이미 출석했으면 granted=false.
+  /// POST /characters/me/attendance
+  Future<AttendanceResult> markAttendance();
 }

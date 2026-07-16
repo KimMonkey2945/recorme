@@ -22,6 +22,8 @@ import 'package:record/features/character/domain/character.dart';
 import 'package:record/features/character/domain/character_repository.dart';
 import 'package:record/features/character/domain/item_group.dart';
 import 'package:record/features/character/domain/my_character.dart';
+import 'package:record/features/character/domain/reward.dart';
+import 'package:record/shared/models/cursor_page.dart';
 import 'package:record/features/character/presentation/character_onboarding_page.dart';
 import 'package:record/features/character/presentation/providers/character_providers.dart';
 import 'package:record/features/character/presentation/widgets/idle_character_view.dart';
@@ -96,7 +98,7 @@ class _FakeCharacterRepository implements CharacterRepository {
     );
   }
 
-  // 옷장은 이 테스트의 관심사가 아니다 — 인터페이스 충족용 최소 구현.
+  // 옷장·보상은 이 테스트의 관심사가 아니다 — 인터페이스 충족용 최소 구현.
   @override
   Future<List<ItemGroup>> fetchItems({String? slot}) async => const [];
 
@@ -104,6 +106,17 @@ class _FakeCharacterRepository implements CharacterRepository {
   Future<MyCharacter> replaceEquipment(
           List<EquipmentSelection> equipment) async =>
       fetchMyCharacter();
+
+  @override
+  Future<CursorPage<Reward>> fetchRewards({int? cursor, int? size}) async =>
+      const CursorPage(items: [], hasNext: false);
+
+  @override
+  Future<int> ackRewards() async => 0;
+
+  @override
+  Future<AttendanceResult> markAttendance() async =>
+      const AttendanceResult(granted: false, coin: 0, balance: 0);
 }
 
 /// 온보딩 → 메인('/') 이동을 검증하기 위한 최소 라우터.

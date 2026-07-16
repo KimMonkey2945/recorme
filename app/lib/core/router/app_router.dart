@@ -12,6 +12,7 @@ import '../../features/character/domain/my_character.dart';
 import '../../features/character/presentation/character_home_page.dart';
 import '../../features/character/presentation/character_onboarding_page.dart';
 import '../../features/character/presentation/providers/character_providers.dart';
+import '../../features/character/presentation/rewards_page.dart';
 import '../../features/character/presentation/wardrobe_page.dart';
 import '../../features/diary/presentation/diary_detail_page.dart';
 import '../../features/diary/presentation/diary_editor_page.dart';
@@ -244,6 +245,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/wardrobe',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const WardrobePage(),
+      ),
+      // 셸 밖 전체 화면: 보상함(미확인 보상 확인) — 홈 상태바 배지에서 진입한다.
+      GoRoute(
+        path: '/rewards',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const RewardsPage(),
       ),
       // 셸 밖 전체 화면: 지난 기록 목록(캘린더 앱바에서 진입).
       // 탭에서 빠지면서 셸 밖 push 라우트가 됐다(AppBar leading 미지정 → 뒤로가기 자동).

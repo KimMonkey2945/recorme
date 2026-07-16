@@ -9,11 +9,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:record/core/theme/app_theme.dart';
 import 'package:record/features/character/data/fake_character_repository.dart';
 import 'package:record/features/character/domain/character.dart';
 import 'package:record/features/character/domain/my_character.dart';
+import 'package:record/features/character/domain/reward.dart';
 import 'package:record/features/character/presentation/character_home_page.dart';
 import 'package:record/features/character/presentation/providers/character_providers.dart';
 import 'package:record/features/character/presentation/widgets/idle_character_view.dart';
@@ -28,6 +30,12 @@ class _StubCharacterRepository extends FakeCharacterRepository {
 
   @override
   Future<MyCharacter> fetchMyCharacter() async => _my;
+
+  // 홈 진입 시 출석 호출이 발생한다 — 지연 타이머 없이 즉시(미적립) 반환해 테스트를 결정적으로 유지한다
+  // (기본 Fake의 300ms 타이머가 위젯 dispose 후에도 남아 실패하는 것 방지).
+  @override
+  Future<AttendanceResult> markAttendance() async =>
+      const AttendanceResult(granted: false, coin: 0, balance: 0);
 }
 
 /// 선택 완료(기본값) 내 캐릭터.
@@ -129,5 +137,43 @@ void main() {
 
     expect(find.text('옷장'), findsNothing);
     expect(find.text('원숭이'), findsNothing);
+  });
+
+  testWidgets('보상 배지 탭 → 보상함(/rewards)으로 이동', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const CharacterHomePage()),
+        GoRoute(
+          path: '/rewards',
+          builder: (_, _) =>
+              const Scaffold(body: Center(child: Text('보상함 화면'))),
+        ),
+      ],
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        characterRepositoryProvider
+            .overrideWithValue(_StubCharacterRepository(_richMonkey)),
+        myCharacterProvider.overrideWith(
+          (ref) => ref.watch(characterRepositoryProvider).fetchMyCharacter(),
+        ),
+        charactersProvider.overrideWith(
+          (ref) => const CharacterList(selectedCharacter: 'MONKEY', items: []),
+        ),
+      ],
+      child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+
+    // 상태바의 보상 배지(선물 아이콘 IconButton) 탭.
+    await tester.tap(find.byIcon(Icons.card_giftcard_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('보상함 화면'), findsOneWidget);
   });
 }

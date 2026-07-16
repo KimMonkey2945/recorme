@@ -1,10 +1,12 @@
 import '../../../core/error/failure.dart';
+import '../../../shared/models/cursor_page.dart';
 import '../domain/character.dart';
 import '../domain/character_repository.dart';
 import '../domain/equipment_item.dart';
 import '../domain/item_group.dart';
 import '../domain/my_character.dart';
 import '../domain/render_meta.dart';
+import '../domain/reward.dart';
 
 /// 인메모리 더미 캐릭터 저장소(테스트/웹 프리뷰용).
 ///
@@ -24,6 +26,18 @@ class FakeCharacterRepository implements CharacterRepository {
 
   /// 현재 착용 스냅샷(slot, slotIndex, groupCode). 서버의 user_equipment에 해당.
   List<EquipmentSelection> _equipment = const [];
+
+  /// 인메모리 코인 잔액(적립 시뮬레이션). 출석/보상으로 늘어난다.
+  int _coinBalance = 0;
+
+  /// 미확인 보상함(character_events 미러). ack하면 비워진다.
+  final List<Reward> _rewards = [];
+
+  /// 세션 내 출석 완료 여부(하루 1회 시뮬레이션 — Fake는 날짜 없이 세션 단위로 흉내).
+  bool _attended = false;
+
+  /// 보상 id 시퀀스.
+  int _rewardSeq = 0;
 
   /// 네트워크 지연 흉내.
   static const _latency = Duration(milliseconds: 300);
@@ -397,6 +411,50 @@ class FakeCharacterRepository implements CharacterRepository {
         z: meta.z,
       );
 
+  @override
+  Future<CursorPage<Reward>> fetchRewards({int? cursor, int? size}) async {
+    await Future<void>.delayed(_latency);
+    final sorted = [..._rewards]..sort((a, b) => b.id.compareTo(a.id));
+    final rest = cursor == null
+        ? sorted
+        : sorted.where((r) => r.id < cursor).toList();
+    final page = rest.take(size ?? 20).toList();
+    final hasNext = rest.length > page.length;
+    return CursorPage(
+      items: page,
+      nextCursor: page.isEmpty ? null : page.last.id,
+      hasNext: hasNext,
+    );
+  }
+
+  @override
+  Future<int> ackRewards() async {
+    await Future<void>.delayed(_latency);
+    final n = _rewards.length;
+    _rewards.clear();
+    return n;
+  }
+
+  @override
+  Future<AttendanceResult> markAttendance() async {
+    await Future<void>.delayed(_latency);
+    if (_attended) {
+      return AttendanceResult(granted: false, coin: 10, balance: _coinBalance);
+    }
+    _attended = true;
+    _coinBalance += 10;
+    _rewards.add(Reward(
+      id: ++_rewardSeq,
+      eventType: 'ATTENDANCE',
+      coinDelta: 10,
+      balanceAfter: _coinBalance,
+      line: '오늘도 왔네, 반가워!',
+      context: 'IDLE',
+      createdAt: DateTime.now(),
+    ));
+    return AttendanceResult(granted: true, coin: 10, balance: _coinBalance);
+  }
+
   /// 현재 선택 상태 기준의 내 캐릭터 응답을 만든다(미선택이면 character=null).
   MyCharacter _myCharacter() {
     final selected = _selectedCode;
@@ -411,8 +469,8 @@ class FakeCharacterRepository implements CharacterRepository {
               thumbnailUrl: entry.thumbnailUrl,
               riveArtboard: entry.riveArtboard,
             ),
-      coinBalance: 0,
-      unackedRewardCount: 0,
+      coinBalance: _coinBalance,
+      unackedRewardCount: _rewards.length,
       equipment: _equipmentItems(),
     );
   }

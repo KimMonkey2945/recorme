@@ -10,6 +10,7 @@ import '../../domain/character.dart';
 import '../../domain/character_repository.dart';
 import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
+import '../../domain/reward.dart';
 
 /// 웹 UI 프리뷰/수동 확인용 스위치.
 ///
@@ -118,3 +119,135 @@ class ReplaceEquipmentController extends AsyncNotifier<void> {
 final replaceEquipmentControllerProvider =
     AsyncNotifierProvider<ReplaceEquipmentController, void>(
         ReplaceEquipmentController.new);
+
+// ── 보상함 · 리액션 · 출석(Task 028 연동) ──────────────────────────
+
+/// 보상함 무한 스크롤 상태(누적 items + 커서 + 추가 로딩 플래그). [FeedState] 관례.
+class RewardsState {
+  const RewardsState({
+    this.items = const [],
+    this.hasNext = false,
+    this.nextCursor,
+    this.isLoadingMore = false,
+  });
+
+  final List<Reward> items;
+  final bool hasNext;
+  final int? nextCursor;
+  final bool isLoadingMore;
+
+  RewardsState copyWith({
+    List<Reward>? items,
+    bool? hasNext,
+    int? nextCursor,
+    bool? isLoadingMore,
+  }) =>
+      RewardsState(
+        items: items ?? this.items,
+        hasNext: hasNext ?? this.hasNext,
+        nextCursor: nextCursor ?? this.nextCursor,
+        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      );
+}
+
+/// 미확인 보상함 Notifier. 첫 페이지 로드 + 하단 근접 시 loadMore(커서 누적). [FeedNotifier] 미러.
+class RewardsNotifier extends AsyncNotifier<RewardsState> {
+  static const int _pageSize = 20;
+
+  CharacterRepository get _repo => ref.read(characterRepositoryProvider);
+
+  @override
+  Future<RewardsState> build() async {
+    final page = await _repo.fetchRewards(size: _pageSize);
+    return RewardsState(
+      items: page.items,
+      hasNext: page.hasNext,
+      nextCursor: page.nextCursor,
+    );
+  }
+
+  /// 다음 페이지를 이어 붙인다. 더 없거나 이미 로딩 중이면 무시.
+  Future<void> loadMore() async {
+    final current = state.asData?.value;
+    if (current == null ||
+        !current.hasNext ||
+        current.isLoadingMore ||
+        current.nextCursor == null) {
+      return;
+    }
+    state = AsyncData(current.copyWith(isLoadingMore: true));
+    try {
+      final page =
+          await _repo.fetchRewards(cursor: current.nextCursor, size: _pageSize);
+      state = AsyncData(current.copyWith(
+        items: [...current.items, ...page.items],
+        hasNext: page.hasNext,
+        nextCursor: page.nextCursor,
+        isLoadingMore: false,
+      ));
+    } catch (_) {
+      // 추가 로딩 실패 시 로딩 플래그만 해제(다음 스크롤에서 재시도 가능).
+      state = AsyncData(current.copyWith(isLoadingMore: false));
+    }
+  }
+
+  /// 당겨서 새로고침 — 첫 페이지부터 다시 로드.
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(build);
+  }
+}
+
+final rewardsProvider =
+    AsyncNotifierProvider.autoDispose<RewardsNotifier, RewardsState>(
+        RewardsNotifier.new);
+
+/// 보상 확인(ack) 제출 상태. 성공 시 홈 배지(내 캐릭터)와 보상함을 invalidate한다.
+class AckRewardsController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  /// 미확인 보상 전체 확인. 확인된 개수를 돌려준다.
+  Future<int> ack() async {
+    state = const AsyncLoading();
+    try {
+      final acked = await ref.read(characterRepositoryProvider).ackRewards();
+      state = const AsyncData(null);
+      ref.invalidate(myCharacterProvider); // 홈 미확인 배지 감소
+      ref.invalidate(rewardsProvider); // 보상함 비우기
+      return acked;
+    } on Object catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+}
+
+final ackRewardsControllerProvider =
+    AsyncNotifierProvider<AckRewardsController, void>(AckRewardsController.new);
+
+/// 출석 적립 컨트롤러. 홈 진입 시 1회 호출한다. 성공(granted)이면 내 캐릭터를 invalidate해
+/// 코인·미확인 배지가 갱신되게 한다. 실패는 조용히 흡수한다(출석은 부가 기능 — 홈 진입을 막지 않는다).
+class AttendanceController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  /// 출석 도장. 이번에 적립됐으면 [AttendanceResult](granted=true)를, 아니면 granted=false를 돌려준다.
+  /// 네트워크 실패 시 null을 돌려주고 조용히 넘어간다.
+  Future<AttendanceResult?> mark() async {
+    try {
+      final result = await ref.read(characterRepositoryProvider).markAttendance();
+      if (result.granted) {
+        ref.invalidate(myCharacterProvider);
+      }
+      return result;
+    } on Object {
+      // 출석 적립 실패는 홈 표시를 막지 않는다(코인은 백스톱 폴러가 보정하지 않지만,
+      // 출석은 다음 진입에서 재시도된다).
+      return null;
+    }
+  }
+}
+
+final attendanceControllerProvider =
+    AsyncNotifierProvider<AttendanceController, void>(AttendanceController.new);

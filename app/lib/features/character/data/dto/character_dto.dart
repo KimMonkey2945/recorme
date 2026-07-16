@@ -1,8 +1,10 @@
+import '../../../../shared/models/cursor_page.dart';
 import '../../domain/character.dart';
 import '../../domain/equipment_item.dart';
 import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
 import '../../domain/render_meta.dart';
+import '../../domain/reward.dart';
 
 /// 캐릭터 도메인 모델의 JSON 매핑(파싱/직렬화)을 모아 둔 DTO 계층.
 ///
@@ -132,6 +134,39 @@ class CharacterDto {
         title: json['title'] as String? ?? '',
         progress: (json['progress'] as num?)?.toInt() ?? 0,
         threshold: (json['threshold'] as num?)?.toInt() ?? 0,
+      );
+
+  /// RewardResponse → [Reward].
+  /// `{id, eventType, coinDelta, balanceAfter, payload:{context,coin,balance,line,riveTrigger}, createdAt}`
+  static Reward rewardFromJson(Map<String, dynamic> json) {
+    final payload = json['payload'] as Map<String, dynamic>?;
+    return Reward(
+      id: (json['id'] as num).toInt(),
+      eventType: json['eventType'] as String? ?? '',
+      coinDelta: (json['coinDelta'] as num?)?.toInt() ?? 0,
+      balanceAfter: (json['balanceAfter'] as num?)?.toInt(),
+      line: payload?['line'] as String?,
+      context: payload?['context'] as String?,
+      riveTrigger: payload?['riveTrigger'] as String?,
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  /// PageResponse(RewardResponse) → `CursorPage<Reward>`.
+  static CursorPage<Reward> rewardsPageFromJson(Map<String, dynamic> json) =>
+      CursorPage<Reward>.fromJson(
+        json,
+        (e) => rewardFromJson(e as Map<String, dynamic>),
+      );
+
+  /// AttendanceResponse → [AttendanceResult].
+  /// `{granted, coin, balance}`
+  static AttendanceResult attendanceFromJson(Map<String, dynamic> json) =>
+      AttendanceResult(
+        granted: json['granted'] as bool? ?? false,
+        coin: (json['coin'] as num?)?.toInt() ?? 0,
+        balance: (json['balance'] as num?)?.toInt() ?? 0,
       );
 
   // ── 요청 직렬화(입력 → JSON) ─────────────────────────────────
