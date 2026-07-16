@@ -107,6 +107,19 @@ app/lib/features/character/presentation/
 
 ## 변경 사항 요약
 
+### 2026-07-16 — 상점 구매(코인 소비) 구현
+
+- **백엔드**: `POST /characters/items/{groupCode}/purchase`(`WardrobeController`→`CharacterRewardService.purchase`). 순서=게이트(`PURCHASE:{groupCode}`)→조건부 차감(`deductWallet` `balance>=price` RETURNING, 부족 시 null→`COIN_INSUFFICIENT` 던져 게이트까지 롤백=재시도 가능)→소유 부여(`insertOwnedGroup`)→원장 payload+즉시 ack(미확인 배지 제외). `coin-enabled=false`면 `FEATURE_DISABLED`(기본 **true**로 변경). ErrorCode 2종 추가. 테스트: 성공·부족(롤백/재시도)·이미보유(무과금)·미존재(400)·게이팅 off(403, 별도 컨텍스트) — `./gradlew test` 그린.
+- **앱**: `purchaseItem` repo(Api/Fake, Fake는 `coinBalance` 생성자 파라미터로 초기 코인 주입) + `PurchaseController`(성공 시 `myCharacter`·`wardrobeItems` invalidate). `locked_item_sheet` COIN 섹션의 "곧 열려요"를 **구매 버튼**으로 교체 — 성공 시 시트 닫힘+스낵바, `COIN_INSUFFICIENT`→"코인이 부족", `FEATURE_DISABLED`→"준비 중". `flutter analyze` 무경고·`flutter test` **141개 통과**.
+- 이제 "코인 벌기(028)→사기(구매)→입기(옷장)" 루프 완성. ⚠️ 미션 판정·아이템 해금 지급은 여전히 미구현(현재 5종은 전부 COIN 구매 방식).
+
+### 2026-07-16 — 옷장 카탈로그 5종 확정(V21, COIN 잠금)
+
+- **카탈로그 교체**: 옷장을 부위별 착용 5종만 남기도록 정리(그 외 전부 제거). 전부 `acquire_type=COIN`(구매 대상)이라 기본 미보유(잠금). 이름·가격은 사용자 지정: `HAT_CAP_BLACK`(15)·`GLASSES_ROUND`(15)·`OUTFIT_LOVE_HOOD`(50)·`BOTTOM_CARGO_SAND`(50)·`SHOES_MAX95`(20).
+- **백엔드**: `V21__replace_item_catalog.sql`(미션 FK NULL → 슬롯 CHECK에 BOTTOM·SHOES 추가 → V15 시드 삭제 CASCADE → 신규 5종 + variant 10행). `ItemSlot` enum에 BOTTOM·SHOES 추가(MyBatis slot 매핑). `CharacterServiceTest`·`CharacterSchemaTest` 새 카탈로그로 재작성 — `./gradlew test` 전체 그린.
+- **앱**: Fake `_itemGroups`/`_variants`/`_ownedGroups`(빈 집합) 5종 정리 + `FakeCharacterRepository(ownedGroups:)` 테스트 훅, 옷장 슬롯 탭 5개로 축소, `wardrobe_test` 잠금/가격·소유 주입으로 재작성. `flutter analyze` 무경고·`flutter test` 139개 통과.
+- **잔여**: 코인 구매 실행(백엔드 `POST /characters/items/{groupCode}/purchase` + 앱 구매 플로우) — 미구현이라 5종은 잠금 상태.
+
 ### 2026-07-16 — 앱 보상 배선(Task 028 연동) 완료
 
 - **데이터**: `Reward`/`AttendanceResult` 도메인 + `character_dto`에 `rewardFromJson`·`rewardsPageFromJson`·`attendanceFromJson`. `CharacterRepository`에 `fetchRewards({cursor,size})`·`ackRewards()`·`markAttendance()` 추가(Api/Fake 양쪽). Fake는 인메모리 코인·보상함·출석 시뮬레이션(홈 배지가 웹 프리뷰에서도 실제로 오른다).

@@ -332,17 +332,19 @@
 | POST | `/characters/me/rewards/ack` | 미확인 보상 전체 확인(뱃지 리셋) | ○ |
 | GET | `/characters/me/reaction?diaryId=` | 확정 기록 리액션(대사·코인). 확정 즉시 생성 — 폴링 불필요(없으면 data=null) | ○ |
 | POST | `/characters/me/attendance` | 출석 적립(하루 1회). 홈 진입 시 호출 | ○ |
+| POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매(코인 소비). 응답=갱신된 내 캐릭터. 잔액 부족 409 `COIN_INSUFFICIENT`, 게이팅 off 403 `FEATURE_DISABLED` | ○ |
 
-**미구현 — 아이템 확정 후 (범위 밖)**
+**미구현 — 범위 밖**
 
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매(코인 소비·`coin-enabled` 게이팅) | ○ |
 | GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록·감정 분포·성장 요약) — Task 032 | ○ |
 
 > ✅ **코인 적립 엔진 구현(Task 028, 2026-07-16)**: 출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤이 실제로 적립된다(멱등 게이트 `character_events`). `/characters/me` 의 `coinBalance`·`unackedRewardCount`가 실데이터로 채워진다. 적립액·마일스톤은 `record.character.coin.*` 설정으로 조정한다(`docs/coin-rewards.md`).
 >
-> ⚠️ **아직 없는 것(아이템 미확정)**: **상점 구매(코인 소비)**·`coin-enabled` 게이팅, **미션 판정·아이템 해금 지급**. 그래서 미션의 `achieved`는 여전히 false이고(달성 이력을 쓰는 주체 없음), 미션 아이템 보상(HAT_PARTY·BG_COZY_ROOM)은 지급되지 않는다. `progress`는 이제 `user_progress` 스냅샷이 갱신되므로 실값을 반영한다. 연속 7일 보상은 미션이 아니라 설정 마일스톤 `streak.7`로 지급된다. 아이템은 **기본 지급(`DEFAULT`)분만 보유**한 상태로 시작한다.
+> ✅ **상점 구매 구현(2026-07-16)**: `POST /characters/items/{groupCode}/purchase` — 경합 안전 차감(`balance>=price`, 0행이면 409 `COIN_INSUFFICIENT` + 게이트 롤백 → 재시도 가능) + `PURCHASE:{groupCode}` 멱등 게이트 + 소유 부여. `record.character.coin.coin-enabled`(**기본 on**)가 false면 403 `FEATURE_DISABLED`. V21 카탈로그 5종은 전부 COIN이라, 코인을 모아 이 API로 사면 소유·착용이 열린다.
+>
+> ⚠️ **아직 없는 것**: **미션 판정·아이템 해금 지급**(미션 `achieved`는 여전히 false, 미션 아이템 보상 미지급). 연속 7일 보상은 미션이 아니라 설정 마일스톤 `streak.7`로 지급된다. `progress`는 `user_progress` 스냅샷 실값을 반영한다. V21 이후 **DEFAULT 아이템이 없어** 신규 유저는 빈 옷장(전부 COIN·잠금)으로 시작한다.
 >
 > ⚠️ **`thumbnailUrl`·`imageUrl`은 서버 URL이 아니라 앱 로컬 에셋 경로다**(`assets/characters/monkey.png`, `assets/items/hat_party_monkey.png`). 다른 도메인의 이미지 필드(`/files/...` 상대경로 → 앱이 호스트 조립)와 **의미가 다르다.** 캐릭터·아이템 아트는 앱 번들에 동봉되고, 서버는 "어떤 에셋을 그릴지"만 알려준다.
 >

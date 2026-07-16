@@ -19,7 +19,15 @@ import '../domain/reward.dart';
 /// 아이템 카탈로그는 백엔드 시드(V15)와 동일하다: group(소유·착용) ↔ variant(렌더) 2단 구조를
 /// 흉내 내어, 렌더 이미지는 `(group + 선택 캐릭터)`로 해석한다.
 class FakeCharacterRepository implements CharacterRepository {
-  FakeCharacterRepository({String? selectedCode}) : _selectedCode = selectedCode;
+  /// [ownedGroups]는 테스트가 소유(착용 가능)를, [coinBalance]는 초기 코인을 주입하는 용도다.
+  /// 프로덕션 기본은 빈 소유·0코인(5종 전부 잠금 — 구매하려면 코인을 먼저 모아야 한다).
+  FakeCharacterRepository({
+    String? selectedCode,
+    Set<String> ownedGroups = const {},
+    int coinBalance = 0,
+  })  : _selectedCode = selectedCode,
+        _ownedGroups = {...ownedGroups},
+        _coinBalance = coinBalance;
 
   /// 현재 선택된 캐릭터 코드(null이면 미선택 = 온보딩 대상).
   String? _selectedCode;
@@ -27,8 +35,8 @@ class FakeCharacterRepository implements CharacterRepository {
   /// 현재 착용 스냅샷(slot, slotIndex, groupCode). 서버의 user_equipment에 해당.
   List<EquipmentSelection> _equipment = const [];
 
-  /// 인메모리 코인 잔액(적립 시뮬레이션). 출석/보상으로 늘어난다.
-  int _coinBalance = 0;
+  /// 인메모리 코인 잔액(적립 시뮬레이션). 출석/보상으로 늘고, 구매로 준다.
+  int _coinBalance;
 
   /// 미확인 보상함(character_events 미러). ack하면 비워진다.
   final List<Reward> _rewards = [];
@@ -61,138 +69,52 @@ class FakeCharacterRepository implements CharacterRepository {
   ];
 
   /// 아이템 그룹 시드(V15 item_groups와 동일). DEFAULT만 기본 보유다.
+  // 옷장 카탈로그 5종(백엔드 V21과 동일). 전부 COIN 구매 대상 — 구매 전까지 미보유(잠금).
   static const _itemGroups = [
-    (
-      groupCode: 'OUTFIT_BASIC_TEE',
-      slot: 'OUTFIT',
-      nameKo: '기본 흰 티셔츠',
-      thumbnailUrl: 'assets/items/outfit_basic_tee.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
-    ),
-    (
-      groupCode: 'ROOM_PROP_PLANT',
-      slot: 'ROOM_PROP',
-      nameKo: '작은 화분',
-      thumbnailUrl: 'assets/items/room_prop_plant.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
-    ),
-    (
-      groupCode: 'HAT_CAP_EMIS',
-      slot: 'HAT',
-      nameKo: '이미스 볼캡',
-      thumbnailUrl: 'assets/items/hat_cap_emis.png',
-      acquireType: 'MISSION',
-      coinPrice: 0,
-    ),
-    (
-      groupCode: 'BG_COZY_ROOM',
-      slot: 'BACKGROUND',
-      nameKo: '아늑한 방',
-      thumbnailUrl: 'assets/items/bg_cozy_room.png',
-      acquireType: 'MISSION',
-      coinPrice: 0,
-    ),
-    (
-      groupCode: 'HAT_STRAW',
-      slot: 'HAT',
-      nameKo: '밀짚모자',
-      thumbnailUrl: 'assets/items/hat_straw.png',
-      acquireType: 'COIN',
-      coinPrice: 120,
-    ),
-    // ── 실사 에셋 파이프라인 검증용 3종(2026-07-15, docs/recormeImo/item 원본) ──
     (
       groupCode: 'HAT_CAP_BLACK',
       slot: 'HAT',
-      nameKo: '검정 볼캡',
+      nameKo: '누구나 소화할 수 있는 검은색 캡모자',
       thumbnailUrl: 'assets/items/hat_cap_black.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
+      acquireType: 'COIN',
+      coinPrice: 15,
     ),
     (
       groupCode: 'GLASSES_ROUND',
       slot: 'GLASSES',
-      nameKo: '둥근 뿔테 안경',
+      nameKo: '안경알은 없지만 멋짐을 위한 검은색 뿔테안경',
       thumbnailUrl: 'assets/items/glasses_round.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
+      acquireType: 'COIN',
+      coinPrice: 15,
     ),
-    (
-      groupCode: 'OUTFIT_LOVE_SET',
-      slot: 'OUTFIT',
-      nameKo: '러브 풀룩 세트',
-      thumbnailUrl: 'assets/items/outfit_love_set.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
-    ),
-    // ── 부위별 개별 아이템(2026-07-15, wearItem diff 추출 — 아직 원숭이 착용샷만 있음) ──
     (
       groupCode: 'OUTFIT_LOVE_HOOD',
       slot: 'OUTFIT',
-      nameKo: '러브 후드',
+      nameKo: '사랑하는 사람에게 보여주고 싶은 낭낭한 후드티',
       thumbnailUrl: 'assets/items/outfit_love_hood.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
+      acquireType: 'COIN',
+      coinPrice: 50,
     ),
     (
       groupCode: 'BOTTOM_CARGO_SAND',
       slot: 'BOTTOM',
-      nameKo: '샌드 카고 팬츠',
+      nameKo: '입으면 사막에서도 살아남을 것 같은 바지',
       thumbnailUrl: 'assets/items/bottom_cargo_sand.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
+      acquireType: 'COIN',
+      coinPrice: 50,
     ),
     (
       groupCode: 'SHOES_MAX95',
       slot: 'SHOES',
-      nameKo: '맥스 95 민트',
+      nameKo: '신발에 에어가 없으면 허리가 아픈 사람을 위한 에어빵빵 신발',
       thumbnailUrl: 'assets/items/shoes_max95.png',
-      acquireType: 'DEFAULT',
-      coinPrice: 0,
+      acquireType: 'COIN',
+      coinPrice: 20,
     ),
   ];
 
-  /// variant 시드(V15 character_items와 동일).
-  /// 착용형은 캐릭터별 2행, 공용(ROOM_PROP/BACKGROUND)은 character=null 1행.
+  /// variant 시드(백엔드 V21 character_items와 동일). 5종 모두 캐릭터별 2행.
   static const _variants = [
-    (
-      groupCode: 'OUTFIT_BASIC_TEE',
-      character: 'MONKEY',
-      imageUrl: 'assets/items/outfit_basic_tee_monkey.png',
-      meta: (anchorX: 0.5, anchorY: 0.55, scale: 0.60, z: 30),
-    ),
-    (
-      groupCode: 'OUTFIT_BASIC_TEE',
-      character: 'RED_PANDA',
-      imageUrl: 'assets/items/outfit_basic_tee_red_panda.png',
-      meta: (anchorX: 0.5, anchorY: 0.58, scale: 0.66, z: 30),
-    ),
-    (
-      groupCode: 'HAT_CAP_EMIS',
-      character: 'MONKEY',
-      imageUrl: 'assets/items/hat_cap_emis_monkey.png',
-      meta: (anchorX: 0.5, anchorY: 0.18, scale: 0.42, z: 40),
-    ),
-    (
-      groupCode: 'HAT_CAP_EMIS',
-      character: 'RED_PANDA',
-      imageUrl: 'assets/items/hat_cap_emis_red_panda.png',
-      meta: (anchorX: 0.5, anchorY: 0.16, scale: 0.48, z: 40),
-    ),
-    (
-      groupCode: 'HAT_STRAW',
-      character: 'MONKEY',
-      imageUrl: 'assets/items/hat_straw_monkey.png',
-      meta: (anchorX: 0.5, anchorY: 0.18, scale: 0.44, z: 40),
-    ),
-    (
-      groupCode: 'HAT_STRAW',
-      character: 'RED_PANDA',
-      imageUrl: 'assets/items/hat_straw_red_panda.png',
-      meta: (anchorX: 0.5, anchorY: 0.16, scale: 0.50, z: 40),
-    ),
     (
       groupCode: 'HAT_CAP_BLACK',
       character: 'MONKEY',
@@ -217,19 +139,6 @@ class FakeCharacterRepository implements CharacterRepository {
       imageUrl: 'assets/items/glasses_round_red_panda.png',
       meta: (anchorX: 0.5, anchorY: 0.26, scale: 0.42, z: 35),
     ),
-    (
-      groupCode: 'OUTFIT_LOVE_SET',
-      character: 'MONKEY',
-      imageUrl: 'assets/items/outfit_love_set_monkey.png',
-      meta: (anchorX: 0.5, anchorY: 0.62, scale: 0.80, z: 30),
-    ),
-    (
-      groupCode: 'OUTFIT_LOVE_SET',
-      character: 'RED_PANDA',
-      imageUrl: 'assets/items/outfit_love_set_red_panda.png',
-      meta: (anchorX: 0.5, anchorY: 0.62, scale: 0.92, z: 30),
-    ),
-    // 의류 3종: 공용 공유는 판다 검증에서 기각(원숭이 픽셀 조각 노출) → 캐릭터별 variant.
     (
       groupCode: 'OUTFIT_LOVE_HOOD',
       character: 'MONKEY',
@@ -267,33 +176,11 @@ class FakeCharacterRepository implements CharacterRepository {
       // 판다는 하의가 "하반신 영역 통째 교체"(맨발 포함)라서 신발을 그 위(z 29)에 그린다.
       meta: (anchorX: 0.5, anchorY: 0.93, scale: 0.5, z: 29),
     ),
-    (
-      groupCode: 'ROOM_PROP_PLANT',
-      character: null,
-      imageUrl: 'assets/items/room_prop_plant.png',
-      meta: (anchorX: 0.82, anchorY: 0.78, scale: 0.30, z: 10),
-    ),
-    (
-      groupCode: 'BG_COZY_ROOM',
-      character: null,
-      imageUrl: 'assets/items/bg_cozy_room.png',
-      meta: (anchorX: 0.5, anchorY: 0.5, scale: 1.0, z: 0),
-    ),
   ];
 
-  /// 보유 group 집합. 시드 규칙과 동일하게 DEFAULT만 기본 보유이며,
-  /// 프리뷰에서 옷장을 채워 볼 수 있도록 미션 보상(HAT_CAP_EMIS)도 보유로 둔다.
-  final Set<String> _ownedGroups = {
-    'OUTFIT_BASIC_TEE',
-    'ROOM_PROP_PLANT',
-    'HAT_CAP_EMIS',
-    'HAT_CAP_BLACK',
-    'GLASSES_ROUND',
-    'OUTFIT_LOVE_SET',
-    'OUTFIT_LOVE_HOOD',
-    'BOTTOM_CARGO_SAND',
-    'SHOES_MAX95',
-  };
+  /// 보유 group 집합. 5종 전부 COIN(구매 대상)이라 기본은 **빈 집합**(전부 잠금)이다.
+  /// 구매 기능 구현 전까지 착용 불가이며, 테스트는 생성자 [ownedGroups]로 소유를 주입해 착용 흐름을 검증한다.
+  final Set<String> _ownedGroups;
 
   @override
   Future<CharacterList> fetchCharacters() async {
@@ -387,19 +274,17 @@ class FakeCharacterRepository implements CharacterRepository {
 
   // ── 유틸 ────────────────────────────────────────────────────
 
-  /// group을 내 선택 캐릭터 기준 variant로 해석한다(전용 우선 → 공용 폴백).
+  /// group을 내 선택 캐릭터 기준 variant로 해석한다(선택 캐릭터 전용 매칭).
+  /// 현재 카탈로그(V21) 5종은 전부 캐릭터별 variant라 공용(character=null) 폴백은 없다
+  /// (공용 아이템이 다시 생기면 character==null 폴백을 복원한다).
   ({String imageUrl, ({double anchorX, double anchorY, double scale, int z}) meta})?
       _resolveVariant(String groupCode) {
-    ({String imageUrl, ({double anchorX, double anchorY, double scale, int z}) meta})?
-        common;
     for (final v in _variants) {
-      if (v.groupCode != groupCode) continue;
-      if (v.character == _selectedCode) {
+      if (v.groupCode == groupCode && v.character == _selectedCode) {
         return (imageUrl: v.imageUrl, meta: v.meta);
       }
-      if (v.character == null) common = (imageUrl: v.imageUrl, meta: v.meta);
     }
-    return common;
+    return null;
   }
 
   static RenderMeta _toMeta(
@@ -453,6 +338,26 @@ class FakeCharacterRepository implements CharacterRepository {
       createdAt: DateTime.now(),
     ));
     return AttendanceResult(granted: true, coin: 10, balance: _coinBalance);
+  }
+
+  @override
+  Future<MyCharacter> purchaseItem(String groupCode) async {
+    await Future<void>.delayed(_latency);
+    final matches = _itemGroups.where((g) => g.groupCode == groupCode);
+    if (matches.isEmpty) {
+      throw const Failure('VALIDATION_ERROR', '구매할 수 없는 아이템이에요.');
+    }
+    // 이미 보유면 무과금.
+    if (_ownedGroups.contains(groupCode)) {
+      return _myCharacter();
+    }
+    final price = matches.first.coinPrice;
+    if (_coinBalance < price) {
+      throw const Failure('COIN_INSUFFICIENT', '코인이 부족해요.');
+    }
+    _coinBalance -= price;
+    _ownedGroups.add(groupCode);
+    return _myCharacter();
   }
 
   /// 현재 선택 상태 기준의 내 캐릭터 응답을 만든다(미선택이면 character=null).

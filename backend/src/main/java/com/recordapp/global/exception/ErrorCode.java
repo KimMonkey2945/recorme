@@ -45,6 +45,10 @@ public enum ErrorCode {
 	ITEM_SLOT_MISMATCH(HttpStatus.BAD_REQUEST, "해당 부위에 착용할 수 없는 아이템이에요."),
 	// (group, 선택 캐릭터) variant 가 아직 제작되지 않은 경우 — 캐릭터 교체·착용 모두에서 발생 가능.
 	ITEM_VARIANT_MISSING(HttpStatus.CONFLICT, "이 캐릭터용 아이템 이미지가 아직 준비되지 않았어요."),
+	// 코인 구매(소비) — 잔액 부족 시 409(경합 안전 UPDATE 가 0행이면 발동, 게이트까지 롤백돼 재시도 가능).
+	COIN_INSUFFICIENT(HttpStatus.CONFLICT, "코인이 부족해요."),
+	// 상점 구매 기능 게이팅(record.character.coin.coin-enabled=false)일 때 403.
+	FEATURE_DISABLED(HttpStatus.FORBIDDEN, "아직 준비 중인 기능이에요."),
 
 	// 파일 업로드
 	INVALID_FILE(HttpStatus.BAD_REQUEST, "허용되지 않는 파일입니다."),

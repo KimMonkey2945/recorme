@@ -59,7 +59,7 @@
 record:
   character:
     coin:
-      coin-enabled: false   # 상점 구매(코인 소비) 게이팅용. 적립과 무관(적립은 항상 동작). 구매 API 는 아직 범위 밖.
+      coin-enabled: true    # 상점 구매(코인 소비) 게이팅용. 적립과 무관(적립은 항상 동작). 구매 구현으로 기본 on(false면 403 FEATURE_DISABLED).
       attendance: 10         # 출석(앱 접속) — 하루 1회
       diary: 10              # 기록 확정 — 하루 1회 (표의 daily.record. record 는 Java 예약어라 diary 로 명명)
       resolution-day1: 15    # 작심삼일 1일차
@@ -83,7 +83,8 @@ record:
 
 - ✅ **구현**: 위 표의 모든 코인 적립 트리거 + 멱등 게이트 + 연속일 계산 + 백스톱 폴러 + 보상함/리액션/출석 API.
 - **연속 7일**: 미션 시드(`STREAK_7`, coin 100 + BG_COZY_ROOM)와 별개로, **설정 마일스톤 `streak.7`(200)**로 지급된다. 미션 `STREAK_7`은 조회만 되고 **판정·지급되지 않는다**(inert). 30/60일·작심삼일 1·2일차·출석은 모두 신규로 구현됐다.
-- ⏳ **범위 밖(아이템 미확정)**: 미션의 **아이템 보상 지급**, **상점 구매(코인 소비)**, `coin-enabled` 게이팅. 아이템 에셋이 정해지면 `CharacterRewardService.grant` 뒤에 소유 부여 한 줄 + 구매 API 를 붙인다.
+- ✅ **상점 구매(코인 소비) 구현(2026-07-16)**: `CharacterRewardService.purchase` — 게이트 → 조건부 차감(`balance>=price`) → 소유 부여. 잔액 부족 시 `COIN_INSUFFICIENT`(게이트 롤백=재시도 가능), `coin-enabled=false` 시 `FEATURE_DISABLED`. V21 카탈로그 5종이 구매 대상이다.
+- ⏳ **범위 밖**: 미션의 **아이템 보상 지급**(미션 판정 미구현). 지금 아이템은 전부 COIN 구매 방식이라 미션 해금과는 무관하다.
 
 ### 참고 — 저장 위치
 

@@ -83,6 +83,10 @@ class CharacterControllerTest {
 	@MockitoBean
 	MissionService missionService;
 
+	// WardrobeController 가 구매 위임용으로 주입받는다 — @WebMvcTest 컨텍스트 구성을 위해 목으로 채운다.
+	@MockitoBean
+	com.recordapp.domain.character.service.CharacterRewardService rewardService;
+
 	// ===== 픽스처 =====
 
 	/** 캐릭터 미선택 상태(신규 가입 직후) — character=null, 기본값. */

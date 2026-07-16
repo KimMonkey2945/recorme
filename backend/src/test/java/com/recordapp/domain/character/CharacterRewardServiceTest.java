@@ -1,15 +1,19 @@
 package com.recordapp.domain.character;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.recordapp.domain.auth.service.UserProvisioningService;
 import com.recordapp.domain.character.config.CharacterCoinProperties;
+import com.recordapp.domain.character.dto.MyCharacterResponse;
 import com.recordapp.domain.character.dto.RewardResponse;
 import com.recordapp.domain.character.service.CharacterRewardBackfillPoller;
 import com.recordapp.domain.character.service.CharacterRewardService;
 import com.recordapp.domain.character.service.CharacterService;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
+import com.recordapp.global.exception.BusinessException;
+import com.recordapp.global.exception.ErrorCode;
 import com.recordapp.global.security.SupabaseClaims;
 import java.time.LocalDate;
 import java.util.Map;
@@ -360,5 +364,84 @@ class CharacterRewardServiceTest {
 		assertThat(balance(owner)).isEqualTo(coin.diary());
 		assertThat(rewardService.getWallet(other).balance()).isZero();
 		assertThat(rewardService.getRewards(other, new CursorRequest(null, 20)).items()).isEmpty();
+	}
+
+	// ===== 상점 구매(코인 소비) =====
+
+	private static final String HAT = "HAT_CAP_BLACK"; // V21 시드 — COIN 15
+
+	/** 지갑에 코인을 심는다(ensureState 로 지갑 행 보장 후 잔액 설정). */
+	private void seedCoins(long userId, int amount) {
+		characterService.ensureState(userId);
+		jdbc().update("UPDATE user_wallets SET balance = ? WHERE user_id = ?", amount, userId);
+	}
+
+	private boolean owns(long userId, String groupCode) {
+		Integer n = jdbc().queryForObject(
+				"SELECT count(*) FROM user_item_groups WHERE user_id = ? AND group_code = ?",
+				Integer.class, userId, groupCode);
+		return n != null && n > 0;
+	}
+
+	@Test
+	void purchase_deductsCoinAndGrantsOwnership() {
+		long userId = newUser();
+		seedCoins(userId, 100);
+
+		MyCharacterResponse me = rewardService.purchase(userId, HAT);
+
+		assertThat(balance(userId)).as("100 - 15").isEqualTo(85);
+		assertThat(me.coinBalance()).isEqualTo(85);
+		assertThat(owns(userId, HAT)).isTrue();
+		// 구매 원장은 미확인 보상 배지에 잡히지 않는다(즉시 ack).
+		assertThat(rewardService.getWallet(userId).unackedRewardCount()).isZero();
+		assertThat(eventCount(userId, "PURCHASE:" + HAT)).isEqualTo(1);
+	}
+
+	@Test
+	void purchase_insufficientCoin_throwsAndRollsBack() {
+		long userId = newUser();
+		seedCoins(userId, 10); // 가격 15 미만
+
+		assertThatThrownBy(() -> rewardService.purchase(userId, HAT))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.COIN_INSUFFICIENT));
+
+		// 잔액 불변 + 미소유 + 게이트 미잔존(재시도 가능).
+		assertThat(balance(userId)).isEqualTo(10);
+		assertThat(owns(userId, HAT)).isFalse();
+		assertThat(eventCount(userId, "PURCHASE:" + HAT)).isZero();
+
+		// 코인을 모아 재구매하면 성공한다.
+		seedCoins(userId, 20);
+		rewardService.purchase(userId, HAT);
+		assertThat(owns(userId, HAT)).isTrue();
+		assertThat(balance(userId)).isEqualTo(5);
+	}
+
+	@Test
+	void purchase_alreadyOwned_isNoCharge() {
+		long userId = newUser();
+		seedCoins(userId, 100);
+		rewardService.purchase(userId, HAT);
+		assertThat(balance(userId)).isEqualTo(85);
+
+		// 재구매 시도 → 무과금(이미 보유).
+		rewardService.purchase(userId, HAT);
+		assertThat(balance(userId)).as("재구매 무과금").isEqualTo(85);
+		assertThat(eventCount(userId, "PURCHASE:" + HAT)).isEqualTo(1);
+	}
+
+	@Test
+	void purchase_unknownGroup_throwsValidationError() {
+		long userId = newUser();
+		seedCoins(userId, 100);
+
+		assertThatThrownBy(() -> rewardService.purchase(userId, "NO_SUCH_GROUP"))
+				.isInstanceOf(BusinessException.class)
+				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+						.isEqualTo(ErrorCode.VALIDATION_ERROR));
+		assertThat(balance(userId)).isEqualTo(100);
 	}
 }

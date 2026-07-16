@@ -42,7 +42,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * 캐릭터 도메인 통합 테스트(Testcontainers PostgreSQL 18) — Task 027 전 항목.
+ * 캐릭터 도메인 통합 테스트(Testcontainers PostgreSQL 18) — Task 027 + V21 카탈로그.
  *
  * <p>서비스 계층을 직접 호출해 HTTP·인증을 우회하고, <b>group↔variant 해석</b>·JIT 멱등·소유/슬롯 검증·
  * 배치 착용 원자성·IDOR 이 <b>실제 DB</b>에서 성립하는지 검증한다. 사용자 식별은 기존 통합테스트 관례대로
@@ -51,9 +51,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>⚠️ 클래스/메서드에 {@code @Transactional} 을 두지 않는다(DiaryServiceTest·ResolutionIntegrationTest 동일).
  * 각 서비스 호출이 실제로 커밋돼야 "배치 교체 실패 시 이전 착용이 그대로 남아 있는가" 같은 검증이 의미를 갖는다.
  *
- * <p>테스트 전용 아이템 그룹은 시드를 오염시키지 않도록 고유 code 로 심고, {@link CatalogCache#reload()} 로
- * 카탈로그를 갱신한다(캐시가 마스터 변경을 반영하는지도 함께 검증된다). 이 때문에 목록 검증은
- * 정확한 개수가 아니라 <b>포함 관계</b>로 단언한다(다른 테스트가 심은 그룹과 무관하게 성립).
+ * <p>V21 카탈로그는 <b>부위별 착용 5종(HAT/GLASSES/OUTFIT/BOTTOM/SHOES) 전부 COIN·미보유(잠금)</b>이다.
+ * DEFAULT 아이템이 없어 신규 유저는 아무것도 소유하지 않으므로, 착용 흐름 검증은 {@link #own} 헬퍼로
+ * 소유를 직접 부여한다(구매는 Task 028 잔여). 테스트 전용 그룹은 시드를 오염시키지 않게 고유 code 로 심고
+ * {@link CatalogCache#reload()} 로 갱신한다.
  */
 @SpringBootTest
 @Testcontainers
@@ -64,12 +65,12 @@ class CharacterServiceTest {
 	@ServiceConnection
 	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:18-alpine");
 
-	// 시드(V15) 아이템 — 기본 지급 2종 + 미션 해금 2종 + 구매 1종.
-	private static final String OUTFIT = "OUTFIT_BASIC_TEE";  // OUTFIT / DEFAULT (가입 시 소유)
-	private static final String PLANT = "ROOM_PROP_PLANT";    // ROOM_PROP / DEFAULT (공용 variant)
-	private static final String HAT_PARTY = "HAT_PARTY";      // HAT / MISSION (미소유)
-	private static final String HAT_STRAW = "HAT_STRAW";      // HAT / COIN (미소유)
-	private static final String BG = "BG_COZY_ROOM";          // BACKGROUND / MISSION (공용 variant)
+	// V21 카탈로그 5종(전부 COIN·미보유). 슬롯당 1종.
+	private static final String HAT = "HAT_CAP_BLACK";        // HAT / COIN 15
+	private static final String GLASSES = "GLASSES_ROUND";    // GLASSES / COIN 15
+	private static final String OUTFIT = "OUTFIT_LOVE_HOOD";  // OUTFIT / COIN 50
+	private static final String BOTTOM = "BOTTOM_CARGO_SAND"; // BOTTOM / COIN 50
+	private static final String SHOES = "SHOES_MAX95";        // SHOES / COIN 20
 
 	@Autowired
 	CharacterService characterService;
@@ -109,7 +110,7 @@ class CharacterServiceTest {
 				.userId();
 	}
 
-	/** 소유 부여(미션 해금·구매는 Task 028 소관이므로 테스트에서는 직접 심는다). */
+	/** 소유 부여(5종 전부 COIN·미보유이고 구매는 Task 028 잔여이므로 테스트에서 직접 심는다). */
 	private void own(long userId, String groupCode) {
 		jdbc().update("INSERT INTO user_item_groups (user_id, group_code) VALUES (?, ?) "
 				+ "ON CONFLICT DO NOTHING", userId, groupCode);
@@ -155,8 +156,7 @@ class CharacterServiceTest {
 	}
 
 	/**
-	 * 테스트 전용 아이템 그룹 + variant 를 심고 캐시를 갱신한다.
-	 * acquireType 은 DEFAULT 를 쓰지 않는다(모든 사용자에게 자동 지급되어 다른 테스트를 오염시킨다).
+	 * 테스트 전용 아이템 그룹 + variant 를 심고 캐시를 갱신한다. acquireType 은 MISSION 을 써 시드를 오염시키지 않는다.
 	 *
 	 * @param characterCode variant 의 캐릭터(null 이면 공용). 미제작 상황을 만들려면 한쪽만 심는다.
 	 */
@@ -201,11 +201,8 @@ class CharacterServiceTest {
 		assertThat(rowCount("user_wallets", userId)).isEqualTo(1);
 		assertThat(rowCount("user_progress", userId)).isEqualTo(1);
 
-		// 기본 지급(DEFAULT) 아이템 소유도 중복되지 않는다.
-		Integer owned = jdbc().queryForObject(
-				"SELECT count(*) FROM user_item_groups WHERE user_id = ? AND group_code = ?",
-				Integer.class, userId, OUTFIT);
-		assertThat(owned).as("기본 지급 아이템 소유 1행").isEqualTo(1);
+		// V21: DEFAULT 아이템이 없어 기본 지급이 없다 → 신규 유저는 아무것도 소유하지 않는다.
+		assertThat(rowCount("user_item_groups", userId)).as("기본 지급 없음(전부 COIN·잠금)").isZero();
 	}
 
 	// ===== 2) GET /characters: 2종 + 선택 전 selected=false =====
@@ -222,7 +219,6 @@ class CharacterServiceTest {
 		assertThat(res.items()).allSatisfy(c -> {
 			assertThat(c.owned()).as("캐릭터는 전원 무료 개방").isTrue();
 			assertThat(c.selected()).isFalse();
-			// 온보딩 캐러셀이 쓰는 필드가 모두 채워져 있어야 한다.
 			assertThat(c.nameKo()).isNotBlank();
 			assertThat(c.tagline()).isNotBlank();
 			assertThat(c.thumbnailUrl()).isNotBlank();
@@ -280,25 +276,22 @@ class CharacterServiceTest {
 	@Test
 	void swapCharacter_keepsEquipment_andReresolvesVariantOnly() {
 		long userId = newUser();
-		own(userId, HAT_PARTY); // 미션 보상 아이템을 직접 소유시킨다(지급은 Task 028 소관).
+		own(userId, HAT);
+		own(userId, OUTFIT);
 
-		// MONKEY 로 후드티(OUTFIT) + 파티모자(HAT) + 화분(ROOM_PROP, 공용) 착용.
+		// MONKEY 로 모자(HAT) + 후드(OUTFIT) 착용.
 		select(userId, "MONKEY");
 		MyCharacterResponse monkey = equip(userId,
-				item("OUTFIT", 0, OUTFIT),
-				item("HAT", 0, HAT_PARTY),
-				item("ROOM_PROP", 0, PLANT));
+				item("HAT", 0, HAT),
+				item("OUTFIT", 0, OUTFIT));
 
+		assertThat(findEquipped(monkey, HAT).imageUrl())
+				.isEqualTo("assets/items/hat_cap_black_monkey.png");
 		assertThat(findEquipped(monkey, OUTFIT).imageUrl())
-				.isEqualTo("assets/items/outfit_basic_tee_monkey.png");
-		assertThat(findEquipped(monkey, HAT_PARTY).imageUrl())
-				.isEqualTo("assets/items/hat_party_monkey.png");
-		// 공용 variant(character_code IS NULL) — 캐릭터와 무관하게 해석된다.
-		assertThat(findEquipped(monkey, PLANT).imageUrl())
-				.isEqualTo("assets/items/room_prop_plant.png");
-		// render_meta(JSONB) 왕복 — 플레이스홀더 렌더러(Task 029)가 쓰는 좌표.
-		assertThat(findEquipped(monkey, OUTFIT).renderMeta().get("anchorY").asDouble()).isEqualTo(0.55);
-		assertThat(findEquipped(monkey, OUTFIT).riveSlot()).isEqualTo("outfit");
+				.isEqualTo("assets/items/outfit_love_hood_monkey.png");
+		// render_meta(JSONB) 왕복 — 렌더러가 쓰는 좌표.
+		assertThat(findEquipped(monkey, HAT).renderMeta().get("anchorY").asDouble()).isEqualTo(0.18);
+		assertThat(findEquipped(monkey, HAT).riveSlot()).isEqualTo("hat");
 
 		// ★ RED_PANDA 로 교체 — user_equipment 는 건드리지 않는다.
 		MyCharacterResponse panda = select(userId, "RED_PANDA");
@@ -306,21 +299,18 @@ class CharacterServiceTest {
 		assertThat(panda.character().code()).isEqualTo("RED_PANDA");
 		// 착용 group_code 는 그대로(옷장이 캐릭터를 따라온다).
 		assertThat(panda.equipment()).extracting(EquippedItemResponse::groupCode)
-				.containsExactlyInAnyOrder(OUTFIT, HAT_PARTY, PLANT);
-		assertThat(panda.equipment()).hasSize(3);
+				.containsExactlyInAnyOrder(HAT, OUTFIT);
+		assertThat(panda.equipment()).hasSize(2);
 		// image_url 만 RED_PANDA variant 로 재해석된다.
+		assertThat(findEquipped(panda, HAT).imageUrl())
+				.isEqualTo("assets/items/hat_cap_black_red_panda.png");
 		assertThat(findEquipped(panda, OUTFIT).imageUrl())
-				.isEqualTo("assets/items/outfit_basic_tee_red_panda.png");
-		assertThat(findEquipped(panda, HAT_PARTY).imageUrl())
-				.isEqualTo("assets/items/hat_party_red_panda.png");
-		// 체형 보정된 render_meta 도 함께 바뀐다(원숭이 0.55 → 레서판다 0.58).
-		assertThat(findEquipped(panda, OUTFIT).renderMeta().get("anchorY").asDouble()).isEqualTo(0.58);
-		// 공용 variant 는 캐릭터가 바뀌어도 동일.
-		assertThat(findEquipped(panda, PLANT).imageUrl())
-				.isEqualTo("assets/items/room_prop_plant.png");
+				.isEqualTo("assets/items/outfit_love_hood_red_panda.png");
+		// 체형 보정된 render_meta 도 함께 바뀐다(원숭이 0.18 → 레서판다 0.16).
+		assertThat(findEquipped(panda, HAT).renderMeta().get("anchorY").asDouble()).isEqualTo(0.16);
 
-		// DB 상으로도 착용 행은 3행 그대로(교체는 selected_character 만 갱신).
-		assertThat(rowCount("user_equipment", userId)).isEqualTo(3);
+		// DB 상으로도 착용 행은 2행 그대로(교체는 selected_character 만 갱신).
+		assertThat(rowCount("user_equipment", userId)).isEqualTo(2);
 	}
 
 	// ===== 6) 착용 검증: 미보유(409) / 슬롯 불일치(400) / variant 미제작(409) =====
@@ -330,8 +320,8 @@ class CharacterServiceTest {
 		long userId = newUser();
 		select(userId, "MONKEY");
 
-		// HAT_STRAW 는 COIN 아이템 → 기본 지급 대상이 아니다.
-		assertThatThrownBy(() -> equip(userId, item("HAT", 0, HAT_STRAW)))
+		// SHOES 는 COIN 아이템 → 미보유.
+		assertThatThrownBy(() -> equip(userId, item("SHOES", 0, SHOES)))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.ITEM_NOT_OWNED));
@@ -347,6 +337,7 @@ class CharacterServiceTest {
 	@Test
 	void equip_slotMismatch_throwsItemSlotMismatch() {
 		long userId = newUser();
+		own(userId, OUTFIT);
 		select(userId, "MONKEY");
 
 		// OUTFIT 그룹(소유 중)을 HAT 슬롯에 착용 시도 → DB 는 못 막는 규칙이라 서비스가 400 으로 막는다.
@@ -404,28 +395,30 @@ class CharacterServiceTest {
 	@Test
 	void replaceEquipment_isAtomic_whenOneItemFails() {
 		long userId = newUser();
-		own(userId, HAT_PARTY);
-		own(userId, BG);
+		own(userId, HAT);
+		own(userId, GLASSES);
+		own(userId, BOTTOM);
 		select(userId, "MONKEY");
 
-		// 사전 상태: 후드티만 착용.
+		// 사전 상태: 후드만 착용(OUTFIT 은 소유시켜 둔다).
+		own(userId, OUTFIT);
 		equip(userId, item("OUTFIT", 0, OUTFIT));
 		assertThat(rowCount("user_equipment", userId)).isEqualTo(1);
 
-		// 5개 배치 중 3번째(HAT_STRAW)가 미보유 → 전체 실패해야 한다(1·2번도 반영 안 됨).
+		// 5개 배치 중 3번째(SHOES)가 미보유 → 전체 실패해야 한다(1·2번도 반영 안 됨).
 		List<EquipmentItemRequest> batch = List.of(
 				item("OUTFIT", 0, OUTFIT),
-				item("ROOM_PROP", 0, PLANT),
-				item("HAT", 0, HAT_STRAW),   // ★ 미보유
-				item("BACKGROUND", 0, BG),
-				item("ROOM_PROP", 1, HAT_PARTY));
+				item("GLASSES", 0, GLASSES),
+				item("SHOES", 0, SHOES),   // ★ 미보유
+				item("HAT", 0, HAT),
+				item("BOTTOM", 0, BOTTOM));
 
 		assertThatThrownBy(() -> wardrobeService.replaceEquipment(userId, new UpdateEquipmentRequest(batch)))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.ITEM_NOT_OWNED));
 
-		// 이전 착용(후드티 1행)이 그대로 남아 있어야 한다 — DELETE 도 INSERT 도 일어나지 않았다.
+		// 이전 착용(후드 1행)이 그대로 남아 있어야 한다 — DELETE 도 INSERT 도 일어나지 않았다.
 		assertThat(rowCount("user_equipment", userId)).as("전체 롤백").isEqualTo(1);
 		assertThat(characterService.getMyCharacter(userId).equipment())
 				.extracting(EquippedItemResponse::groupCode).containsExactly(OUTFIT);
@@ -438,10 +431,9 @@ class CharacterServiceTest {
 		long userId = newUser();
 		select(userId, "MONKEY");
 
-		// ROOM_PROP 6칸(0~5)을 채우려면 공용 variant 그룹 6개가 필요하다(같은 group 중복 진열은 금지).
+		// ROOM_PROP 6칸(0~5)을 채우려면 공용 variant 그룹 6개가 필요하다(V21 시드엔 ROOM_PROP 이 없어 테스트 그룹으로 심는다).
 		List<EquipmentItemRequest> props = new ArrayList<>();
-		props.add(item("ROOM_PROP", 0, PLANT)); // 시드(공용 variant)
-		for (int i = 1; i <= 5; i++) {
+		for (int i = 0; i <= 5; i++) {
 			String prop = newTestGroup("ROOM_PROP", null); // 공용 variant
 			own(userId, prop);
 			props.add(item("ROOM_PROP", i, prop));
@@ -451,20 +443,20 @@ class CharacterServiceTest {
 		assertThat(me.equipment()).as("ROOM_PROP 0~5 다중 진열").hasSize(6);
 		assertThat(me.equipment()).extracting(EquippedItemResponse::slotIndex)
 				.containsExactly((short) 0, (short) 1, (short) 2, (short) 3, (short) 4, (short) 5);
-		// 공용 variant 는 캐릭터 미지정이므로 캐릭터가 무엇이든 해석된다.
 		assertThat(me.equipment()).allSatisfy(e -> assertThat(e.imageUrl()).isNotBlank());
 
 		// 단일 슬롯(HAT)에 2개 착용 시도 → 같은 칸 중복이라 400.
-		own(userId, HAT_PARTY);
+		own(userId, HAT);
+		own(userId, OUTFIT);
 		assertThatThrownBy(() -> equip(userId,
-				item("HAT", 0, HAT_PARTY),
+				item("HAT", 0, HAT),
 				item("HAT", 0, OUTFIT)))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.VALIDATION_ERROR));
 
 		// 단일 슬롯에 slot_index > 0 → 400(DB CHECK 이전에 서비스가 막는다).
-		assertThatThrownBy(() -> equip(userId, item("HAT", 1, HAT_PARTY)))
+		assertThatThrownBy(() -> equip(userId, item("HAT", 1, HAT)))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.VALIDATION_ERROR));
@@ -478,50 +470,46 @@ class CharacterServiceTest {
 		assertThat(rowCount("user_equipment", userId)).isZero();
 	}
 
-	// ===== 9) GET /characters/items: 소유 여부 + 내 캐릭터 기준 variant + lockedBy =====
+	// ===== 9) GET /characters/items: 소유 여부 + 내 캐릭터 기준 variant + 가격 =====
 
 	@Test
 	void getItems_returnsOwnershipAndCharacterVariant() {
 		long userId = newUser();
 		select(userId, "MONKEY");
-		equip(userId, item("OUTFIT", 0, OUTFIT));
+		own(userId, HAT);
+		equip(userId, item("HAT", 0, HAT));
 
 		List<ItemGroupResponse> hats = wardrobeService.getItems(userId, "HAT").items();
 		assertThat(hats).allSatisfy(i -> assertThat(i.slot().name()).isEqualTo("HAT")); // slot 필터
 
-		ItemGroupResponse party = findItem(hats, HAT_PARTY);
-		assertThat(party.owned()).isFalse();
-		assertThat(party.equipped()).isFalse();
-		assertThat(party.acquireType().name()).isEqualTo("MISSION");
-		assertThat(party.imageUrl()).as("내 캐릭터(MONKEY) 기준 variant")
-				.isEqualTo("assets/items/hat_party_monkey.png");
-		assertThat(party.renderMeta().get("z").asInt()).isEqualTo(40);
-		// MISSION 해금 아이템 + 미보유 → 해금 진행률(lockedBy) 노출.
-		assertThat(party.lockedBy()).isNotNull();
-		assertThat(party.lockedBy().missionCode()).isEqualTo("DIARY_10");
-		assertThat(party.lockedBy().threshold()).isEqualTo(10);
-		assertThat(party.lockedBy().progress()).isZero();
+		// 보유·착용 중인 모자.
+		ItemGroupResponse hat = findItem(hats, HAT);
+		assertThat(hat.owned()).isTrue();
+		assertThat(hat.equipped()).isTrue();
+		assertThat(hat.acquireType().name()).isEqualTo("COIN");
+		assertThat(hat.coinPrice()).isEqualTo(15);
+		assertThat(hat.imageUrl()).as("내 캐릭터(MONKEY) 기준 variant")
+				.isEqualTo("assets/items/hat_cap_black_monkey.png");
+		assertThat(hat.renderMeta().get("z").asInt()).isEqualTo(40);
+		assertThat(hat.lockedBy()).as("COIN 아이템은 미션 잠금이 아니다").isNull();
 
-		ItemGroupResponse straw = findItem(hats, HAT_STRAW);
-		assertThat(straw.acquireType().name()).isEqualTo("COIN");
-		assertThat(straw.coinPrice()).isEqualTo(120);
-		assertThat(straw.lockedBy()).as("구매 아이템은 미션 잠금이 아니다").isNull();
-
-		// 소유·착용 플래그(OUTFIT 탭).
-		ItemGroupResponse outfit = findItem(wardrobeService.getItems(userId, "OUTFIT").items(), OUTFIT);
-		assertThat(outfit.owned()).as("기본 지급 → 소유").isTrue();
-		assertThat(outfit.equipped()).isTrue();
-		assertThat(outfit.lockedBy()).as("보유 중이면 잠금 없음").isNull();
+		// 미보유 COIN 아이템(신발) — 가격 노출, 미션 잠금 아님.
+		ItemGroupResponse shoes = findItem(
+				wardrobeService.getItems(userId, "SHOES").items(), SHOES);
+		assertThat(shoes.owned()).isFalse();
+		assertThat(shoes.acquireType().name()).isEqualTo("COIN");
+		assertThat(shoes.coinPrice()).isEqualTo(20);
+		assertThat(shoes.lockedBy()).isNull();
 
 		// RED_PANDA 로 바꾸면 같은 목록의 imageUrl 만 바뀐다.
 		select(userId, "RED_PANDA");
-		assertThat(findItem(wardrobeService.getItems(userId, "HAT").items(), HAT_PARTY).imageUrl())
-				.isEqualTo("assets/items/hat_party_red_panda.png");
+		assertThat(findItem(wardrobeService.getItems(userId, "HAT").items(), HAT).imageUrl())
+				.isEqualTo("assets/items/hat_cap_black_red_panda.png");
 
-		// slot 생략 → 전체 슬롯(HAT·OUTFIT·ROOM_PROP·BACKGROUND 가 모두 포함).
+		// slot 생략 → 5종 전체가 포함된다.
 		List<ItemGroupResponse> all = wardrobeService.getItems(userId, null).items();
 		assertThat(all).extracting(ItemGroupResponse::groupCode)
-				.contains(OUTFIT, PLANT, HAT_PARTY, HAT_STRAW, BG);
+				.contains(HAT, GLASSES, OUTFIT, BOTTOM, SHOES);
 	}
 
 	@Test
@@ -561,16 +549,18 @@ class CharacterServiceTest {
 
 		List<MissionResponse> after = missionService.getMissions(userId).items();
 		MissionResponse diary10 = findMission(after, "DIARY_10");
-		assertThat(diary10.progress()).as("10개 중 7개 → 70%").isEqualTo(7);
+		assertThat(diary10.progress()).as("10개 중 7개").isEqualTo(7);
 		assertThat(diary10.threshold()).isEqualTo(10);
 		assertThat(diary10.rule().type().name()).isEqualTo("DIARY_COUNT");
 		assertThat(diary10.rule().threshold()).isEqualTo(10);
 		assertThat(diary10.coinReward()).isEqualTo(50);
-		assertThat(diary10.itemGroupReward()).isEqualTo(HAT_PARTY);
+		// V21: 미션 아이템 보상은 제거됐다(item_group_reward = NULL).
+		assertThat(diary10.itemGroupReward()).isNull();
 		// 규칙 타입별로 서로 다른 컬럼을 본다(임계값 키 정규화: count/days/seq → threshold).
 		assertThat(findMission(after, "STREAK_7").progress()).isEqualTo(7);          // consecutive_days
 		assertThat(findMission(after, "RESOL_1").progress()).isEqualTo(1);           // resolution_success_count
 		assertThat(findMission(after, "RESOL_STREAK_3").progress()).isEqualTo(2);    // max_streak_seq
+		assertThat(findMission(after, "STREAK_7").itemGroupReward()).isNull();
 
 		// 임계값을 넘겨도 달성(achieved)은 이력(user_missions)이 있어야 true — 지급은 Task 028 소관.
 		assertThat(findMission(after, "STREAK_7").achieved()).isFalse();
@@ -579,12 +569,6 @@ class CharacterServiceTest {
 		MissionResponse streak = findMission(missionService.getMissions(userId).items(), "STREAK_7");
 		assertThat(streak.achieved()).isTrue();
 		assertThat(streak.achievedAt()).isNotNull();
-
-		// 해금된 아이템(BG_COZY_ROOM)은 lockedBy 진행률에도 반영된다.
-		ItemGroupResponse bg = findItem(wardrobeService.getItems(userId, "BACKGROUND").items(), BG);
-		assertThat(bg.lockedBy()).isNotNull();  // 아직 소유는 아님(지급은 Task 028)
-		assertThat(bg.lockedBy().progress()).isEqualTo(7);
-		assertThat(bg.lockedBy().threshold()).isEqualTo(7);
 	}
 
 	// ===== 11) IDOR: 타인 상태를 조회·변경할 수 없다 =====
@@ -594,9 +578,10 @@ class CharacterServiceTest {
 		long owner = newUser();
 		long other = newUser();
 
-		own(owner, HAT_PARTY);
+		own(owner, HAT);
+		own(owner, OUTFIT);
 		select(owner, "MONKEY");
-		equip(owner, item("OUTFIT", 0, OUTFIT), item("HAT", 0, HAT_PARTY));
+		equip(owner, item("HAT", 0, HAT), item("OUTFIT", 0, OUTFIT));
 
 		// 다른 사용자는 자기 상태만 본다(선택 없음·착용 없음).
 		MyCharacterResponse otherMe = characterService.getMyCharacter(other);
@@ -610,12 +595,12 @@ class CharacterServiceTest {
 		MyCharacterResponse ownerMe = characterService.getMyCharacter(owner);
 		assertThat(ownerMe.character().code()).isEqualTo("MONKEY");
 		assertThat(ownerMe.equipment()).extracting(EquippedItemResponse::groupCode)
-				.containsExactlyInAnyOrder(OUTFIT, HAT_PARTY);
+				.containsExactlyInAnyOrder(HAT, OUTFIT);
 		assertThat(rowCount("user_equipment", owner)).isEqualTo(2);
 		assertThat(rowCount("user_equipment", other)).isZero();
 
 		// owner 의 소유 아이템을 other 가 착용할 수는 없다(소유는 사용자별).
-		assertThatThrownBy(() -> equip(other, item("HAT", 0, HAT_PARTY)))
+		assertThatThrownBy(() -> equip(other, item("HAT", 0, HAT)))
 				.isInstanceOf(BusinessException.class)
 				.satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
 						.isEqualTo(ErrorCode.ITEM_NOT_OWNED));

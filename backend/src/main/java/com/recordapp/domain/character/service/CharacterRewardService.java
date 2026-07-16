@@ -5,14 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.recordapp.domain.character.config.CharacterCoinProperties;
 import com.recordapp.domain.character.dto.AckRewardsResponse;
+import com.recordapp.domain.character.dto.ItemGroupRow;
+import com.recordapp.domain.character.dto.MyCharacterResponse;
 import com.recordapp.domain.character.dto.RewardEventRow;
 import com.recordapp.domain.character.dto.RewardResponse;
 import com.recordapp.domain.character.dto.UserProgressRow;
 import com.recordapp.domain.character.dto.WalletResponse;
 import com.recordapp.domain.character.mapper.CharacterRewardMapper;
 import com.recordapp.domain.character.mapper.UserCharacterMapper;
+import com.recordapp.domain.character.vo.AcquireType;
 import com.recordapp.global.common.CursorRequest;
 import com.recordapp.global.common.PageResponse;
+import com.recordapp.global.exception.BusinessException;
+import com.recordapp.global.exception.ErrorCode;
 import java.time.LocalDate;
 import java.util.List;
 import org.slf4j.Logger;
@@ -46,6 +51,7 @@ public class CharacterRewardService {
 	private final CharacterRewardMapper mapper;
 	private final UserCharacterMapper userCharacterMapper;
 	private final CharacterService characterService;
+	private final CatalogCache catalog;
 	private final LineService lineService;
 	private final CharacterCoinProperties coin;
 	private final ObjectMapper objectMapper;
@@ -53,12 +59,14 @@ public class CharacterRewardService {
 	public CharacterRewardService(CharacterRewardMapper mapper,
 			UserCharacterMapper userCharacterMapper,
 			CharacterService characterService,
+			CatalogCache catalog,
 			LineService lineService,
 			CharacterCoinProperties coin,
 			ObjectMapper objectMapper) {
 		this.mapper = mapper;
 		this.userCharacterMapper = userCharacterMapper;
 		this.characterService = characterService;
+		this.catalog = catalog;
 		this.lineService = lineService;
 		this.coin = coin;
 		this.objectMapper = objectMapper;
@@ -160,6 +168,63 @@ public class CharacterRewardService {
 		int balance = mapper.creditWallet(userId, reward);
 		finalizeReaction(userId, eventKey, "IDLE", reward, balance);
 		return new AttendanceResult(true, reward, balance);
+	}
+
+	// ===== 상점 구매(코인 소비) =====
+
+	/**
+	 * 코인으로 아이템(group)을 구매한다. 성공 시 코인 차감 + 소유 부여 후 갱신된 내 캐릭터를 돌려준다.
+	 *
+	 * <p><b>경합·중복 안전.</b> 순서는 게이트 → 차감 → 소유다:
+	 * <ol>
+	 *   <li>이미 보유면 무과금 멱등 반환.</li>
+	 *   <li>{@code PURCHASE:{groupCode}} 게이트로 같은 group 동시 구매를 직렬화(0행이면 이미 성사 → 무과금 반환).</li>
+	 *   <li>{@code balance >= price} 조건부 차감 — 부족하면 COIN_INSUFFICIENT 로 던져 <b>게이트까지 롤백</b>한다
+	 *       (게이트가 남지 않으므로 코인을 모은 뒤 재구매 가능).</li>
+	 * </ol>
+	 * 구매 원장은 미확인 보상 배지에 잡히지 않게 즉시 ack 한다(구매는 '받은 보상'이 아니다).
+	 *
+	 * @throws BusinessException FEATURE_DISABLED(구매 게이팅 off) · COIN_INSUFFICIENT(잔액 부족) ·
+	 *         VALIDATION_ERROR(구매할 수 없는 아이템)
+	 */
+	@Transactional
+	public MyCharacterResponse purchase(long userId, String groupCode) {
+		characterService.ensureState(userId);
+
+		ItemGroupRow group = catalog.itemGroup(groupCode);
+		if (group == null || group.acquireType() != AcquireType.COIN) {
+			throw new BusinessException(ErrorCode.VALIDATION_ERROR, "구매할 수 없는 아이템이에요.");
+		}
+		if (!coin.coinEnabled()) {
+			throw new BusinessException(ErrorCode.FEATURE_DISABLED);
+		}
+		// 이미 보유면 무과금 멱등 반환(재구매 방지).
+		if (userCharacterMapper.findOwnedGroupCodes(userId).contains(groupCode)) {
+			return characterService.buildMyCharacter(userId);
+		}
+
+		int price = group.coinPrice();
+		String eventKey = "PURCHASE:" + groupCode;
+		// 게이트 먼저: 같은 group 동시 구매를 직렬화한다. 0행이면 이미 다른 트랜잭션이 구매를 성사시킴.
+		if (mapper.insertGate(userId, eventKey, "PURCHASE", -price, null) == 0) {
+			return characterService.buildMyCharacter(userId);
+		}
+		// 조건부 차감: 부족하면 null → COIN_INSUFFICIENT 로 던져 게이트 INSERT 까지 롤백(재시도 가능).
+		Integer balance = mapper.deductWallet(userId, price);
+		if (balance == null) {
+			throw new BusinessException(ErrorCode.COIN_INSUFFICIENT);
+		}
+		mapper.insertOwnedGroup(userId, groupCode);
+
+		ObjectNode payload = objectMapper.createObjectNode();
+		payload.put("type", "PURCHASE");
+		payload.put("groupCode", groupCode);
+		payload.put("coin", -price);
+		payload.put("balance", balance);
+		mapper.finalizeEvent(userId, eventKey, balance, toJson(payload));
+		mapper.markEventAcked(userId, eventKey); // 구매 원장은 미확인 배지에서 제외
+
+		return characterService.buildMyCharacter(userId);
 	}
 
 	// ===== 조회(지갑·보상함·리액션) =====

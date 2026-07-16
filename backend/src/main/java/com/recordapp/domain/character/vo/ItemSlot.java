@@ -4,7 +4,8 @@ import com.recordapp.global.exception.BusinessException;
 import com.recordapp.global.exception.ErrorCode;
 
 /**
- * 착용 부위. V15 {@code chk_item_groups_slot} / V17 {@code chk_user_equipment_slot} CHECK 와 동일 집합.
+ * 착용 부위. V21 {@code chk_item_groups_slot} / {@code chk_user_equipment_slot} CHECK 와 동일 집합
+ * (V15 6종 + V21 에서 BOTTOM·SHOES 추가 = 부위별 착용 확장).
  *
  * <p>ROOM_PROP 만 0~5 여섯 칸 다중 진열이고(Rive {@code roomProp0..5} 와 1:1), 나머지는 0번 한 칸뿐이다.
  * DB 도 {@code chk_user_equipment_slot_index}(ROOM_PROP 이 아니면 index=0)로 같은 규칙을 강제하지만,
@@ -13,6 +14,8 @@ import com.recordapp.global.exception.ErrorCode;
 public enum ItemSlot {
 	HAT,
 	OUTFIT,
+	BOTTOM,
+	SHOES,
 	GLASSES,
 	PROP,
 	ROOM_PROP,

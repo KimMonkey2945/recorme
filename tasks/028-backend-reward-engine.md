@@ -164,7 +164,9 @@ backend/src/main/java/com/recordapp/
 ### 코드 리뷰 반영
 - **소급(과거) 확정 시 연속 기록 리셋 버그 수정**: `upsertDiaryProgress` 의 연속일 CASE 는 순방향만 가정해, 이미 최근 날짜를 확정한 뒤 과거 draft 를 뒤늦게 확정하면 무관한 스트릭이 1로 리셋돼 마일스톤 자격이 유실됐다. `이번 확정일 < last_confirmed_date → 스트릭 불변` 분기를 추가하고 회귀 테스트를 넣었다(유실 적립 방어).
 
+### 추가 구현(2026-07-16) — 상점 구매(코인 소비)
+- `CharacterRewardService.purchase` + `WardrobeController` `POST /characters/items/{groupCode}/purchase`. 게이트(`PURCHASE:{groupCode}`)→조건부 차감(`deductWallet` `balance>=price` RETURNING)→소유 부여→ack. 부족 시 `COIN_INSUFFICIENT`(게이트 롤백=재시도 가능), `coin-enabled=false` 시 `FEATURE_DISABLED`(기본 true). ErrorCode 2종 추가.
+- 테스트: `CharacterRewardServiceTest`에 구매 성공·부족(롤백/재시도)·이미보유·미존재, `CharacterPurchaseDisabledTest`(게이팅 off 403). ⑦(구매 더블탭/경합)·⑨(coin-enabled)까지 커버.
+
 ### 범위 밖(미구현)
-- 상점 구매 API(`POST /items/{groupCode}/purchase`)·`coin-enabled` 게이팅·`COIN_INSUFFICIENT`/`FEATURE_DISABLED` — 아이템 미확정.
-- 미션 판정·아이템 해금 지급(`MissionEvaluator`)·`RESOLUTION_STREAK` 등 미션 보상.
-- ⑦(구매 경합)·⑨(coin-enabled) 테스트 시나리오 — 구매 미구현으로 보류.
+- 미션 판정·아이템 해금 지급(`MissionEvaluator`)·`RESOLUTION_STREAK` 등 미션 보상 — 현재 아이템은 전부 COIN 구매 방식(V21)이라 미션 해금과 무관.

@@ -3,12 +3,15 @@ package com.recordapp.domain.character.controller;
 import com.recordapp.domain.character.dto.ItemGroupListResponse;
 import com.recordapp.domain.character.dto.MyCharacterResponse;
 import com.recordapp.domain.character.dto.UpdateEquipmentRequest;
+import com.recordapp.domain.character.service.CharacterRewardService;
 import com.recordapp.domain.character.service.WardrobeService;
 import com.recordapp.global.common.ApiResponse;
 import com.recordapp.global.security.SecurityUser;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,18 +19,20 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 옷장·상점 API(아이템 목록 + 착용 배치 교체). /characters 하위이지만 관심사가 달라 컨트롤러를 분리한다.
+ * 옷장·상점 API(아이템 목록 + 착용 배치 교체 + 코인 구매). /characters 하위이지만 관심사가 달라 분리한다.
  * 정적 경로(/items·/me/equipment)라 {@link CharacterController} 의 매핑과 충돌하지 않는다.
- * 구매(POST /characters/items/{groupCode}/purchase)는 보상 엔진(Task 028) 소관이다.
+ * 구매의 코인 소비·멱등 게이트는 {@link CharacterRewardService}(보상 엔진 Task 028)가 담당한다.
  */
 @RestController
 @RequestMapping("/characters")
 public class WardrobeController {
 
 	private final WardrobeService wardrobeService;
+	private final CharacterRewardService rewardService;
 
-	public WardrobeController(WardrobeService wardrobeService) {
+	public WardrobeController(WardrobeService wardrobeService, CharacterRewardService rewardService) {
 		this.wardrobeService = wardrobeService;
+		this.rewardService = rewardService;
 	}
 
 	/**
@@ -50,5 +55,16 @@ public class WardrobeController {
 			@AuthenticationPrincipal SecurityUser principal,
 			@Valid @RequestBody UpdateEquipmentRequest request) {
 		return ApiResponse.ok(wardrobeService.replaceEquipment(principal.userId(), request));
+	}
+
+	/**
+	 * POST /characters/items/{groupCode}/purchase — 코인으로 아이템 구매.
+	 * 잔액 부족이면 409 COIN_INSUFFICIENT, 구매 게이팅 off 면 403 FEATURE_DISABLED. 응답은 갱신된 내 캐릭터.
+	 */
+	@PostMapping("/items/{groupCode}/purchase")
+	public ApiResponse<MyCharacterResponse> purchase(
+			@AuthenticationPrincipal SecurityUser principal,
+			@PathVariable String groupCode) {
+		return ApiResponse.ok(rewardService.purchase(principal.userId(), groupCode));
 	}
 }

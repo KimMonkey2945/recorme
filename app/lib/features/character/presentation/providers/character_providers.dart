@@ -251,3 +251,29 @@ class AttendanceController extends AsyncNotifier<void> {
 
 final attendanceControllerProvider =
     AsyncNotifierProvider<AttendanceController, void>(AttendanceController.new);
+
+/// 아이템 구매(코인 소비) 제출 상태. 성공 시 내 캐릭터(홈 코인·소유)와 옷장 목록을 invalidate 한다.
+/// [SelectCharacterController] 관례 — 실패(COIN_INSUFFICIENT/FEATURE_DISABLED)는 [Failure]로 rethrow 해 UI가 처리한다.
+class PurchaseController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  /// 아이템 구매 제출. 성공 시 갱신된 [MyCharacter]를 돌려준다(잔액·소유 반영).
+  Future<MyCharacter> purchase(String groupCode) async {
+    state = const AsyncLoading();
+    try {
+      final updated =
+          await ref.read(characterRepositoryProvider).purchaseItem(groupCode);
+      state = const AsyncData(null);
+      ref.invalidate(myCharacterProvider); // 홈 코인 잔액
+      ref.invalidate(wardrobeItemsProvider); // 옷장 소유/잠금 상태
+      return updated;
+    } on Object catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
+  }
+}
+
+final purchaseControllerProvider =
+    AsyncNotifierProvider<PurchaseController, void>(PurchaseController.new);

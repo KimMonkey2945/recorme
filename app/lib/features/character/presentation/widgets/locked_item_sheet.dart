@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../../shared/widgets/app_snackbar.dart';
 import '../../domain/item_group.dart';
+import '../providers/character_providers.dart';
 
 /// 미보유(잠금) 아이템의 해금 조건을 안내하는 바텀시트.
 ///
@@ -151,7 +155,7 @@ class _UnlockGuide extends StatelessWidget {
                   color: AppColors.warning, size: 22),
               const SizedBox(width: AppSpacing.xs),
               Text(
-                '${item.coinPrice}코인으로 해금',
+                '${item.coinPrice}코인으로 구매',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -160,11 +164,8 @@ class _UnlockGuide extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          const Text(
-            '코인 구매 기능은 곧 열려요.',
-            style: TextStyle(fontSize: 14, color: AppColors.inkAlt),
-          ),
+          const SizedBox(height: AppSpacing.md),
+          _CoinPurchaseButton(item: item),
         ],
       );
     }
@@ -173,6 +174,67 @@ class _UnlockGuide extends StatelessWidget {
     return const Text(
       '아직 잠긴 아이템이에요.',
       style: TextStyle(fontSize: 15, color: AppColors.inkAlt),
+    );
+  }
+}
+
+/// COIN 아이템 구매 버튼. 탭 → 구매 → 성공 시 시트를 닫고 스낵바, 실패는 코드별 안내.
+class _CoinPurchaseButton extends ConsumerStatefulWidget {
+  const _CoinPurchaseButton({required this.item});
+
+  final ItemGroup item;
+
+  @override
+  ConsumerState<_CoinPurchaseButton> createState() => _CoinPurchaseButtonState();
+}
+
+class _CoinPurchaseButtonState extends ConsumerState<_CoinPurchaseButton> {
+  bool _busy = false;
+
+  Future<void> _buy() async {
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(purchaseControllerProvider.notifier)
+          .purchase(widget.item.groupCode);
+      if (!mounted) return;
+      // 성공 → 시트를 먼저 닫고(잠금 해제된 목록으로 복귀) 스낵바로 알린다.
+      showAppSnackBar(context, '${widget.item.nameKo}을(를) 구매했어요!');
+      Navigator.of(context).pop();
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showAppSnackBar(context, _messageFor(e), isError: true);
+    }
+  }
+
+  /// 실패 코드 → 사용자 문구.
+  String _messageFor(Object e) {
+    if (e is Failure) {
+      switch (e.code) {
+        case 'COIN_INSUFFICIENT':
+          return '코인이 부족해요.';
+        case 'FEATURE_DISABLED':
+          return '구매는 아직 준비 중이에요.';
+      }
+      return e.message;
+    }
+    return '구매에 실패했어요. 잠시 후 다시 시도해 주세요.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: _busy ? null : _buy,
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : const Icon(Icons.shopping_bag_outlined, size: 18),
+      label: Text(_busy ? '구매 중...' : '${widget.item.coinPrice}코인으로 구매하기'),
+      style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
     );
   }
 }

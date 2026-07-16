@@ -140,6 +140,20 @@ class ApiCharacterRepository implements CharacterRepository {
     }
   }
 
+  @override
+  Future<MyCharacter> purchaseItem(String groupCode) async {
+    try {
+      final res = await _dio.post('/characters/items/$groupCode/purchase');
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.myCharacterFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      // 잔액 부족이면 COIN_INSUFFICIENT, 게이팅 off 면 FEATURE_DISABLED 가 error.code 로 내려온다.
+      throw _toFailure(e);
+    }
+  }
+
   // ── 유틸 ────────────────────────────────────────────────────
 
   /// 표준 응답 봉투에서 데이터를 꺼낸다. 실패면 [Failure]로 변환해 던진다.

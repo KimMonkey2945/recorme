@@ -45,4 +45,9 @@ abstract class CharacterRepository {
   /// 출석 적립(하루 1회). 이미 출석했으면 granted=false.
   /// POST /characters/me/attendance
   Future<AttendanceResult> markAttendance();
+
+  /// 코인으로 아이템(group) 구매. 성공 시 갱신된 내 캐릭터(잔액·소유 반영).
+  /// 잔액 부족이면 `COIN_INSUFFICIENT`, 구매 게이팅 off 면 `FEATURE_DISABLED`.
+  /// POST /characters/items/{groupCode}/purchase
+  Future<MyCharacter> purchaseItem(String groupCode);
 }

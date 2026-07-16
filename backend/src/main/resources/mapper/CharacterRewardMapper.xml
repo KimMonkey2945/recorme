@@ -70,6 +70,33 @@
            AND event_key = #{eventKey}
     </update>
 
+    <!-- ===== 코인 소비(경합 안전, RETURNING) ===== -->
+    <!-- balance >= price 인 경우만 차감한다. 부족하면 0행 → null 반환 → 호출부가 COIN_INSUFFICIENT 로 롤백. -->
+    <select id="deductWallet" resultType="java.lang.Integer">
+        UPDATE user_wallets
+           SET balance    = balance - #{price},
+               updated_at = now()
+         WHERE user_id = #{userId}
+           AND balance >= #{price}
+        RETURNING balance
+    </select>
+
+    <!-- 구매 group 소유 부여(멱등). -->
+    <insert id="insertOwnedGroup">
+        INSERT INTO user_item_groups (user_id, group_code)
+        VALUES (#{userId}, #{groupCode})
+        ON CONFLICT (user_id, group_code) DO NOTHING
+    </insert>
+
+    <!-- 특정 이벤트 즉시 확인 처리(구매 원장이 미확인 보상 배지에 잡히지 않게). -->
+    <update id="markEventAcked">
+        UPDATE character_events
+           SET acked_at = now()
+         WHERE user_id = #{userId}
+           AND event_key = #{eventKey}
+           AND acked_at IS NULL
+    </update>
+
     <!-- ===== 기록 확정 진척 UPSERT + 연속일 계산(RETURNING) ===== -->
     <!-- 게이트 통과 뒤에만 호출한다(정확히 1회 증가). 연속일(순서 무관 방어):
            last == 이번 확정일      → 불변(같은 날 재확정)

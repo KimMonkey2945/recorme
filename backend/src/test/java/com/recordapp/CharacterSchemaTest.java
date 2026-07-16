@@ -285,7 +285,7 @@ class CharacterSchemaTest {
 				assertThat(rs.next()).isTrue();
 				assertThat(rs.getString(1)).isEqualTo("DIARY_COUNT");
 				assertThat(rs.getInt(2)).isEqualTo(10);
-				assertThat(rs.getString(3)).isEqualTo("HAT_PARTY");
+				assertThat(rs.getString(3)).as("V21: 미션 아이템 보상 제거(item_group_reward NULL)").isNull();
 			}
 		}
 	}
@@ -301,9 +301,9 @@ class CharacterSchemaTest {
 			assertThat(count(c, "SELECT count(*) FROM character_items WHERE group_code = '" + group + "'"))
 					.as("group 1개에 캐릭터별 variant 2행").isEqualTo(2);
 
-			// 시드도 동일 구조(OUTFIT_BASIC_TEE = MONKEY·RED_PANDA 2행)
+			// 시드도 동일 구조(V21: HAT_CAP_BLACK = MONKEY·RED_PANDA 2행)
 			assertThat(count(c, "SELECT count(*) FROM character_items"
-					+ " WHERE group_code = 'OUTFIT_BASIC_TEE' AND character_code IS NOT NULL"))
+					+ " WHERE group_code = 'HAT_CAP_BLACK' AND character_code IS NOT NULL"))
 					.isEqualTo(2);
 		}
 	}
@@ -391,7 +391,7 @@ class CharacterSchemaTest {
 					st.executeUpdate(
 							"INSERT INTO missions (code, title, description, rule, coin_reward, item_group_reward)"
 									+ " VALUES ('T_ITEM_ONLY', '아이템만', '아이템 보상만',"
-									+ " '{\"type\":\"DIARY_COUNT\",\"count\":2}', 0, 'HAT_PARTY')");
+									+ " '{\"type\":\"DIARY_COUNT\",\"count\":2}', 0, 'HAT_CAP_BLACK')");
 				}
 			}).doesNotThrowAnyException();
 		}
@@ -482,10 +482,10 @@ class CharacterSchemaTest {
 			// 공용 행이 있어도 캐릭터 전용 variant 는 별개 키라 추가 가능
 			assertThatCode(() -> insertVariant(c, group, "MONKEY", null)).doesNotThrowAnyException();
 
-			// 시드 공용 variant(ROOM_PROP_PLANT·BG_COZY_ROOM)도 각 1행
+			// V21: 옛 공용 시드(ROOM_PROP_PLANT·BG_COZY_ROOM)는 제거됐다(CASCADE로 variant도 함께).
 			assertThat(count(c, "SELECT count(*) FROM character_items"
-					+ " WHERE group_code IN ('ROOM_PROP_PLANT','BG_COZY_ROOM') AND character_code IS NULL"))
-					.isEqualTo(2);
+					+ " WHERE group_code IN ('ROOM_PROP_PLANT','BG_COZY_ROOM')"))
+					.as("V21: 옛 공용 시드 제거").isZero();
 		}
 	}
 

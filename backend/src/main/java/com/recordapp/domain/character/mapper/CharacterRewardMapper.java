@@ -46,6 +46,20 @@ public interface CharacterRewardMapper {
 			@Param("payload") String payload);
 
 	/**
+	 * 코인 소비(경합 안전). {@code UPDATE … SET balance = balance - price WHERE balance >= price RETURNING balance}.
+	 * 잔액 부족이면 0행이라 null 을 돌려주고, 호출부는 COIN_INSUFFICIENT 로 던져 트랜잭션(게이트 포함)을 롤백한다.
+	 *
+	 * @return 차감 후 잔액(부족이면 null)
+	 */
+	Integer deductWallet(@Param("userId") long userId, @Param("price") int price);
+
+	/** 구매한 group 소유 부여(멱등). */
+	int insertOwnedGroup(@Param("userId") long userId, @Param("groupCode") String groupCode);
+
+	/** 특정 이벤트를 확인 처리(구매는 '보상'이 아니므로 미확인 배지에 잡히지 않게 즉시 ack). */
+	void markEventAcked(@Param("userId") long userId, @Param("eventKey") String eventKey);
+
+	/**
 	 * 기록 확정 진척 UPSERT + 연속일 계산 후 스냅샷 RETURNING.
 	 * <ul>
 	 *   <li>confirmed_diary_count += 1</li>

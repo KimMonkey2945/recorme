@@ -117,6 +117,9 @@ class _FakeCharacterRepository implements CharacterRepository {
   @override
   Future<AttendanceResult> markAttendance() async =>
       const AttendanceResult(granted: false, coin: 0, balance: 0);
+
+  @override
+  Future<MyCharacter> purchaseItem(String groupCode) async => fetchMyCharacter();
 }
 
 /// 온보딩 → 메인('/') 이동을 검증하기 위한 최소 라우터.

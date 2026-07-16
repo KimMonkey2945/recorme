@@ -86,7 +86,8 @@ record:
   #   "-" 이면 스케줄 비활성(테스트에서 직접 호출). 게이트가 멱등하므로 폴러가 돌아도 중복 적립 불가.
   character:
     coin:
-      coin-enabled: ${CHARACTER_COIN_ENABLED:false}
+      # 상점 구매(코인 소비) 활성화. 적립과 무관(적립은 항상 동작). 구매 엔진 구현으로 기본 on.
+      coin-enabled: ${CHARACTER_COIN_ENABLED:true}
       attendance: ${COIN_ATTENDANCE:10}
       diary: ${COIN_DIARY:10}
       resolution-day1: ${COIN_RESOLUTION_DAY1:15}

@@ -357,6 +357,7 @@ CREATE TABLE item_groups (
     sort_order    INT NOT NULL DEFAULT 0,
     active        BOOLEAN NOT NULL DEFAULT true,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- ⚠️ V21 에서 BOTTOM·SHOES 추가(부위별 착용 확장) → 실제 허용 집합은 8종. user_equipment CHECK 도 동일 확장.
     CONSTRAINT chk_item_groups_slot
         CHECK (slot IN ('HAT','OUTFIT','GLASSES','PROP','ROOM_PROP','BACKGROUND')),
     CONSTRAINT chk_item_groups_acquire
@@ -417,6 +418,11 @@ CREATE INDEX idx_character_lines_ctx ON character_lines (context, character_code
 --       (NULL,'CONFIRM','오늘의 기록이 저장됐어요.',NULL,1)
 --   rive_trigger 시드값: nod/relax/clap/cheer/hug/levelup (NULL=기본 모션)
 
+-- ⚠️ [V21__replace_item_catalog.sql] 이 아래 V15 시드 5종을 **전부 교체**했다. 현재 카탈로그는
+--   부위별 착용 5종(전부 COIN·구매 대상, 슬롯 HAT/GLASSES/OUTFIT/BOTTOM/SHOES)이다:
+--     HAT_CAP_BLACK(15) · GLASSES_ROUND(15) · OUTFIT_LOVE_HOOD(50) · BOTTOM_CARGO_SAND(50) · SHOES_MAX95(20)
+--   DEFAULT/MISSION 아이템은 없다(신규 유저는 빈 옷장=전부 잠금). 미션(DIARY_10·STREAK_7)의
+--   item_group_reward 는 V21 에서 NULL 로 정리됐다. 아래 V15 원본은 설계 이력으로만 남긴다.
 -- 아이템 시드 5종(group). MISSION 그룹은 V16 missions.item_group_reward 가 참조한다.
 INSERT INTO item_groups (code, slot, name_ko, thumbnail_url, acquire_type, coin_price, sort_order) VALUES
     ('OUTFIT_BASIC_TEE', 'OUTFIT',     '기본 흰 티셔츠', 'assets/items/outfit_basic_tee.png', 'DEFAULT',   0,  0),
