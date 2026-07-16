@@ -277,7 +277,8 @@ class _DiaryEditorPageState extends ConsumerState<DiaryEditorPage> {
       _invalidateAll();
       if (!mounted) return;
       // 상세 화면으로 이동(즉시 DONE 렌더 — 분석 폴링 없음).
-      context.pushReplacement('/diary/${diary.id}');
+      // reaction=1: 확정 직후 진입이므로 상세에서 캐릭터 리액션 오버레이를 띄운다(Task 032).
+      context.pushReplacement('/diary/${diary.id}?reaction=1');
     } catch (e) {
       _handleSaveError(e);
     }

@@ -4,6 +4,7 @@ import '../../domain/equipment_item.dart';
 import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
 import '../../domain/render_meta.dart';
+import '../../domain/retrospect.dart';
 import '../../domain/reward.dart';
 
 /// 캐릭터 도메인 모델의 JSON 매핑(파싱/직렬화)을 모아 둔 DTO 계층.
@@ -167,6 +168,51 @@ class CharacterDto {
         granted: json['granted'] as bool? ?? false,
         coin: (json['coin'] as num?)?.toInt() ?? 0,
         balance: (json['balance'] as num?)?.toInt() ?? 0,
+      );
+
+  /// RetrospectResponse → [Retrospect].
+  /// `{yearMonth, confirmedCount, consecutiveDaysMax, resolutionSuccessCount,
+  ///   emotions[], coinEarned, unlockedItems[]}`
+  static Retrospect retrospectFromJson(Map<String, dynamic> json) {
+    final rawEmotions = json['emotions'] as List<dynamic>?;
+    final rawItems = json['unlockedItems'] as List<dynamic>?;
+    return Retrospect(
+      yearMonth: json['yearMonth'] as String? ?? '',
+      confirmedCount: (json['confirmedCount'] as num?)?.toInt() ?? 0,
+      consecutiveDaysMax: (json['consecutiveDaysMax'] as num?)?.toInt() ?? 0,
+      resolutionSuccessCount:
+          (json['resolutionSuccessCount'] as num?)?.toInt() ?? 0,
+      coinEarned: (json['coinEarned'] as num?)?.toInt() ?? 0,
+      emotions: rawEmotions == null
+          ? const []
+          : rawEmotions
+              .map((e) => emotionStatFromJson(e as Map<String, dynamic>))
+              .toList(),
+      unlockedItems: rawItems == null
+          ? const []
+          : rawItems
+              .map((e) => unlockedItemFromJson(e as Map<String, dynamic>))
+              .toList(),
+    );
+  }
+
+  /// EmotionStat → [EmotionStat].
+  /// 프리셋은 `{code, labelKo, count}`, 직접 입력은 `{label, count}`(NON_NULL 직렬화라 키가 갈린다).
+  static EmotionStat emotionStatFromJson(Map<String, dynamic> json) =>
+      EmotionStat(
+        code: json['code'] as String?,
+        labelKo: json['labelKo'] as String?,
+        label: json['label'] as String?,
+        count: (json['count'] as num?)?.toInt() ?? 0,
+      );
+
+  /// UnlockedItem → [UnlockedItem].
+  /// `{groupCode, nameKo, imageUrl?}`
+  static UnlockedItem unlockedItemFromJson(Map<String, dynamic> json) =>
+      UnlockedItem(
+        groupCode: json['groupCode'] as String? ?? '',
+        nameKo: json['nameKo'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String?,
       );
 
   // ── 요청 직렬화(입력 → JSON) ─────────────────────────────────

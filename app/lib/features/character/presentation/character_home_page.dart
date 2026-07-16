@@ -147,12 +147,22 @@ class _HomeBody extends StatelessWidget {
                       const SizedBox(height: AppSpacing.lg),
                       _NamePanel(name: character.nameKo, tagline: tagline),
                       const SizedBox(height: AppSpacing.lg),
-                      // 옷장 진입 — 캐릭터 홈의 유일한 주 액션(이번 범위).
+                      // 옷장 진입 — 캐릭터 홈의 주 액션.
                       FilledButton.icon(
                         onPressed: () => context.push('/wardrobe'),
                         icon: const Icon(Icons.checkroom, size: 20),
                         label: const Text('옷장'),
                         style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      // 이달의 기록(월간 회고 — 락인) 진입.
+                      OutlinedButton.icon(
+                        onPressed: () => context.push('/retrospect'),
+                        icon: const Icon(Icons.calendar_month_outlined, size: 20),
+                        label: const Text('이달의 기록'),
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size(double.infinity, 52),
                         ),
                       ),

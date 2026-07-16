@@ -6,6 +6,7 @@ import '../domain/equipment_item.dart';
 import '../domain/item_group.dart';
 import '../domain/my_character.dart';
 import '../domain/render_meta.dart';
+import '../domain/retrospect.dart';
 import '../domain/reward.dart';
 
 /// 인메모리 더미 캐릭터 저장소(테스트/웹 프리뷰용).
@@ -43,6 +44,9 @@ class FakeCharacterRepository implements CharacterRepository {
 
   /// 세션 내 출석 완료 여부(하루 1회 시뮬레이션 — Fake는 날짜 없이 세션 단위로 흉내).
   bool _attended = false;
+
+  /// 이미 리액션을 만든 기록 id → 그때의 보상(멱등 — 같은 기록 재진입 시 중복 적립 방지).
+  final Map<int, Reward> _reactions = {};
 
   /// 보상 id 시퀀스.
   int _rewardSeq = 0;
@@ -358,6 +362,66 @@ class FakeCharacterRepository implements CharacterRepository {
     _coinBalance -= price;
     _ownedGroups.add(groupCode);
     return _myCharacter();
+  }
+
+  @override
+  Future<Reward?> getReaction(int diaryId) async {
+    await Future<void>.delayed(_latency);
+    // 이미 이 기록의 리액션을 만들었으면 그대로 돌려준다(멱등 — 코인 중복 적립 없음).
+    final existing = _reactions[diaryId];
+    if (existing != null) return existing;
+    // 최초 진입: 확정 보상(코인 +10, CONFIRM 대사)을 시뮬레이션한다.
+    _coinBalance += 10;
+    final reward = Reward(
+      id: ++_rewardSeq,
+      eventType: 'DIARY_CONFIRM',
+      coinDelta: 10,
+      balanceAfter: _coinBalance,
+      line: _selectedCode == 'RED_PANDA'
+          ? '오늘도 해냈네요! 이 기세로 내일도 꼭 같이 써요.'
+          : '오늘도 한 줄 남겼네. 천천히 해도 다 남더라.',
+      context: 'CONFIRM',
+      createdAt: DateTime.now(),
+    );
+    _reactions[diaryId] = reward;
+    _rewards.add(reward);
+    return reward;
+  }
+
+  @override
+  Future<Retrospect> getRetrospect(String yearMonth) async {
+    await Future<void>.delayed(_latency);
+    final confirmed = _reactions.length;
+    return Retrospect(
+      yearMonth: yearMonth,
+      confirmedCount: confirmed,
+      consecutiveDaysMax: confirmed == 0 ? 0 : (confirmed > 3 ? 3 : confirmed),
+      resolutionSuccessCount: 0,
+      // 감정 분포는 확정 기록이 있을 때만 흉내낸다(프리셋 + 커스텀 혼재).
+      emotions: confirmed == 0
+          ? const []
+          : const [
+              EmotionStat(code: 'JOY', labelKo: '기쁨', count: 2),
+              EmotionStat(label: '설레는', count: 1),
+            ],
+      coinEarned: _coinBalance,
+      unlockedItems: [
+        for (final code in _ownedGroups)
+          UnlockedItem(
+            groupCode: code,
+            nameKo: _nameOf(code),
+            imageUrl: _resolveVariant(code)?.imageUrl,
+          ),
+      ],
+    );
+  }
+
+  /// group 코드 → 한국어 이름(카탈로그 조회, 없으면 코드 그대로).
+  String _nameOf(String groupCode) {
+    for (final g in _itemGroups) {
+      if (g.groupCode == groupCode) return g.nameKo;
+    }
+    return groupCode;
   }
 
   /// 현재 선택 상태 기준의 내 캐릭터 응답을 만든다(미선택이면 character=null).

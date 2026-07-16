@@ -22,6 +22,7 @@ import 'package:record/features/character/domain/character.dart';
 import 'package:record/features/character/domain/character_repository.dart';
 import 'package:record/features/character/domain/item_group.dart';
 import 'package:record/features/character/domain/my_character.dart';
+import 'package:record/features/character/domain/retrospect.dart';
 import 'package:record/features/character/domain/reward.dart';
 import 'package:record/shared/models/cursor_page.dart';
 import 'package:record/features/character/presentation/character_onboarding_page.dart';
@@ -120,6 +121,20 @@ class _FakeCharacterRepository implements CharacterRepository {
 
   @override
   Future<MyCharacter> purchaseItem(String groupCode) async => fetchMyCharacter();
+
+  @override
+  Future<Reward?> getReaction(int diaryId) async => null;
+
+  @override
+  Future<Retrospect> getRetrospect(String yearMonth) async => Retrospect(
+        yearMonth: yearMonth,
+        confirmedCount: 0,
+        consecutiveDaysMax: 0,
+        resolutionSuccessCount: 0,
+        emotions: const [],
+        coinEarned: 0,
+        unlockedItems: const [],
+      );
 }
 
 /// 온보딩 → 메인('/') 이동을 검증하기 위한 최소 라우터.

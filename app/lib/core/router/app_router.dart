@@ -12,6 +12,7 @@ import '../../features/character/domain/my_character.dart';
 import '../../features/character/presentation/character_home_page.dart';
 import '../../features/character/presentation/character_onboarding_page.dart';
 import '../../features/character/presentation/providers/character_providers.dart';
+import '../../features/character/presentation/retrospect_page.dart';
 import '../../features/character/presentation/rewards_page.dart';
 import '../../features/character/presentation/wardrobe_page.dart';
 import '../../features/diary/presentation/diary_detail_page.dart';
@@ -216,8 +217,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/diary/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            DiaryDetailPage(diaryId: state.pathParameters['id']!),
+        builder: (context, state) => DiaryDetailPage(
+          diaryId: state.pathParameters['id']!,
+          // 확정 직후 진입(editor 가 reaction=1 로 push)이면 리액션 오버레이를 띄운다(Task 032).
+          showReaction: state.uri.queryParameters['reaction'] == '1',
+        ),
       ),
       // 셸 밖 전체 화면: 작심삼일 생성 / 상세
       GoRoute(
@@ -251,6 +255,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/rewards',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const RewardsPage(),
+      ),
+      // 셸 밖 전체 화면: 월간 회고(락인) — 캐릭터 홈에서 진입한다.
+      GoRoute(
+        path: '/retrospect',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => RetrospectPage(
+          initialYearMonth: state.uri.queryParameters['yearMonth'],
+        ),
       ),
       // 셸 밖 전체 화면: 지난 기록 목록(캘린더 앱바에서 진입).
       // 탭에서 빠지면서 셸 밖 push 라우트가 됐다(AppBar leading 미지정 → 뒤로가기 자동).

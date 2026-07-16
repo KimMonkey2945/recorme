@@ -334,11 +334,13 @@
 | POST | `/characters/me/attendance` | 출석 적립(하루 1회). 홈 진입 시 호출 | ○ |
 | POST | `/characters/items/{groupCode}/purchase` | 코인으로 아이템 구매(코인 소비). 응답=갱신된 내 캐릭터. 잔액 부족 409 `COIN_INSUFFICIENT`, 게이팅 off 403 `FEATURE_DISABLED` | ○ |
 
-**미구현 — 범위 밖**
+**구현본 (Task 032 — 리액션·월간 회고)**
 
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|
-| GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록·감정 분포·성장 요약) — Task 032 | ○ |
+| GET | `/characters/me/retrospect?yearMonth=` | 월간 회고(기록 수·연속일·감정 분포·획득 코인·획득 아이템). 잘못된 형식 400 `VALIDATION_ERROR` | ○ |
+
+> ✅ **월간 회고 구현(Task 032, 2026-07-16)**: `GET /characters/me/retrospect?yearMonth=YYYY-MM`. 기록(확정일·감정)은 `diaries.written_date` 로, 보상(코인·완주)·획득 아이템은 `character_events.created_at`·`user_item_groups.acquired_at` 로 KST 월 범위를 자른다. 감정 분포는 프리셋(`primary_emotion`)+직접 입력(`emotion_label`)을 함께 집계하며, 기록 0건인 달도 빈 집계로 정상 응답한다. 리액션(`/characters/me/reaction`)은 확정 직후 앱 오버레이(F031)의 단일 소스다.
 
 > ✅ **코인 적립 엔진 구현(Task 028, 2026-07-16)**: 출석·기록 확정·작심삼일 1·2일차·완주·연속 7/30/60 마일스톤이 실제로 적립된다(멱등 게이트 `character_events`). `/characters/me` 의 `coinBalance`·`unackedRewardCount`가 실데이터로 채워진다. 적립액·마일스톤은 `record.character.coin.*` 설정으로 조정한다(`docs/coin-rewards.md`).
 >

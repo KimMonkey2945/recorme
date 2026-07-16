@@ -10,6 +10,7 @@ import '../../domain/character.dart';
 import '../../domain/character_repository.dart';
 import '../../domain/item_group.dart';
 import '../../domain/my_character.dart';
+import '../../domain/retrospect.dart';
 import '../../domain/reward.dart';
 
 /// 웹 UI 프리뷰/수동 확인용 스위치.
@@ -277,3 +278,20 @@ class PurchaseController extends AsyncNotifier<void> {
 
 final purchaseControllerProvider =
     AsyncNotifierProvider<PurchaseController, void>(PurchaseController.new);
+
+// ── 리액션 · 월간 회고(Task 032) ──────────────────────────────────
+
+/// 확정 직후 리액션(대사·코인). diaryId별 family. **폴링하지 않는다**(확정 즉시 생성).
+///
+/// 아직 적립 이벤트가 없으면 `null`을 돌려준다(오버레이는 기본 대사로 대체). API 오류는
+/// AsyncError로 전파돼 상세 화면이 오버레이만 생략하고 정상 동작하게 한다(기록 조회를 막지 않음).
+final reactionProvider =
+    FutureProvider.autoDispose.family<Reward?, int>((ref, diaryId) {
+  return ref.watch(characterRepositoryProvider).getReaction(diaryId);
+});
+
+/// 월간 회고. yearMonth('YYYY-MM')별 family. 월 이동 시 새 키로 재조회된다.
+final retrospectProvider =
+    FutureProvider.autoDispose.family<Retrospect, String>((ref, yearMonth) {
+  return ref.watch(characterRepositoryProvider).getRetrospect(yearMonth);
+});

@@ -2,7 +2,7 @@
 
 - **Phase**: 7 (캐릭터 중심 전환)
 - **구현 기능**: F031(기록 리액션), F032(월간 회고·성장)
-- **상태**: 미착수
+- **상태**: ✅ **완료(2026-07-16)** — 백엔드 회고 API + 앱 리액션 오버레이 + 월간 회고 페이지. (integration_test는 실기기/에뮬 실행 대상)
 - **선행**: Task 025(상세 화면 연출 제거), Task 028(리액션 페이로드·보상함 API), Task 029(캐릭터 렌더러)
 
 > 📌 **2026-07-15 보상 재설계(1단계) 반영**: 경험치/레벨·상점을 폐기하고 코인 + 미션 해금만 남겼다. → 회고 카드의 **"레벨 성장" 항목은 제거**한다. 성장 지표는 **획득 코인·해금 아이템**으로 표현하며, 리액션 오버레이의 `LEVEL_UP` 맥락·레벨 필드도 쓰지 않는다.
@@ -98,6 +98,22 @@ Phase 7의 **완성 지점**. 두 축을 붙인다.
 - [ ] 잘못된 `yearMonth` 형식 → 400
 - [ ] 타인 회고 조회 불가(IDOR)
 
-## 변경 사항 요약
+## 변경 사항 요약 (2026-07-16 구현)
 
-- (작성 예정) 검증 완료 후 기재
+### 백엔드 (`domain/character/`)
+- **신규 API**: `RetrospectController` `GET /characters/me/retrospect?yearMonth=` — 잘못된 형식 400 `VALIDATION_ERROR`.
+- `service/RetrospectService` — 월 경계를 두 시간축으로 자른다: 기록(확정일·감정)은 `written_date`(DATE), 보상(코인·완주)·획득 아이템은 `TIMESTAMPTZ`(KST). 최장 연속일은 확정일 목록에서 Java 로 계산. 획득 아이템 이미지는 `CatalogCache`로 내 캐릭터 기준 variant 해석. `ensureState` 를 타므로 read-write 트랜잭션.
+- `mapper/RetrospectMapper`(+XML) — 확정일 목록 / 감정 분포(프리셋 `primary_emotion`+커스텀 `emotion_label` UNION ALL, 많은 순) / 코인·완주 집계(`FILTER`) / 획득 group 코드.
+- DTO: `RetrospectResponse`·`EmotionStat`(@JsonInclude NON_NULL — 프리셋 `{code,labelKo,count}` / 커스텀 `{label,count}`)·`UnlockedItem`·`EmotionCountRow`·`MonthlyEventAggRow`.
+- 테스트: `RetrospectServiceTest`(Testcontainers — 종합 집계·빈 달·연속일 리셋·IDOR 격리) + `RetrospectControllerTest`(yearMonth 파싱 400/위임). 백엔드 전체 그린.
+
+### 앱 (`features/character/`)
+- 도메인: `retrospect.dart`(`Retrospect`·`EmotionStat`·`UnlockedItem`). 리포지토리에 `getReaction(diaryId)`(data=null 허용)·`getRetrospect(yearMonth)` 추가(Api/Fake). DTO 매핑·providers(`reactionProvider`·`retrospectProvider` family) 신설.
+- **리액션 오버레이(F031)**: `widgets/reaction_overlay.dart` + `widgets/character_speech_bubble.dart`. 확정 직후 진입(editor 가 `?reaction=1` 로 push → `DiaryDetailPage.showReaction`) 시 상세 위에 겹쳐, **대기·스피너 없이** 홈과 동일한 `CharacterStage` 로 캐릭터 등장. **대사 1줄은 항상**(서버 대사 없으면 캐릭터별 기본 대사), 코인 획득 카드(획득 시), 탭/‘확인’ → `ackRewards`(홈 배지 감소) 후 오버레이 제거·재표시 잠금. 일반 재진입(`reaction` 없음)은 오버레이 미표시.
+- **월간 회고(F032 — 락인)**: `retrospect_page.dart` + `/retrospect` 라우트 + 캐릭터 홈 진입 버튼(‘이달의 기록’). 요약 지표(기록 수·최장 연속·완주·획득 코인) + 감정 분포 막대(프리셋+커스텀, `EmotionPalette` 색) + 획득 아이템 그리드 + 월 이동(이전/다음, 미래 차단) + 빈 달 빈 상태.
+- 테스트: `reaction_overlay_test`(대사 항상·코인 카드·기본 대사·dismiss)·`retrospect_test`(요약·감정 분포·빈 달·월 이동/미래 차단). `flutter analyze` 무경고 + `flutter test` **149개 통과**.
+- `integration_test/character_journey_test.dart` — 온보딩→홈→회고 관통 + 리액션 오버레이 즉시 등장 + 코인 멱등 + 구매·착용 저장소 관통. **실기기/에뮬 실행 대상**(데스크톱 프로젝트 미구성 환경에서는 미실행 — analyze 로 컴파일만 검증).
+
+### 범위 조정
+- 회고의 **레벨 성장 항목은 제거**(보상 재설계 — 성장은 코인·획득 아이템으로만 표현).
+- 리액션 대사 맥락에서 `LEVEL_UP` 미사용. 미션 달성 카드는 미션 보상 지급이 범위 밖이라 코인 카드만 렌더.

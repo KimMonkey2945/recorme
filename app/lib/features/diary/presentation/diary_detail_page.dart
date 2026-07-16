@@ -12,6 +12,8 @@ import '../../../shared/widgets/loading_view.dart';
 import '../../../shared/widgets/share_options_sheet.dart';
 import '../../../shared/widgets/visibility_change_sheet.dart';
 import '../../../shared/widgets/visibility_segment.dart';
+import '../../character/presentation/providers/character_providers.dart';
+import '../../character/presentation/widgets/reaction_overlay.dart';
 import '../data/dto/diary_dto.dart';
 import 'providers/diary_providers.dart';
 import 'widgets/diary_detail_view.dart';
@@ -31,15 +33,25 @@ const List<String> _weekdays = ['월', '화', '수', '목', '금', '토', '일']
 /// 감정 분석을 끈(Task 024) 뒤 확정은 즉시 DONE 이므로 PENDING 자동 갱신 폴링을 제거했다.
 /// (감정 분석 flag를 켜면 PENDING이 생길 수 있으나, 그 경우 화면 재진입/새로고침으로 갱신한다.)
 class DiaryDetailPage extends ConsumerStatefulWidget {
-  const DiaryDetailPage({super.key, required this.diaryId});
+  const DiaryDetailPage({
+    super.key,
+    required this.diaryId,
+    this.showReaction = false,
+  });
 
   final String diaryId;
+
+  /// 확정 직후 진입 여부 — true면 캐릭터 리액션 오버레이를 1회 띄운다(Task 032).
+  /// 일반 진입(캘린더·목록)에서는 false라 오버레이가 뜨지 않는다(재진입 시 재표시 방지).
+  final bool showReaction;
 
   @override
   ConsumerState<DiaryDetailPage> createState() => _DiaryDetailPageState();
 }
 
 class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
+  /// 리액션 오버레이를 이미 닫았는지(한 번 닫으면 다시 뜨지 않는다).
+  bool _reactionDismissed = false;
   String _dateText(DateTime d) =>
       '${d.year}년 ${d.month}월 ${d.day}일 (${_weekdays[d.weekday - 1]})';
 
@@ -118,6 +130,38 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
     ];
   }
 
+  // ── 리액션 오버레이(확정 직후) ─────────────────────────────────
+
+  /// 확정 직후 진입이면 리액션 오버레이를 만든다(로드 완료 전·에러·미인증이면 null → 상세만 표시).
+  ///
+  /// 리액션 조회 실패는 상세 화면을 막지 않는다(오버레이만 생략). 대사·코인의 단일 소스는 서버
+  /// [reactionProvider]이며, 아직 이벤트가 없으면(null) 오버레이가 캐릭터별 기본 대사로 대체한다.
+  Widget? _reactionOverlay(int id) {
+    if (!widget.showReaction || _reactionDismissed) return null;
+
+    final my = ref.watch(myCharacterProvider).asData?.value;
+    final character = my?.character;
+    if (character == null) return null; // 미선택/미로드면 오버레이 생략
+
+    return ref.watch(reactionProvider(id)).maybeWhen(
+          data: (reward) => ReactionOverlay(
+            character: character,
+            equipment: my!.equipment,
+            reaction: reward,
+            onDismiss: _dismissReaction,
+          ),
+          // 로딩/에러면 오버레이 없이 상세만 보여 준다(폴링·차단 없음).
+          orElse: () => null,
+        );
+  }
+
+  /// 오버레이 닫기 — 미확인 보상을 ack(홈 배지 감소)하고 다시 뜨지 않게 잠근다.
+  void _dismissReaction() {
+    setState(() => _reactionDismissed = true);
+    // ack 실패는 무시한다(보상 확인은 부가 — 상세 화면을 막지 않는다).
+    ref.read(ackRewardsControllerProvider.notifier).ack().ignore();
+  }
+
   // ── 빌드 ──────────────────────────────────────────────────────
 
   @override
@@ -126,6 +170,7 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
 
     final async = ref.watch(diaryByIdProvider(id));
     final diary = async.asData?.value;
+    final overlay = _reactionOverlay(id);
 
     return Scaffold(
       // 상세 배경: 감정과 무관하게 항상 흰색으로 통일.
@@ -138,30 +183,36 @@ class _DiaryDetailPageState extends ConsumerState<DiaryDetailPage> {
         actions: _actions(id, diary),
       ),
       body: SafeArea(
-        child: async.when(
-          loading: () => const LoadingView(),
-          error: (_, _) => ErrorView(
-            message: '일기를 불러오지 못했어요',
-            onRetry: () => ref.invalidate(diaryByIdProvider(id)),
-          ),
-          data: (d) => DiaryDetailView(
-            dateText: _dateText(d.writtenDate),
-            content: d.content,
-            analysisStatus: d.analysisStatus,
-            // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
-            onEdit: d.isDraft
-                ? () async {
-                    await context.push(
-                      '/editor?date=${_dateParam(d.writtenDate)}',
-                    );
-                    ref.invalidate(diaryByIdProvider(id));
-                  }
-                : null,
-            onDelete: () => _handleDelete(context, id),
-            // 사용자 감정(프리셋/커스텀) — 감정 칩 표시용.
-            primaryEmotion: d.primaryEmotion,
-            emotionLabel: d.emotionLabel,
-          ),
+        child: Stack(
+          children: [
+            async.when(
+              loading: () => const LoadingView(),
+              error: (_, _) => ErrorView(
+                message: '일기를 불러오지 못했어요',
+                onRetry: () => ref.invalidate(diaryByIdProvider(id)),
+              ),
+              data: (d) => DiaryDetailView(
+                dateText: _dateText(d.writtenDate),
+                content: d.content,
+                analysisStatus: d.analysisStatus,
+                // 확정 기록(isDraft=false)은 수정 불가 → null 전달로 수정 버튼 숨김.
+                onEdit: d.isDraft
+                    ? () async {
+                        await context.push(
+                          '/editor?date=${_dateParam(d.writtenDate)}',
+                        );
+                        ref.invalidate(diaryByIdProvider(id));
+                      }
+                    : null,
+                onDelete: () => _handleDelete(context, id),
+                // 사용자 감정(프리셋/커스텀) — 감정 칩 표시용.
+                primaryEmotion: d.primaryEmotion,
+                emotionLabel: d.emotionLabel,
+              ),
+            ),
+            // 확정 직후 리액션 오버레이(있을 때만 최상단에 겹친다).
+            ?overlay,
+          ],
         ),
       ),
     );

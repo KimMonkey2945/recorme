@@ -89,6 +89,7 @@
 | **보상 엔진 — 상점 구매(코인 소비)·미션 아이템 지급** | ⏳ **범위 밖** | 아이템(파티모자·볼캡·배경 등)이 미확정이라 미구현. 미션(DIARY_10·STREAK_7 등)은 조회만 되고 **판정·지급은 아직 없다**. 아이템 확정 시 `CharacterRewardService.grant` 뒤 소유 부여 한 줄 + 구매 API 추가 |
 | **탭 재편 + 캐릭터 홈·미션 UI** | ⏳ **미구현** | Task 029 본편·030 잔여(구매·미션·보상함은 Task 028 선행 필요). ⚠️ 별도 상점 화면은 보상 재설계로 폐기 → 구매는 옷장 통합. FCM 딥링크 회귀 위험으로 분리 |
 | **Rive `.riv` 아트보드 전환** | ⏳ **미제작** | Task 031. `rive` 패키지 미도입 |
+| **앱 리액션 오버레이 + 월간 회고(락인)** | ✅ | Task 032. 확정 직후 `ReactionOverlay`(대기 0·대사 항상·코인 카드·ack) + `RetrospectPage`(`/retrospect`, 기록·연속·감정 분포·코인·획득 아이템·월 이동) + 백엔드 `RetrospectService`·`GET /characters/me/retrospect`. integration_test는 실기기/에뮬 실행 대상 |
 
 ## 4. 모노레포 레이아웃
 

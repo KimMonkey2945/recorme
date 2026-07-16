@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.recordapp.domain.character.mapper.RetrospectMapper">
+
+    <!-- ⚠️ constructor 매핑 — <arg> 순서가 record 표준 생성자와 정확히 일치해야 한다(도메인 공통 관례).
+         map-underscore-to-camel-case 는 constructor <arg> 엔 auto-apply 되지 않는다. -->
+    <resultMap id="emotionCountMap" type="com.recordapp.domain.character.dto.EmotionCountRow">
+        <constructor>
+            <arg column="code" javaType="java.lang.String"/>
+            <arg column="label_ko" javaType="java.lang.String"/>
+            <arg column="label" javaType="java.lang.String"/>
+            <arg column="cnt" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="monthlyEventAggMap" type="com.recordapp.domain.character.dto.MonthlyEventAggRow">
+        <constructor>
+            <arg column="coin_earned" javaType="_int"/>
+            <arg column="resolution_success_count" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- ===== 이달 확정 기록일(오름차순) ===== -->
+    <!-- analysis_status <> 'DRAFT' = 확정. idx_diaries_user_date(user_id, written_date DESC) 활용. -->
+    <select id="findConfirmedDates" resultType="java.time.LocalDate">
+        SELECT written_date
+          FROM diaries
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+           AND analysis_status &lt;&gt; 'DRAFT'
+           AND written_date &gt;= #{monthStart}
+           AND written_date &lt; #{nextMonth}
+         ORDER BY written_date
+    </select>
+
+    <!-- ===== 이달 감정 분포(프리셋 + 직접 입력) ===== -->
+    <!-- 프리셋(primary_emotion)과 직접 입력(emotion_label)은 상호 배타라 UNION ALL 로 합쳐도 겹치지 않는다.
+         감정 미입력(둘 다 NULL)은 어느 쪽 WHERE 에도 걸리지 않아 자연히 제외된다. 많은 순 정렬. -->
+    <select id="aggregateEmotions" resultMap="emotionCountMap">
+        SELECT d.primary_emotion AS code,
+               et.label_ko       AS label_ko,
+               NULL              AS label,
+               COUNT(*)::int     AS cnt
+          FROM diaries d
+          JOIN emotion_types et ON et.code = d.primary_emotion
+         WHERE d.user_id = #{userId}
+           AND d.deleted_at IS NULL
+           AND d.analysis_status &lt;&gt; 'DRAFT'
+           AND d.written_date &gt;= #{monthStart}
+           AND d.written_date &lt; #{nextMonth}
+           AND d.primary_emotion IS NOT NULL
+         GROUP BY d.primary_emotion, et.label_ko
+        UNION ALL
+        SELECT NULL          AS code,
+               NULL          AS label_ko,
+               d.emotion_label AS label,
+               COUNT(*)::int AS cnt
+          FROM diaries d
+         WHERE d.user_id = #{userId}
+           AND d.deleted_at IS NULL
+           AND d.analysis_status &lt;&gt; 'DRAFT'
+           AND d.written_date &gt;= #{monthStart}
+           AND d.written_date &lt; #{nextMonth}
+           AND d.emotion_label IS NOT NULL
+         GROUP BY d.emotion_label
+         ORDER BY cnt DESC
+    </select>
+
+    <!-- ===== 이달 코인 획득 합 + 완주 수(character_events.created_at 월 범위) ===== -->
+    <!-- coin_delta > 0 만 합산해 구매 소비(음수)를 제외한다. 이벤트가 없어도 COALESCE 로 0/0 을 보장. -->
+    <select id="aggregateEvents" resultMap="monthlyEventAggMap">
+        SELECT COALESCE(SUM(coin_delta) FILTER (WHERE coin_delta &gt; 0), 0)::int AS coin_earned,
+               COUNT(*) FILTER (WHERE event_type = 'RESOLUTION_SUCCESS')::int   AS resolution_success_count
+          FROM character_events
+         WHERE user_id = #{userId}
+           AND created_at &gt;= #{monthStart}
+           AND created_at &lt; #{nextMonth}
+    </select>
+
+    <!-- ===== 이달 획득 아이템 group(acquired_at 월 범위, 최신순) ===== -->
+    <select id="findAcquiredGroupCodes" resultType="java.lang.String">
+        SELECT group_code
+          FROM user_item_groups
+         WHERE user_id = #{userId}
+           AND acquired_at &gt;= #{monthStart}
+           AND acquired_at &lt; #{nextMonth}
+         ORDER BY acquired_at DESC
+    </select>
+
+</mapper>

@@ -7,6 +7,7 @@ import '../domain/character.dart';
 import '../domain/character_repository.dart';
 import '../domain/item_group.dart';
 import '../domain/my_character.dart';
+import '../domain/retrospect.dart';
 import '../domain/reward.dart';
 import 'dto/character_dto.dart';
 
@@ -154,6 +155,39 @@ class ApiCharacterRepository implements CharacterRepository {
     }
   }
 
+  @override
+  Future<Reward?> getReaction(int diaryId) async {
+    try {
+      final res = await _dio.get(
+        '/characters/me/reaction',
+        queryParameters: {'diaryId': diaryId},
+      );
+      // 확정 즉시 생성되지만 비동기 처리 직전이면 data=null 이 정상이다(오류 아님).
+      return _unwrapNullable(
+        res.data,
+        (json) => CharacterDto.rewardFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
+  @override
+  Future<Retrospect> getRetrospect(String yearMonth) async {
+    try {
+      final res = await _dio.get(
+        '/characters/me/retrospect',
+        queryParameters: {'yearMonth': yearMonth},
+      );
+      return _unwrap(
+        res.data,
+        (json) => CharacterDto.retrospectFromJson(json as Map<String, dynamic>),
+      );
+    } on DioException catch (e) {
+      throw _toFailure(e);
+    }
+  }
+
   // ── 유틸 ────────────────────────────────────────────────────
 
   /// 표준 응답 봉투에서 데이터를 꺼낸다. 실패면 [Failure]로 변환해 던진다.
@@ -169,6 +203,24 @@ class ApiCharacterRepository implements CharacterRepository {
       );
     }
     return api.data as T;
+  }
+
+  /// [_unwrap]과 같되 **data=null 을 정상(null 반환)으로 허용**한다(리액션처럼 아직 없을 수 있는 응답).
+  /// success=false 일 때만 [Failure]로 던진다.
+  T? _unwrapNullable<T>(Object? body, T Function(Object json) fromJsonT) {
+    if (body is! Map<String, dynamic>) {
+      throw const Failure('PARSE_ERROR', '서버 응답을 해석하지 못했어요.');
+    }
+    if (body['success'] != true) {
+      final error = body['error'];
+      final code = error is Map<String, dynamic> ? error['code'] as String? : null;
+      final message =
+          error is Map<String, dynamic> ? error['message'] as String? : null;
+      throw Failure(code ?? 'UNKNOWN', message ?? '요청을 처리하지 못했어요.');
+    }
+    final data = body['data'];
+    if (data == null) return null;
+    return fromJsonT(data);
   }
 
   /// DioException을 도메인 [Failure]로 변환한다.

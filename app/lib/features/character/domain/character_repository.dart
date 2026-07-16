@@ -2,6 +2,7 @@ import '../../../shared/models/cursor_page.dart';
 import 'character.dart';
 import 'item_group.dart';
 import 'my_character.dart';
+import 'retrospect.dart';
 import 'reward.dart';
 
 /// 캐릭터 데이터 접근 추상화.
@@ -50,4 +51,14 @@ abstract class CharacterRepository {
   /// 잔액 부족이면 `COIN_INSUFFICIENT`, 구매 게이팅 off 면 `FEATURE_DISABLED`.
   /// POST /characters/items/{groupCode}/purchase
   Future<MyCharacter> purchaseItem(String groupCode);
+
+  /// 확정 직후 리액션(대사·코인). **확정 즉시 생성되므로 폴링이 필요 없다.**
+  /// 아직 적립 이벤트가 안 생겼으면 `null`(앱은 기본 대사로 대체하거나 오버레이를 생략).
+  /// GET /characters/me/reaction?diaryId=
+  Future<Reward?> getReaction(int diaryId);
+
+  /// 월간 회고(기록·연속일·감정 분포·획득 코인·획득 아이템). [yearMonth]는 `YYYY-MM`.
+  /// 기록이 없는 달도 빈 집계로 정상 응답한다.
+  /// GET /characters/me/retrospect?yearMonth=
+  Future<Retrospect> getRetrospect(String yearMonth);
 }

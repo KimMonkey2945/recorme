@@ -29,22 +29,26 @@ com.recordapp
 │  │  ├─ mapper/     (DiaryMapper)
 │  │  ├─ dto/        (DiaryCreateRequest, DiaryUpdateRequest, DiaryResponse, DiaryFeedItem)
 │  │  └─ vo/         (Diary)
-│  ├─ character      ★ Phase 7 — 캐릭터·옷장·미션 (조회·선택·착용 구현 / 보상은 Task 028 예정)
+│  ├─ character      ★ Phase 7 — 캐릭터·옷장·미션·보상·회고 (**구현 완료**; 미션 아이템 지급만 범위 밖)
 │  │  ├─ CharacterConstants.java  (EQUIPMENT_MAX_ITEMS=12 — EXP_PER_LEVEL은 경험치/레벨 폐기(V18)로 제거)
-│  │  ├─ controller/ (CharacterController, WardrobeController, MissionController)
-│  │  │                  ⏳ CharacterRewardController — Task 028
-│  │  ├─ service/    (CharacterService, WardrobeService, MissionService, CatalogCache)
-│  │  │                  ⏳ CharacterRewardService·CharacterEventListener·
-│  │  │                     CharacterRewardBackfillPoller·MissionEvaluator·RetrospectService — Task 028/032
-│  │  ├─ mapper/     (CharacterCatalogMapper, UserCharacterMapper, MissionMapper)
-│  │  │                  ⏳ CharacterEventMapper — Task 028
+│  │  ├─ config/     (CharacterCoinProperties — record.character.coin.* 바인딩)
+│  │  ├─ controller/ (CharacterController, WardrobeController, MissionController,
+│  │  │               CharacterRewardController[지갑·보상함·ack·리액션·출석], RetrospectController[월간 회고])
+│  │  ├─ service/    (CharacterService, WardrobeService, MissionService, CatalogCache, LineService,
+│  │  │               CharacterRewardService[멱등 보상 엔진·구매], CharacterEventListener[AFTER_COMMIT·@Async],
+│  │  │               CharacterRewardBackfillPoller[백스톱], RetrospectService[월 집계])
+│  │  ├─ mapper/     (CharacterCatalogMapper, UserCharacterMapper, MissionMapper,
+│  │  │               CharacterRewardMapper, RetrospectMapper)
 │  │  ├─ dto/        (CharacterResponse·CharacterListResponse·MyCharacterResponse·SelectedCharacterResponse,
 │  │  │               ItemGroupResponse·ItemGroupListResponse·EquippedItemResponse,
 │  │  │               MissionResponse·MissionListResponse·MissionLockResponse,
+│  │  │               WalletResponse·RewardResponse·AttendanceResponse·AckRewardsResponse,
+│  │  │               RetrospectResponse·EmotionStat·UnlockedItem,
 │  │  │               SelectCharacterRequest·UpdateEquipmentRequest·EquipmentItemRequest,
 │  │  │               *Row(매퍼 결과) + ResolvedVariant·EquipmentInsertCommand)
 │  │  └─ vo/         (ItemSlot, AcquireType, MissionRuleType — DB CHECK 집합과 1:1인 enum)
-│  ├─ emotion        LLM 자동 분석 **활성**(현행 유지) — §6·§7 참조
+│  │     ↳ 단방향 결합: global/event/{DiaryConfirmedEvent,ResolutionProgressEvent} — diary·resolution은 character를 import 안 함
+│  ├─ emotion        LLM 자동 분석 **기본 비활성**(Task 024, `record.analysis.enabled=false`) — §6·§7 참조
 │  │  ├─ service/    (EmotionAnalysisService, EmotionAnalyzer(if), EmotionAnalysisPoller)
 │  │  ├─ mapper/     (EmotionAnalysisMapper)
 │  │  └─ dto/        (EmotionResult)
@@ -329,9 +333,9 @@ public interface LlmClient {
 
 - **확정 시 1회 분석**: 감정 분석은 **확정 시점(DRAFT→PENDING) 단 1회**만 수행한다. DRAFT 기록은 미분석 상태로 자유롭게 수정할 수 있지만, **확정된 기록은 수정 불가**(재upsert·`PUT` 모두 `DIARY_ALREADY_CONFIRMED`(409)). 따라서 "수정마다 재분석"하던 정책은 폐기됐고, 매 수정 LLM 호출로 인한 과부하가 제거된다. 확정 기록을 다시 쓰려면 삭제(소프트 삭제) 후 같은 날짜에 새로 작성한다.
 
-## 8. 캐릭터 도메인 (Phase 7 구현본 — Task 026/027)
+## 8. 캐릭터 도메인 (Phase 7 구현본 — Task 026/027/028/032)
 
-> 범위: **카탈로그 조회 · 캐릭터 선택 · 옷장 착용 · 미션 조회**. 보상 엔진(코인 적립·구매·미션 판정·보상함·리액션)은 **Task 028 미구현**(§2-1·§4-1).
+> 범위: **카탈로그 조회 · 캐릭터 선택 · 옷장 착용 · 미션 조회**(Task 026/027) + **코인 적립 엔진·상점 구매·보상함·리액션·출석**(Task 028) + **월간 회고**(Task 032, `RetrospectService`·`GET /characters/me/retrospect?yearMonth=`). ⏳ 남은 범위 밖: **미션 판정·아이템 해금 지급**(아이템은 전부 COIN 구매 방식이라 미션 해금과 무관).
 
 ### 8-1. group ↔ variant 2단 해석 (이 도메인의 핵심)
 

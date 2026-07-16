@@ -371,9 +371,9 @@
 
 > **⚠️ 마이그레이션 번호 재배치(실적 반영)**: 실제로는 **Task 026을 먼저 착수**해 **V15~V17을 선점**했고, 이어 **보상 재설계(경험치/레벨 드롭)가 V18을 선점**했다. Task 024가 원안대로 V15를 쓰면 이미 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다. → **Task 026 = V15~V17**, **보상 재설계 = V18**, **Task 024 = V19**.
 
-> **📊 Phase 7 진행 현황**(2026-07-14): **Task 026 ✅ 완료** · **Task 027 ✅ 완료** · **Task 029 🔶 부분 완료(온보딩 선택창까지 — 탭 재편·캐릭터 홈 미착수)** · Task 024·025·028·030·031·032 미착수.
-> ⚠️ Task 024가 미착수이므로 **LLM 감정 분석은 아직 활성 상태**(확정 → PENDING → 비동기 분석 → DONE)이며, `record.analysis.enabled` flag는 아직 존재하지 않는다.
-> ⚠️ Task 029가 부분 완료이므로 **탭은 아직 `[캘린더][목록][작심삼일][피드]` 4개, 캘린더 index 0 그대로**다. 탭 재편 회귀(아래)는 **아직 발생하지 않았다**.
+> **📊 Phase 7 진행 현황**(2026-07-16): **Task 024·025·026·027·029·031·032 ✅ 완료** · **Task 028 ✅ 부분 완료(코인 적립 엔진 + 상점 구매 — 미션 아이템 지급만 범위 밖)** · **Task 030 ✅ 완료(옷장·보상함·구매 실행 UI. 상점·미션 화면은 재설계로 폐기)**. **Phase 7 전 Task 구현 완료** — 남은 건 실기기/에뮬 검증뿐(작심삼일 FCM 라이브, Task 032 `integration_test`).
+> ✅ Task 024/025 완료로 **LLM 감정 자동 분석은 기본 비활성**(`record.analysis.enabled` 기본 false)이며, 확정 시 즉시 `DONE` + **사용자 직접 입력 감정**(프리셋/자유 텍스트)을 저장한다.
+> ✅ Task 029 완료로 **탭은 `[캐릭터 홈][캘린더][작심삼일][피드][프로필]` 5개, 캐릭터 홈 index 0**이다(로그인 후 첫 화면). 목록은 캘린더 앱바 버튼으로, 프로필은 탭으로 승격됐다.
 
 - **Task 024: 백엔드 LLM 비활성화 flag + 감정 사용자 입력 전환 (V19)** - 우선순위 · **미착수**
   - 구현 기능: F018·F019 축소 (감정 분석 비활성화 + 사용자 직접 입력 전환)
@@ -457,11 +457,11 @@
   - ⚠️ **눈 깜빡임(F033)은 포기**: 통짜 이미지로는 눈을 감길 수 없다. 눈 깜빡임 하나를 위해 캐릭터가 조각나 보이는 건 손해다. 되살리려면 **에셋을 다시 만들어야** 한다(일관된 스케일 + 겹침 마진 + 앵커 메타)
   - **(검증)** `flutter analyze` 무경고 · `flutter test` **112개 통과** · 웹 실기 렌더 육안 확인. 상세 경위는 `tasks/031-app-parts-character-renderer.md`
 
-- **Task 032: 앱 리액션 오버레이 + 월간 회고 카드 (락인 완성)** · **미착수**
+- **Task 032: 앱 리액션 오버레이 + 월간 회고 카드 (락인 완성)** · ✅ **완료(2026-07-16)**
   - 구현 기능: F031(기록 리액션), F032(월간 회고·성장)
-  - **리액션 오버레이**: `diary_detail_view.dart`에서 인트로·러닝 영상·PENDING 폴링을 제거한 자리(Task 025)에 `reaction_overlay.dart` + `character_speech_bubble.dart`. **확정 응답이 곧 `DONE`이므로 대기 없이 즉시** 캐릭터 등장 → 말풍선(맥락 기반 대사) + 코인/미션 획득 카드 → 탭하면 `POST /characters/me/rewards/ack`. **획득이 없어도 대사 1줄은 항상** 표시(빈손 리액션 금지). 페이로드 소스는 `GET /characters/me/reaction?diaryId=`
-  - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` — `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·연속일·**감정 분포**(사용자 입력 감정 통계)·획득 아이템·획득 코인 요약(⚠️ 레벨 성장은 V18 보상 재설계로 폐기). **데이터가 쌓일수록 떠나기 어려워지는 구조**의 가시화. 백엔드 `RetrospectService`
-  - **(구현 직후 필수 테스트)** `flutter test` — 리액션 오버레이 표시/dismiss, **획득 없어도 대사 1줄 표시**, ack 호출 후 배지 감소·재표시 안 됨, 코인/미션 카드 렌더, 회고 카드 빈 달(기록 0건) 처리, 감정 분포 집계 렌더(프리셋 + 커스텀 라벨 혼재) / **`integration_test` E2E — 가입 → 캐릭터 선택(온보딩) → 기록 작성 → 감정 입력 → 확정 → 리액션 즉시 등장 → 코인 반영 → 상점 구매 → 착용 → 홈 반영**(전 구간 관통)
+  - **리액션 오버레이**: `reaction_overlay.dart` + `character_speech_bubble.dart`. 확정 직후 editor 가 `/diary/:id?reaction=1` 로 push → `DiaryDetailPage(showReaction:true)` 가 상세 위 `Stack` 에 오버레이를 겹친다. **확정 응답이 곧 `DONE`이므로 대기·스피너 없이 즉시** 홈과 동일한 `CharacterStage` 로 캐릭터 등장 → 말풍선(맥락 기반 대사) + 코인 획득 카드 → 탭/‘확인’ → `ackRewards`(홈 배지 감소)·재표시 잠금. **획득이 없어도 대사 1줄은 항상**(서버 대사 없으면 캐릭터별 기본 대사 — 빈손 금지). 페이로드 소스는 `GET /characters/me/reaction?diaryId=`(data=null 허용). 일반 재진입(`reaction` 미지정)은 오버레이 미표시. 미션 달성 카드는 미션 아이템 지급이 범위 밖이라 코인 카드만 렌더
+  - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` + `/retrospect` 라우트 + 캐릭터 홈 ‘이달의 기록’ 버튼. `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·최장 연속일·**감정 분포**(프리셋+직접 입력 혼재 막대)·획득 아이템 그리드·획득 코인 요약 + 월 이동(이전/다음, 미래 차단) + 빈 달 빈 상태(레벨 성장은 V18 보상 재설계로 폐기). 백엔드 `RetrospectService` — 기록은 `written_date`, 보상·아이템은 KST `created_at`/`acquired_at` 월 범위로 집계
+  - **(검증)** 백엔드 `RetrospectServiceTest`(Testcontainers — 종합 집계·빈 달·연속일 리셋·IDOR) + `RetrospectControllerTest`(yearMonth 400/위임), **백엔드 전체 그린**. 앱 `reaction_overlay_test`·`retrospect_test` 신규, `flutter analyze` 무경고 · `flutter test` **149개 통과** · 코드 리뷰 클린. `integration_test/character_journey_test.dart`(가입→온보딩→홈→회고 + 리액션 즉시 등장 + 코인 멱등 + 구매·착용 관통)는 작성·컴파일 검증 완료, **실기기/에뮬 실행 대상**(데스크톱 프로젝트 미구성)
 
 - **Phase 7 로컬 실행**: `cd backend && ./gradlew bootRun`(네이티브 PG 18 `recorme`) + `cd app && flutter run` + `adb reverse tcp:8080 tcp:8080`
 
