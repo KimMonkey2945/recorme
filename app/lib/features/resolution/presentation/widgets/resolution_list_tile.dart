@@ -34,6 +34,8 @@ const List<String> _kWeekdays = ['월', '화', '수', '목', '금', '토', '일'
 /// 흰 surface 카드 위에 제목 + 기간 + 3칸 진행 도트 + 상태 배지를 표시하는 순수
 /// 표현 위젯이다. streakSeq가 2 이상이면 "🔥N연속" 라벨을 함께 보여준다.
 /// 탭 동작은 [onTap]으로 외부에 위임한다(diary_list_tile 관례).
+/// **null이면 탭 불가**(잉크 리플도 생기지 않는다) — 친구 둘러보기처럼 상세 진입을 막아야 하는
+/// 읽기 전용 화면에서 쓴다(상세 화면에는 체크·연장 같은 쓰기 액션이 있어 진입시키면 안 된다).
 class ResolutionListTile extends StatelessWidget {
   const ResolutionListTile({
     super.key,
@@ -43,7 +45,7 @@ class ResolutionListTile extends StatelessWidget {
     required this.status,
     required this.streakSeq,
     required this.dayStatuses,
-    required this.onTap,
+    this.onTap,
   });
 
   final String title;
@@ -57,7 +59,7 @@ class ResolutionListTile extends StatelessWidget {
   /// 1·2·3일차 체크 상태(3칸 진행 도트 렌더용).
   final List<CheckStatus> dayStatuses;
 
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   /// 'N월 N일 (요일)' 짧은 날짜 표기.
   String _shortDate(DateTime d) =>

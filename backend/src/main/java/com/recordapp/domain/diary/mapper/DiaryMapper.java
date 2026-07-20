@@ -6,6 +6,7 @@ import com.recordapp.domain.diary.dto.DiaryRow;
 import com.recordapp.domain.diary.dto.DiarySummaryDay;
 import com.recordapp.domain.diary.dto.DiaryUpsertCommand;
 import com.recordapp.domain.diary.dto.FeedDetailResponse;
+import com.recordapp.domain.diary.dto.FriendDiarySummaryDay;
 import com.recordapp.domain.diary.dto.SharedDiaryResponse;
 import java.time.LocalDate;
 import java.util.List;
@@ -72,6 +73,16 @@ public interface DiaryMapper {
 	 * 하루 1기록이라 날짜당 1건이며 한 달 ≤31건 → 페이징 없이 한 번에 반환한다.
 	 */
 	List<DiarySummaryDay> findSummaryDays(@Param("userId") Long userId, @Param("yearMonth") String yearMonth);
+
+	/**
+	 * 친구 둘러보기용 월 요약(written_date 오름차순). 대상 사용자의 <b>공개 기록만</b> 반환한다
+	 * (visibility FRIENDS·PUBLIC, DRAFT 제외). PRIVATE 는 아예 빠지므로 열람자에게는 기록 없는 날로 보인다.
+	 *
+	 * <p>앱이 날짜 탭 시 곧바로 viewer-aware 상세로 갈 수 있도록 diaryId 를 함께 담는다.
+	 * <b>친구 여부 판정은 호출자(FriendBrowseService)가 미리 수행</b>하며 이 쿼리는 하지 않는다.
+	 */
+	List<FriendDiarySummaryDay> findFriendSummaryDays(@Param("targetId") Long targetId,
+			@Param("yearMonth") String yearMonth);
 
 	/**
 	 * 내부 PK+사용자 기준 본문/공개범위 수정. {@code analysis_status='DRAFT'} 인 기록(미확정)만

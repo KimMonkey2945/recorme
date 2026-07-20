@@ -5,26 +5,42 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../shared/widgets/profile_avatar.dart';
 
 /// 친구 목록 한 줄(카드 셸 + 아바타 + 닉네임 + 더보기 메뉴).
-/// 비즈니스 로직 없이 [onRemove] 콜백으로만 동작을 노출한다.
+/// 비즈니스 로직 없이 [onTap]·[onRemove] 콜백으로만 동작을 노출한다.
+///
+/// [onTap]은 그 친구의 recorme 둘러보기 진입용이다. 더보기(PopupMenuButton)는 자체 히트테스트가
+/// 우선하므로 카드 전체를 InkWell로 감싸도 삭제·차단 메뉴는 그대로 동작한다.
 class FriendListTile extends StatelessWidget {
   const FriendListTile({
     super.key,
     required this.nickname,
     this.profileImageUrl,
+    this.onTap,
     this.onRemove,
     this.onBlock,
   });
 
   final String nickname;
   final String? profileImageUrl;
+  final VoidCallback? onTap;
   final VoidCallback? onRemove;
   final VoidCallback? onBlock;
 
   @override
   Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: AppRadius.cardBorderRadius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.cardBorderRadius,
+        child: _content(context),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.surface,
         borderRadius: AppRadius.cardBorderRadius,
         border: Border.all(color: AppColors.hairline),
       ),

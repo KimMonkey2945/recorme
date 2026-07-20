@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// 하단 탭(캐릭터/캘린더/작심삼일/피드/프로필) 셸.
+/// 하단 탭(캐릭터/캘린더/작심삼일/친구/프로필) 셸.
 /// StatefulShellRoute의 각 브랜치를 IndexedStack으로 유지한다.
 ///
 /// ⚠️ destinations 순서 = 브랜치 순서(app_router.dart) = 탭 인덱스. 한쪽만 바꾸면 어긋난다.
@@ -41,10 +41,11 @@ class ScaffoldWithNavBar extends StatelessWidget {
             selectedIcon: Icon(Icons.flag),
             label: '작심삼일',
           ),
+          // 피드는 탭에서 빠지고 친구 목록 앱바로 진입한다(친구 중심 앱이라 친구를 탭으로 승격).
           NavigationDestination(
-            icon: Icon(Icons.dynamic_feed_outlined),
-            selectedIcon: Icon(Icons.dynamic_feed),
-            label: '피드',
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: '친구',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

@@ -59,8 +59,9 @@ com.recordapp
 │  │  ├─ service/    (MusicService, MusicSource(if))
 │  │  ├─ mapper/     (TrackMapper)
 │  │  └─ dto/
-│  ├─ social         (friendship + reaction) — Phase 6 구현본
-│  │     └─ controller(FriendController·ReactionController)/ service(FriendService·ReactionService)/
+│  ├─ social         (friendship + reaction + friend browse) — Phase 6 구현본 + Phase 7 둘러보기
+│  │     └─ controller(FriendController·ReactionController·FriendBrowseController)/
+│  │        service(FriendService·ReactionService·FriendBrowseService)/
 │  │        mapper(FriendshipMapper·ReactionMapper)/ dto/ (+ FriendCodeGenerator)
 │  └─ feed            (FeedController·FeedService) — 조회 대상은 diaries라 DiaryMapper 재사용
 └─ infra
@@ -191,7 +192,15 @@ public interface DiaryMapper {
        diaries+users 인라인 기준으로 재작성했고(전문 미포함·감정 카드 요약), 정렬/커서는 id DESC,
        공감수는 diaries.reaction_count 캐시·reacted_by_me 는 EXISTS(diary_reactions), 가시성은
        본인 OR PUBLIC OR (FRIENDS AND 수락친구) AND 비차단 이다. 가시성 절은 공용 SQL fragment
-       (acceptedFriendIds·notBlockedByPair)로 findViewableById·ReactionMapper.isViewable 과 공유한다. -->
+       (acceptedFriendIds·notBlockedByPair)로 findViewableById·ReactionMapper.isViewable 과 공유한다.
+
+       ⚠️ 친구 둘러보기(FriendBrowseService)는 이 fragment 를 쓰지 않는다 — 대상이 단일 사용자로
+       고정이라 Java 레벨 단건 판정(FriendshipMapper.findRelation)으로 충분하기 때문이다. 피드는
+       "여러 작성자의 글을 한 쿼리에 섞는" 구조라 SQL 안에서 판정할 수밖에 없었던 것이고, 둘러보기는
+       상황이 다르다. 차단 검사를 따로 하지 않는 근거는 uq_friendship_pair UNIQUE(LEAST,GREATEST)가
+       쌍당 1행을 강제해 ACCEPTED 와 BLOCKED 가 공존할 수 없다는 것이다.
+       둘러보기용 월 요약은 findFriendSummaryDays 로 분리했다(visibility IN ('FRIENDS','PUBLIC')
+       + DRAFT 제외 + diary_id 동반). 본인용 findSummaryDays 는 회귀 방지를 위해 무수정으로 둔다. -->
   <!-- 친구(FRIENDS)·공개(PUBLIC)·본인 글을 커서 페이징으로 조회 (옛 예시 — 위 정정 참조) -->
   <select id="findFeed" resultType="com.recordapp.domain.diary.dto.DiaryFeedItem">
     SELECT d.id, d.user_id, u.nickname, d.content, d.written_date,

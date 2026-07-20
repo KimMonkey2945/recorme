@@ -12,7 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-`record`(앱 표기 **`recorme`**)는 하루를 글로 기록하는 **개인 모바일 기록장**이다. 작성한 글을 확정하면 **감정을 외부 LLM으로 분석**하여, 기분에 맞는 **동적 테마(감정 배경·글자·강조색)와 마스코트/시네마틱 영상 연출**을 자동으로 입히는 것이 핵심이다. (감정 기반 **음악**·공유·피드·친구·공감은 **MVP 이후** 범위.)
+`record`(앱 표기 **`recorme`**)는 하루를 글로 기록하는 **개인 모바일 기록장**이다. 기록을 확정하면 **내 캐릭터가 반응**하고, 쌓일수록 코인·미션 해금으로 캐릭터를 꾸미는 것이 핵심이다(원숭이 / 레서판다). 감정은 **사용자가 직접 입력**하는 순수 메타데이터로 달력 점 색·감정 칩·월간 회고에만 쓰인다.
+
+> ⚠️ **초기 설계와 달라진 점**: "확정 시 감정을 LLM으로 자동 분석해 동적 테마·시네마틱 영상 연출을 입힌다"는 **Phase 7(Task 024·025)에서 철회**됐다. LLM 분석은 `record.analysis.enabled` 기본 **false**로 꺼져 있고(코드는 보존 — 플래그 한 줄로 복구), 감정 시각 연출은 제거됐다. 친구·피드·공감은 **Phase 6에서 구현 완료**(MVP 이후가 아니다). 감정 기반 **음악**만 여전히 미구현이다.
 
 **모노레포** 구조로, 단일 저장소에서 모바일 앱(`app/`)과 백엔드(`backend/`)를 함께 관리한다.
 
@@ -20,8 +22,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---|---|
 | 모바일 | Dart / Flutter (SDK `^3.10.x`, Feature-first, Riverpod ^3, go_router ^17, Dio, flutter_quill, supabase_flutter, firebase_messaging) |
 | 백엔드 | Java 21, Spring Boot 3.5.x, MyBatis |
-| DB | PostgreSQL 18 (Flyway V1~V17) |
-| 감정 분석 | 멀티모달 외부 LLM API (`LlmClient` 추상화: 기본 Gemini / Claude·Ollama·Stub) |
+| DB | PostgreSQL 18 (Flyway V1~V21) |
+| 감정 분석 | ⚠️ **기본 비활성**(`record.analysis.enabled=false`). 켜면 멀티모달 외부 LLM API (`LlmClient` 추상화: 기본 Gemini / Claude·Ollama·Stub) |
 | 인증 | Supabase Auth(소셜: 카카오/구글, 이메일; 애플 추후) + 백엔드 Supabase JWT(JWKS ES256) 검증 |
 | 푸시 | FCM (작심삼일 리마인더/완주, firebase-admin) |
 
@@ -29,8 +31,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MVP(Phase 1~6)는 **구현 완료**이고, 현재 **Phase 7(캐릭터 도메인)이 진행 중**이다. 작업 전 다음을 인지할 것:
 
-- `backend/`: Spring Boot 3.5.x. 패키지 `com.recordapp` 아래 `domain.{auth,user,diary,emotion,resolution,device,social,feed,character}` + `infra.{llm,push,storage}` + `global.*`(보안/예외/표준 응답)이 실제 구현돼 있다. Flyway **`V1~V17`** 마이그레이션 실재(캐릭터는 `V15`=카탈로그, `V16`=미션, `V17`=사용자 캐릭터 상태). 로컬은 네이티브 PostgreSQL 18(`recorme` DB)로 `bootRun` 실측됨. 백엔드 테스트 **202개 통과**(Testcontainers 포함).
-- `app/`: Flutter feature-first 앱. `lib/features/{auth,diary,profile,resolution,feed,friend,character}` + `lib/core/*` + `lib/shared/*`. flutter_quill 리치 에디터·감정 동적 테마·마스코트/영상 연출·FCM 연동 포함. 앱 테스트 **127개 통과**, `flutter analyze` 무경고.
+- `backend/`: Spring Boot 3.5.x. 패키지 `com.recordapp` 아래 `domain.{auth,user,diary,emotion,resolution,device,social,feed,character}` + `infra.{llm,push,storage}` + `global.*`(보안/예외/표준 응답)이 실제 구현돼 있다. Flyway **`V1~V21`** 마이그레이션 실재(캐릭터는 `V15`=카탈로그, `V16`=미션, `V17`=사용자 캐릭터 상태, `V18`=레벨·경험치 드롭, `V19`=감정 직접 입력, `V20`=코인 이벤트, `V21`=옷장 카탈로그 5종). 로컬은 네이티브 PostgreSQL 18(`recorme` DB)로 `bootRun` 실측됨. 백엔드 테스트 **251개 통과**(Testcontainers 포함 — Docker 필요).
+- `app/`: Flutter feature-first 앱. `lib/features/{auth,diary,profile,resolution,feed,friend,friend_browse,character}` + `lib/core/*` + `lib/shared/*`. flutter_quill 리치 에디터·캐릭터 렌더·FCM 연동 포함(⚠️ 감정 동적 테마·마스코트 영상 연출은 Task 025로 **제거됨** — 로그인 마스코트 영상만 유지). 앱 테스트 **157개 통과**, `flutter analyze` 무경고.
 - 그래도 **`docs/`가 설계의 단일 진실 공급원(source of truth)**이다. 구현·수정 시 항상 `docs/`와 정합을 맞추고, 신규 기능은 로드맵 순서를 따른다.
   - ⚠️ `docs/`는 **Phase 7 전체를 앞서 설계**해 둔 상태라, 일부 절이 "이미 된 것처럼" 읽힌다. **구현 여부는 `docs/architecture.md` §3.3(Phase 7 구현 현황) 표를 기준**으로 판단할 것.
 
@@ -52,7 +54,7 @@ MVP(Phase 1~6)는 **구현 완료**이고, 현재 **Phase 7(캐릭터 도메인)
 
 ### Phase 7 진행 상황 (캐릭터)
 
-- **구현됨**: DB(`V15~V18`) / 백엔드 `domain.character`(캐릭터 조회·선택, 옷장 아이템 목록·착용, 미션 조회 — `CatalogCache` 마스터 캐시, group↔variant 2단 해석, 기본 상태 JIT) / 앱 `features/character`(**캐릭터 선택 온보딩** `/onboarding/character` + 라우터 redirect 가드 + `CharacterStage`·`IdleCharacterView` PNG 메시 워프 렌더러 + **옷장 UI `/wardrobe`**(Task 030 옷장분) — 착용형 아이템은 **캐릭터와 동일 프레임 풀프레임 PNG를 같은 메시 워프에 z순 오버레이**, BACKGROUND/ROOM_PROP은 스테이지 정적 배치, 탭=로컬 미리보기·저장=배치 커밋. 미보유 아이템 탭 시 `locked_item_sheet`로 해금 조건 안내(미션 진행바 / 코인 가격). ⚠️ `app/assets/items/*`는 **도형 플레이스홀더** — 실제 에셋은 인페인팅(원본 위 생성→diff 추출)으로 교체 예정) + **탭 재편·캐릭터 홈**(Task 029 완료): 하단 탭이 **`[캐릭터 홈(/)][캘린더(/calendar)][작심삼일][피드][프로필]` 5개, 캐릭터 홈이 index 0**이라 로그인 후 첫 화면이다. 캐릭터 홈(`character_home_page.dart`)은 상단 상태바(코인·미확인 보상 배지) + 중앙 `CharacterStage` + 이름·소개 패널 + 옷장 진입 버튼. 옷장은 이제 홈에서 진입한다(프로필 임시 버튼 제거). 목록은 탭에서 빠져 캘린더 앱바 버튼(`/list` 셸 밖 push)으로, 프로필은 셸 밖 라우트에서 탭으로 승격. 상태바의 코인·보상은 **백엔드 적립 엔진(Task 028) 구현 완료**로 실데이터가 채워진다(앱이 `GET /characters/me/wallet`·`/me/rewards` 연동 시). ⚠️ 앱 연동(홈 상태바 실데이터 바인딩·출석 호출)은 아직 배선 전일 수 있다.
+- **구현됨**: DB(`V15~V18`) / 백엔드 `domain.character`(캐릭터 조회·선택, 옷장 아이템 목록·착용, 미션 조회 — `CatalogCache` 마스터 캐시, group↔variant 2단 해석, 기본 상태 JIT) / 앱 `features/character`(**캐릭터 선택 온보딩** `/onboarding/character` + 라우터 redirect 가드 + `CharacterStage`·`IdleCharacterView` PNG 메시 워프 렌더러 + **옷장 UI `/wardrobe`**(Task 030 옷장분) — 착용형 아이템은 **캐릭터와 동일 프레임 풀프레임 PNG를 같은 메시 워프에 z순 오버레이**, BACKGROUND/ROOM_PROP은 스테이지 정적 배치, 탭=로컬 미리보기·저장=배치 커밋. 미보유 아이템 탭 시 `locked_item_sheet`로 해금 조건 안내(미션 진행바 / 코인 가격). ⚠️ `app/assets/items/*`는 **도형 플레이스홀더** — 실제 에셋은 인페인팅(원본 위 생성→diff 추출)으로 교체 예정) + **탭 재편·캐릭터 홈**(Task 029 완료): 하단 탭이 **`[캐릭터 홈(/)][캘린더(/calendar)][작심삼일][친구(/friends)][프로필]` 5개, 캐릭터 홈이 index 0**이라 로그인 후 첫 화면이다(⚠️ index 3은 Task 033에서 피드→친구로 교체됐고, 피드는 친구 목록 앱바에서 push 한다). 캐릭터 홈(`character_home_page.dart`)은 상단 상태바(코인·미확인 보상 배지) + 중앙 `CharacterStage` + 이름·소개 패널 + 옷장 진입 버튼. 옷장은 이제 홈에서 진입한다(프로필 임시 버튼 제거). 목록은 탭에서 빠져 캘린더 앱바 버튼(`/list` 셸 밖 push)으로, 프로필은 셸 밖 라우트에서 탭으로 승격. 상태바의 코인·보상은 **백엔드 적립 엔진(Task 028) 구현 완료**로 실데이터가 채워진다(앱이 `GET /characters/me/wallet`·`/me/rewards` 연동 시). ⚠️ 앱 연동(홈 상태바 실데이터 바인딩·출석 호출)은 아직 배선 전일 수 있다.
 - **보상 설계(2026-07-15 재정의)**: 경험치/레벨·상점은 **폐기**. 성장은 **코인 + 미션 해금**으로만 표현한다. 코인은 **출석·기록 확정·작심삼일 1·2일차·완주·연속 마일스톤**으로 적립(수치·마일스톤은 `record.character.coin.*` 설정으로 코드 변경 없이 조정 — `docs/coin-rewards.md`가 단일 기준). 아이템은 **옷장에서 코인 구매 또는 미션 해금**(별도 상점·미션 화면 없음, 옷장 잠금 안내가 단일 지점). **1단계 완료**: V18로 `user_character_state.level/exp`·LEVEL 미션 드롭, 앱/백엔드 응답에서 레벨·경험치 제거. **코인 적립 엔진 완료(Task 028, 2026-07-16, V20)** — 실제 코인이 적립된다. ⚠️ 단 **미션 판정·아이템 해금 지급·상점 구매(코인 소비)는 아직 범위 밖**(아이템 에셋 미확정) — 미션은 조회만, 연속 7일은 설정 마일스톤 `streak.7`로 지급.
 - **남은 Task**:
   - **024 — 감정 축소(백엔드)**: ✅ **완료(2026-07-16, V19)**. LLM 자동 분석을 `record.analysis.enabled`(기본 **false**) 플래그로 끄고, 확정 시 즉시 `DONE` + **사용자 직접 입력 감정**(프리셋 `primary_emotion` 또는 자유 텍스트 `emotion_label` ≤20자, 상호 배타 — 동시 지정 400 `EMOTION_CONFLICT`)을 저장한다. 감정/LLM 빈은 삭제 대신 `@ConditionalOnProperty`로 게이팅(플래그 on 시 기존 PENDING→분석 경로 무손상 복구), `DiaryService`는 `ObjectProvider`로 빈 부재 흡수. `GET /diaries/me/emotions/recent`로 최근 커스텀 라벨 추천. ⚠️ **감정 LLM 분석은 이제 기본 비활성**이다.
@@ -61,7 +63,13 @@ MVP(Phase 1~6)는 **구현 완료**이고, 현재 **Phase 7(캐릭터 도메인)
   - **030 잔여 — 보상함·구매 실행 UI**: 옷장·탭 재편·캐릭터 홈(Task 029)·옷장 잠금 안내 **완료**. 상점·미션 화면은 재설계로 **폐기**. **앱 보상 배선 완료(2026-07-16)**: 홈 상태바 코인·미확인 배지 실데이터(`GET /characters/me`), **보상함 화면 `/rewards`**(`rewards_page.dart` — 커서 목록·"모두 확인" ack·종류별 아이콘/대사/코인) + 홈 배지 탭 진입 + **홈 진입 시 출석 적립**(`POST /me/attendance`, 적립 시 스낵바). `rewardsProvider`/`AckRewardsController`/`AttendanceController` 신설, ack·출석 성공 시 `myCharacterProvider` invalidate로 배지 동기화. `flutter analyze` 무경고·`flutter test` **141개 통과**. **옷장 코인 구매 실행도 완료(2026-07-16)** — 잠금 시트의 구매 버튼(`locked_item_sheet` + `PurchaseController`)이 `POST .../purchase`를 호출해 잔액 차감·소유 반영·invalidate. ⚠️ **남은 건 캐릭터 리액션 오버레이·월간 회고(Task 032)**. (FCM 딥링크는 경로 문자열 push라 탭 인덱스 변경과 무관 — 회귀 없음.)
   - ~~**031 — Rive 전환**~~ → **완료 (Rive·파츠 조립 둘 다 미채택)**: 렌더러는 기존 **`IdleCharacterView`(통짜 PNG 12×16 메시 워프)** 를 그대로 쓰고, **에셋만 고해상도 투명 PNG로 교체**했다. Rive는 `.riv` export 유료 + 리깅이 GUI 수작업이라 접었고, 파츠 조립은 구현까지 갔지만 **파츠들이 각각 따로 생성된 이미지라 서로 맞지 않아**(눈 간격 101 vs 117, 몸통 색·소켓 크기 불일치, 겹침 여유 없음) 캐릭터가 조각나 보여 되돌렸다. ⚠️ **눈 깜빡임(F033)은 미지원** — 통짜 이미지로는 불가능하며, 되살리려면 코드가 아니라 **에셋**을 다시 만들어야 한다. 경위: `tasks/031-app-parts-character-renderer.md`.
   - **032 — 리액션·회고**: ✅ **완료(2026-07-16)**. 백엔드 `RetrospectService` + `GET /characters/me/retrospect?yearMonth=`(기록 수·연속일·감정 분포(프리셋+커스텀)·획득 코인·획득 아이템 집계 — 기록은 `written_date`, 보상·아이템은 KST `created_at`/`acquired_at` 월 범위. Testcontainers 통과). 앱: **리액션 오버레이**(`reaction_overlay.dart`·`character_speech_bubble.dart` — 확정 직후 상세에서 `?reaction=1`로 즉시 등장, 대기·스피너 0, 대사 1줄 항상(서버 없으면 캐릭터별 기본), 코인 카드, 탭/‘확인’ → ack·배지 감소·재표시 잠금) + **월간 회고 페이지**(`retrospect_page.dart`·`/retrospect`·홈 ‘이달의 기록’ 버튼 — 요약 지표·감정 분포 막대·획득 아이템 그리드·월 이동(미래 차단)·빈 달). 리포지토리에 `getReaction`/`getRetrospect`(Api/Fake)·`reactionProvider`/`retrospectProvider` 신설. `flutter analyze` 무경고 + `flutter test` **149개 통과**. ⚠️ `integration_test/character_journey_test.dart`는 작성·컴파일 검증만(데스크톱 프로젝트 미구성 → **실기기/에뮬 실행 대상**).
-- **남은 검증**: 작심삼일 **FCM 실기기(Z Flip3) 라이브 검증**(딥링크·팬아웃), **Task 032 `integration_test` 실기기/에뮬 실행**.
+  - **033 — 친구 둘러보기(읽기 전용)**: ✅ **완료(2026-07-20)**. 친구 목록에서 **이름 탭 → 그 친구의 recorme**(`/friends/browse/:userUuid`, 상단 탭 3개: 홈·캘린더·작심삼일). 프로필·피드는 범위 밖.
+    - **탭 재구성**: 하단 탭의 **피드 → 친구**로 교체(5개 유지 — `[캐릭터 홈][캘린더][작심삼일][친구][프로필]`). 피드는 친구 목록 앱바에서 push(`/feed` 셸 밖 → 뒤로가기 자동). ⚠️ 라우트는 **`/friends/browse/:userUuid`** — `/friends/:userUuid`로 두면 기존 `/friends/requests`·`/friends/add`가 uuid로 매칭된다.
+    - **백엔드**: `domain.social`에 `FriendBrowseController`(GET 3개: `/friends/{userUuid}/character`·`/diaries/summary`·`/resolutions`) + `FriendBrowseService`. **권한 게이트는 `resolveFriendId` 단 하나** — 친구아님·PENDING·차단·탈퇴·없는 uuid·**잘못된 형식 uuid**·자기자신을 전부 `USER_NOT_FOUND`(404)로 은닉(403은 uuid 실존을 흘리므로 회피, `NOT_FRIEND` 코드 미신설). **차단 별도 검사 불필요** — `uq_friendship_pair`(LEAST,GREATEST)가 쌍당 1행을 강제해 ACCEPTED와 BLOCKED가 공존 불가.
+    - **프라이버시**: 캘린더는 `visibility IN ('FRIENDS','PUBLIC')` 확정 기록만(신규 `findFriendSummaryDays` — 본인용 `findSummaryDays`는 **무수정**). **PRIVATE·DRAFT는 목록에서 빠져 "없는 날"과 구분 불가.** 캐릭터 응답은 코인·미확인보상을 **타입에서 제외**(`FriendCharacterResponse`). 새 공개설정 컬럼·마이그레이션 없음.
+    - **재사용**: `CharacterService.buildMyCharacter`를 **public 승격** — `ensureState`(INSERT 4건)를 타지 않는 순수 조회라 타인 userId로 안전하고 착용 variant 해석이 따라온다. ⚠️ **여기에 `ensureState`를 끼워 넣으면 남의 계정에 행이 생긴다**(회귀 테스트가 막는다). `ResolutionService.getList/getCalendar`는 이미 userId 파라미터라 무수정 재사용.
+    - **(검증)** 백엔드 `FriendBrowseServiceTest` 15개 → **전체 251개 통과**. 앱 `friend_browse_test` 8개 → **157개 통과**, analyze 무경고. ⚠️ **두 계정 E2E는 미실시**.
+- **남은 검증**: 작심삼일 **FCM 실기기(Z Flip3) 라이브 검증**(딥링크·팬아웃), **Task 032 `integration_test` 실기기/에뮬 실행**, **Task 033 두 계정 E2E**(A의 PRIVATE 기록이 B에게 안 보이는지).
 - **MVP 이후(미구현)**: 감정 기반 **음악**, 성능 최적화, 애플 로그인.
 
 ## 설계 문서 (구현의 기준)

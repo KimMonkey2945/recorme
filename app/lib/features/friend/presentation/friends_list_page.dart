@@ -58,6 +58,12 @@ class FriendsListPage extends ConsumerWidget {
           backgroundColor: Colors.transparent,
           title: const Text('친구'),
           actions: [
+            // 피드는 탭에서 빠지면서 여기로 진입한다(친구가 탭으로 승격 — 진입 방향 반전).
+            IconButton(
+              icon: const Icon(Icons.dynamic_feed_outlined),
+              tooltip: '피드',
+              onPressed: () => context.push('/feed'),
+            ),
             IconButton(
               icon: const Icon(Icons.person_add_alt_outlined),
               tooltip: '친구 추가',
@@ -104,6 +110,12 @@ class FriendsListPage extends ConsumerWidget {
                     return FriendListTile(
                       nickname: f.nickname,
                       profileImageUrl: f.profileImageUrl,
+                      // 이름을 누르면 그 친구의 recorme 둘러보기(읽기 전용).
+                      // 닉네임은 extra 로 넘겨 앱바 제목을 로딩 없이 즉시 띄운다.
+                      onTap: () => context.push(
+                        '/friends/browse/${f.userUuid}',
+                        extra: f.nickname,
+                      ),
                       onRemove: () => _remove(
                         context,
                         ref,

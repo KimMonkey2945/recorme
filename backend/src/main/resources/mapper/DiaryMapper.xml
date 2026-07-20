@@ -42,6 +42,18 @@
         </constructor>
     </resultMap>
 
+    <!-- 친구 둘러보기용 일자별 요약 매핑. diarySummaryDayMap 과 달리 diary_id 를 함께 받는다
+         (앱이 날짜 탭 시 추가 조회 없이 /feed/diary/:id 로 이동). arg 순서 = record 생성자 순서. -->
+    <resultMap id="friendDiarySummaryDayMap" type="com.recordapp.domain.diary.dto.FriendDiarySummaryDay">
+        <constructor>
+            <arg column="diary_id" javaType="java.lang.Long"/>
+            <arg column="date" javaType="java.lang.String"/>
+            <arg column="analysis_status" javaType="java.lang.String"/>
+            <arg column="primary_emotion" javaType="java.lang.String"/>
+            <arg column="mood_emoji" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
     <!-- 일기 목록 항목 매핑(record 생성자 기반). 대표 이미지·총 장수는 content(Delta) jsonb 파싱으로 채운다.
          미리보기 텍스트는 content_text(순수 텍스트)를 'content' 컬럼 별칭으로 받는다(앱 변경 최소화).
          image_count 는 SQL 에서 ::int 캐스팅해 count(*)의 bigint 를 int 로 받는다. -->
@@ -239,6 +251,25 @@
          WHERE user_id = #{userId}
            AND to_char(written_date, 'YYYY-MM') = #{yearMonth}
            AND deleted_at IS NULL
+         ORDER BY written_date ASC
+    </select>
+
+    <!-- 친구 둘러보기용 월 요약. 본인용 findSummaryDays 와 분리해 둔 이유는 조건이 다르기 때문이다:
+         ① visibility IN ('FRIENDS','PUBLIC') 로 공개 기록만 ② DRAFT 제외(피드와 동일 관례)
+         ③ diary_id 동반. PRIVATE·DRAFT 는 아예 내려가지 않아 앱에서 "기록 없는 날"과 구분되지 않는다.
+         기존 findSummaryDays 를 <if> 로 분기하지 않은 건 본인 캘린더에 회귀를 만들지 않기 위해서다. -->
+    <select id="findFriendSummaryDays" resultMap="friendDiarySummaryDayMap">
+        SELECT id                                  AS diary_id,
+               to_char(written_date, 'YYYY-MM-DD') AS date,
+               analysis_status                     AS analysis_status,
+               primary_emotion                     AS primary_emotion,
+               mood_emoji                          AS mood_emoji
+          FROM diaries
+         WHERE user_id = #{targetId}
+           AND to_char(written_date, 'YYYY-MM') = #{yearMonth}
+           AND deleted_at IS NULL
+           AND analysis_status &lt;&gt; 'DRAFT'
+           AND visibility IN ('FRIENDS', 'PUBLIC')
          ORDER BY written_date ASC
     </select>
 

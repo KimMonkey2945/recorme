@@ -53,28 +53,21 @@ lib/
   (원본 `docs/recormeImo/chImg/{paper_monkey,paper_red}.png` 1600×2602를 리샘플)
 ```
 
-> **Phase 6 소셜**: 친구는 탭이 아니라 피드 AppBar·프로필에서 진입(셸 밖 `parentNavigatorKey` 라우트 `/friends`·`/friends/requests`·`/friends/add`·`/feed/diary/:id`). 공개범위·공유·공감은 diary/feed 화면에 통합. 앱은 백엔드 REST(`/friends/*`·`/feed`·`/diaries/{id}/reactions`·`PATCH /diaries/{id}/visibility`)만 사용.
+> **Phase 6 소셜**: 공개범위·공유·공감은 diary/feed 화면에 통합. 앱은 백엔드 REST(`/friends/*`·`/feed`·`/diaries/{id}/reactions`·`PATCH /diaries/{id}/visibility`)만 사용.
+> ⚠️ "친구는 탭이 아니라 피드 AppBar에서 진입"은 **더 이상 사실이 아니다** — 친구가 탭으로 승격되고 피드가 셸 밖으로 나갔다(§2-1).
 
-### 2-1. 탭 재편 (Phase 7) — ⏳ 아직 하지 않았다
-
-**현재 탭(구현 상태)** — Phase 6 그대로 4개다.
-
-```
-[캘린더] [목록] [작심삼일] [피드]
-   0       1        2       3
-```
-
-**계획(Task 029 본편)** — 캐릭터 홈을 앞에 삽입한다.
+### 2-1. 탭 구성 — ✅ 구현 완료
 
 ```
-[캐릭터(홈)] [캘린더] [작심삼일] [피드] [프로필]
-     0          1         2        3       4
+[캐릭터(홈)] [캘린더] [작심삼일] [친구] [프로필]
+     0          1         2       3       4
 ```
 
-- **캐릭터 홈이 앱의 메인**(index 0)이 되면서 **캘린더가 index 0 → 1로 밀린다.**
-- ⚠️ **Phase 6의 "탭은 브랜치 맨 뒤 append로 기존 IndexedStack 인덱스 보존" 규칙이 여기서 깨진다.** 앞에 삽입되기 때문이다.
-- → **FCM 딥링크(작심삼일 리마인더/완주)와 `context.go`/`goBranch` 경로를 전수 점검**해야 한다(`core/router/app_router.dart`, `scaffold_with_nav_bar.dart`, 푸시 핸들러). **탭 인덱스 회귀 테스트 필수.**
-- **→ 이 회귀 위험 때문에 탭 재편을 온보딩과 분리해 별도 Task로 미뤘다.** 온보딩(`/onboarding/character`)은 **셸 밖 풀스크린**이라 탭 구조를 건드리지 않으므로 먼저 넣을 수 있었다.
+- **캐릭터 홈이 앱의 메인**(index 0) — 로그인 후 첫 화면이다(Task 029).
+- **index 3은 친구다**(친구 둘러보기 기능과 함께 피드에서 교체). 피드는 탭에서 빠져 **친구 목록 AppBar에서 push** 로 진입한다(`/feed`, 셸 밖 → 뒤로가기 자동 생성). 진입 방향이 과거와 반대다.
+- 목록(`/list`)은 탭에서 빠져 캘린더 AppBar 버튼으로, 프로필은 셸 밖에서 탭으로 승격됐다.
+- ⚠️ **브랜치 순서(`app_router.dart`) = destinations 순서(`scaffold_with_nav_bar.dart`) = 탭 인덱스.** 두 파일을 항상 함께 고친다. 정합은 `character_onboarding_redirect_test.dart`의 '탭 브랜치 순서' 테스트가 실제 라우터를 대상으로 지킨다.
+- FCM 딥링크는 **경로 문자열 push** 라 탭 인덱스 변경과 무관하다(회귀 없음).
 - **캐릭터 홈**(미구현): 몰입형 풀스크린 "내 방" — 상단 반투명 상태바(코인·보상 알림. ⚠️ Lv·성장 게이지는 V18 보상 재설계로 폐기), 중앙 캐릭터(대형, idle 두리번거림), 주변 ROOM_PROP 슬롯 진열, 배경은 착용 BACKGROUND, 하단 플로팅 패널("오늘 기록하기" 주 CTA + 옷장·미션. 별도 상점 버튼 없음 — 구매는 옷장 통합).
 - **색 역할 준수**: `primary`=선택/CTA, `accent`는 AI 전용이므로 **미사용**(⚠️ `success`=성장 게이지 역할은 게이지 폐기로 사라짐). 코인 색은 `AppColors`에 `currency`(골드) 토큰을 신규 승격.
 

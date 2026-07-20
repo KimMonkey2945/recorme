@@ -117,10 +117,15 @@ public class CharacterService {
 	}
 
 	/**
-	 * 내 캐릭터 상태 조립(선택/착용 변경 API 의 공통 응답). 착용 목록의 variant 해석은 매퍼의 조인이 수행한다
+	 * 캐릭터 상태 조립(선택/착용 변경 API 의 공통 응답). 착용 목록의 variant 해석은 매퍼의 조인이 수행한다
 	 * (WardrobeService 도 착용 변경 후 이 메서드로 응답을 만든다 — 응답 형태 단일화).
+	 *
+	 * <p>⚠️ 이 메서드는 {@link #ensureState(Long)} 를 호출하지 않는 <b>순수 조회</b>다(SELECT 4건).
+	 * 따라서 <b>타인의 userId 로 호출해도 상태 행을 만들지 않아 안전</b>하며, 친구 둘러보기
+	 * (FriendBrowseService) 가 이 성질에 의존한다. 상태 행이 없으면 {@code character = null} 로 폴백한다.
+	 * <b>단 열람 권한 판정은 호출자 책임</b>이다(이 메서드는 권한을 보지 않는다).
 	 */
-	MyCharacterResponse buildMyCharacter(Long userId) {
+	public MyCharacterResponse buildMyCharacter(Long userId) {
 		UserCharacterStateRow state = userCharacterMapper.findState(userId);
 		String selected = state == null ? null : state.selectedCharacter();
 

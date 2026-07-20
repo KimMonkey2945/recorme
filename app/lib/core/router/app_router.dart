@@ -24,6 +24,7 @@ import '../../features/feed/presentation/feed_page.dart';
 import '../../features/friend/presentation/add_friend_page.dart';
 import '../../features/friend/presentation/friend_requests_page.dart';
 import '../../features/friend/presentation/friends_list_page.dart';
+import '../../features/friend_browse/presentation/friend_browse_page.dart';
 import '../../features/profile/presentation/profile_edit_page.dart';
 import '../../features/profile/presentation/profile_page.dart';
 import '../../features/resolution/presentation/resolution_detail_page.dart';
@@ -153,7 +154,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const CharacterOnboardingPage(),
       ),
-      // 하단 탭 셸: 캐릭터(홈) / 캘린더 / 작심삼일 / 피드 / 프로필
+      // 하단 탭 셸: 캐릭터(홈) / 캘린더 / 작심삼일 / 친구 / 프로필
       // ⚠️ 브랜치 순서 = 탭 인덱스 = scaffold_with_nav_bar.dart의 destinations 순서.
       //    세 곳을 항상 함께 맞춘다(한쪽만 바꾸면 라벨·아이콘과 화면이 어긋난다).
       StatefulShellRoute.indexedStack(
@@ -187,12 +188,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // 3번째 탭: 피드
+          // 3번째 탭: 친구(피드에서 승격 — 피드는 친구 목록 앱바로 진입)
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/feed',
-                builder: (context, state) => const FeedPage(),
+                path: '/friends',
+                builder: (context, state) => const FriendsListPage(),
               ),
             ],
           ),
@@ -277,12 +278,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const ProfileEditPage(),
       ),
-      // 셸 밖 전체 화면: 친구 목록 / 요청함 / 추가
-      GoRoute(
-        path: '/friends',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const FriendsListPage(),
-      ),
+      // 셸 밖 전체 화면: 친구 요청함 / 추가 (목록은 3번째 탭으로 승격돼 여기 없다)
       GoRoute(
         path: '/friends/requests',
         parentNavigatorKey: _rootNavigatorKey,
@@ -292,6 +288,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/friends/add',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AddFriendPage(),
+      ),
+      // 셸 밖 전체 화면: 친구 둘러보기(읽기 전용 — 홈/캘린더/작심삼일 상단 탭).
+      // ⚠️ 경로에 'browse' 세그먼트를 넣은 이유: '/friends/:userUuid' 로 두면
+      //    위의 '/friends/requests'·'/friends/add' 가 uuid 로 매칭될 수 있다.
+      GoRoute(
+        path: '/friends/browse/:userUuid',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => FriendBrowsePage(
+          userUuid: state.pathParameters['userUuid']!,
+          nickname: state.extra as String?,
+        ),
+      ),
+      // 셸 밖 전체 화면: 피드(탭에서 빠져 친구 목록 앱바에서 push — 뒤로가기 자동 생성)
+      GoRoute(
+        path: '/feed',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const FeedPage(),
       ),
       // 셸 밖 전체 화면: 피드 카드 전문(타인 글 포함, viewer-aware)
       GoRoute(

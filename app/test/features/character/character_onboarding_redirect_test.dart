@@ -142,7 +142,11 @@ void main() {
 
       // 브랜치 순서 = scaffold_with_nav_bar.dart의 destinations 순서. 함께 유지한다.
       // (FCM 딥링크는 경로 문자열 push라 탭 인덱스에 의존하지 않는다.)
-      expect(branchPaths, ['/', '/calendar', '/resolution', '/feed', '/profile']);
+      // index 3은 피드가 아니라 친구다 — 피드는 친구 목록 앱바에서 push 로 진입한다.
+      expect(
+        branchPaths,
+        ['/', '/calendar', '/resolution', '/friends', '/profile'],
+      );
     });
   });
 }

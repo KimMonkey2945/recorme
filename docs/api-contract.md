@@ -190,6 +190,30 @@
 
 > `GET /users/me` 응답에 내 `friendCode`(8자) 포함. 신규 에러코드: `FRIEND_SELF`(400)/`FRIEND_ALREADY`·`FRIEND_REQUEST_ALREADY_SENT`·`FRIEND_BLOCKED`(409)/`FRIEND_REQUEST_NOT_FOUND`(404).
 
+### 친구 둘러보기 (friend browse) — Phase 7 구현본, 읽기 전용
+친구의 recorme(캐릭터 홈·캘린더·작심삼일)를 구경한다. **전부 GET** 이며 대상은 외부 노출 `userUuid` 로만 지정한다.
+
+| 메서드 | 경로 | 설명 | 인증 |
+|---|---|---|---|
+| GET | `/friends/{userUuid}/character` | 친구의 캐릭터 + 착용 아이템. **코인·미확인보상은 응답에 없다**(남의 지갑 비노출). 친구가 캐릭터 미선택이면 `character: null` + 200 | ○ |
+| GET | `/friends/{userUuid}/diaries/summary?yearMonth=yyyy-MM` | 친구의 월 캘린더. **`visibility IN ('FRIENDS','PUBLIC')` 확정 기록만**. 각 항목에 `diaryId` 포함 | ○ |
+| GET | `/friends/{userUuid}/resolutions?status=&cursor=&size=` | 친구의 작심삼일 목록(본인용과 동일 스키마) | ○ |
+
+> 친구의 작심삼일 **캘린더**는 두지 않았다. `ResolutionService.getCalendar`가 재사용 가능해 만들기는 쉽지만, 둘러보기 UI가 목록만 쓰므로 **미사용·미테스트 API 표면을 남기지 않기 위해 제외**했다(필요해지면 서비스 한 줄 위임으로 추가 가능).
+
+**404 은닉 규약(중요)**: 친구 아님·요청 대기중(PENDING)·차단·탈퇴·존재하지 않는 uuid·**잘못된 uuid 형식**·자기 자신을 **전부 `USER_NOT_FOUND`(404)** 로 통일한다. 403을 쓰면 "그 uuid는 실존한다"가 새어나가므로 피드의 "볼 수 없으면 404" 규약을 그대로 따른다. 같은 이유로 `NOT_FRIEND` 전용 에러코드를 만들지 않았다.
+
+**차단을 따로 검사하지 않는 이유**: `uq_friendship_pair` UNIQUE(LEAST, GREATEST)가 쌍당 1행을 강제하므로 `status='ACCEPTED'` 면 그 쌍에 `BLOCKED` 행이 존재할 수 없다. 즉 "친구인가?" 판정 한 번이 "차단되지 않았나?"를 포함한다(피드는 여러 작성자를 한 쿼리에 섞어야 해서 SQL fragment 로 판정하지만, 둘러보기는 대상이 단일 사용자로 고정이라 Java 레벨 단건 판정으로 충분하다).
+
+**캘린더 응답 예시** — PRIVATE·DRAFT 기록은 아예 빠지므로 열람자에게는 기록이 없는 날과 구분되지 않는다.
+```json
+{ "success": true,
+  "data": { "yearMonth": "2026-07",
+            "days": [ { "diaryId": 812, "date": "2026-07-05",
+                        "analysisStatus": "DONE", "primaryEmotion": "JOY", "moodEmoji": null } ] },
+  "error": null }
+```
+
 ### 공개범위·공유 (Phase 6 구현본)
 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|

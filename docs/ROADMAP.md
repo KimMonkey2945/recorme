@@ -371,7 +371,7 @@
 
 > **⚠️ 마이그레이션 번호 재배치(실적 반영)**: 실제로는 **Task 026을 먼저 착수**해 **V15~V17을 선점**했고, 이어 **보상 재설계(경험치/레벨 드롭)가 V18을 선점**했다. Task 024가 원안대로 V15를 쓰면 이미 적용된 DB에 뒤늦게 V15가 등장해 Flyway가 **out-of-order로 기동을 거부**한다. → **Task 026 = V15~V17**, **보상 재설계 = V18**, **Task 024 = V19**.
 
-> **📊 Phase 7 진행 현황**(2026-07-16): **Task 024·025·026·027·029·031·032 ✅ 완료** · **Task 028 ✅ 부분 완료(코인 적립 엔진 + 상점 구매 — 미션 아이템 지급만 범위 밖)** · **Task 030 ✅ 완료(옷장·보상함·구매 실행 UI. 상점·미션 화면은 재설계로 폐기)**. **Phase 7 전 Task 구현 완료** — 남은 건 실기기/에뮬 검증뿐(작심삼일 FCM 라이브, Task 032 `integration_test`).
+> **📊 Phase 7 진행 현황**(2026-07-20): **Task 024·025·026·027·029·031·032·033 ✅ 완료** · **Task 028 ✅ 부분 완료(코인 적립 엔진 + 상점 구매 — 미션 아이템 지급만 범위 밖)** · **Task 030 ✅ 완료(옷장·보상함·구매 실행 UI. 상점·미션 화면은 재설계로 폐기)**. **Phase 7 전 Task 구현 완료** — 남은 건 실기기/에뮬 검증뿐(작심삼일 FCM 라이브, Task 032 `integration_test`, Task 033 두 계정 E2E).
 > ✅ Task 024/025 완료로 **LLM 감정 자동 분석은 기본 비활성**(`record.analysis.enabled` 기본 false)이며, 확정 시 즉시 `DONE` + **사용자 직접 입력 감정**(프리셋/자유 텍스트)을 저장한다.
 > ✅ Task 029 완료로 **탭은 `[캐릭터 홈][캘린더][작심삼일][피드][프로필]` 5개, 캐릭터 홈 index 0**이다(로그인 후 첫 화면). 목록은 캘린더 앱바 버튼으로, 프로필은 탭으로 승격됐다.
 
@@ -463,7 +463,17 @@
   - **월간 회고 카드(★ 락인)**: `retrospect_page.dart` + `/retrospect` 라우트 + 캐릭터 홈 ‘이달의 기록’ 버튼. `GET /characters/me/retrospect?yearMonth=` → 이달의 기록 수·최장 연속일·**감정 분포**(프리셋+직접 입력 혼재 막대)·획득 아이템 그리드·획득 코인 요약 + 월 이동(이전/다음, 미래 차단) + 빈 달 빈 상태(레벨 성장은 V18 보상 재설계로 폐기). 백엔드 `RetrospectService` — 기록은 `written_date`, 보상·아이템은 KST `created_at`/`acquired_at` 월 범위로 집계
   - **(검증)** 백엔드 `RetrospectServiceTest`(Testcontainers — 종합 집계·빈 달·연속일 리셋·IDOR) + `RetrospectControllerTest`(yearMonth 400/위임), **백엔드 전체 그린**. 앱 `reaction_overlay_test`·`retrospect_test` 신규, `flutter analyze` 무경고 · `flutter test` **149개 통과** · 코드 리뷰 클린. `integration_test/character_journey_test.dart`(가입→온보딩→홈→회고 + 리액션 즉시 등장 + 코인 멱등 + 구매·착용 관통)는 작성·컴파일 검증 완료, **실기기/에뮬 실행 대상**(데스크톱 프로젝트 미구성)
 
+- **Task 033: 친구 둘러보기 (읽기 전용)** · ✅ **완료(2026-07-20)**
+  - 친구 목록에서 **이름을 탭하면 그 친구의 recorme**(캐릭터 홈·캘린더·작심삼일)를 구경한다. 프로필·피드는 범위 밖
+  - **탭 재구성**: 하단 탭의 **피드 → 친구**로 교체(5개 유지). 피드는 친구 목록 앱바에서 push(`/feed`, 셸 밖 → 뒤로가기 자동). 진입 방향이 기존과 반대다. 브랜치 정합은 `character_onboarding_redirect_test`의 '탭 브랜치 순서' 테스트가 지킨다
+  - **백엔드**: `FriendBrowseController`(GET 3개 — `/friends/{userUuid}/character`·`/diaries/summary`·`/resolutions`) + `FriendBrowseService`. **권한 게이트는 `resolveFriendId` 단 하나**로, 친구아님·PENDING·차단·탈퇴·없는 uuid·**잘못된 형식 uuid**·자기자신을 전부 `USER_NOT_FOUND`(404)로 은닉한다(403은 uuid 실존을 흘리므로 회피). 차단 별도 검사는 불필요 — `uq_friendship_pair`가 쌍당 1행을 강제해 ACCEPTED와 BLOCKED가 공존할 수 없다
+  - **프라이버시**: 캘린더는 `visibility IN ('FRIENDS','PUBLIC')` 확정 기록만 노출(신규 `findFriendSummaryDays` — 본인용 `findSummaryDays`는 무수정). **PRIVATE·DRAFT는 목록에서 빠져 "없는 날"과 구분되지 않는다.** 캐릭터 응답은 코인·미확인보상을 **타입에서 제외**(`FriendCharacterResponse`). 새 공개설정 컬럼·마이그레이션 없음
+  - **재사용**: `CharacterService.buildMyCharacter`를 public 승격해 재사용 — `ensureState`(INSERT 4건)를 타지 않는 순수 조회라 **타인 계정에 상태 행을 만들지 않으며** 착용 아이템 variant 해석이 따라온다. `ResolutionService.getList/getCalendar`는 이미 userId 파라미터를 받아 **무수정 재사용**. 앱은 `CharacterStage`·`CalendarMonthView`·`ResolutionListTile`을 그대로 씀
+  - **읽기 전용 보장**: 신규 API는 전부 GET이고 기존 쓰기 API는 모두 `principal.userId()`로만 대상을 정하므로 **남의 리소스를 바꿀 API 자체가 없다**(UI 제거는 UX 문제이지 보안 경계가 아니다)
+  - **(검증)** 백엔드 `FriendBrowseServiceTest` 15개(권한 게이트 8·노출범위 4·작심삼일 2 + **`캐릭터_조회는_대상의_상태행을_생성하지_않는다`** 회귀 방어) → **백엔드 전체 251개 통과**. 앱 `friend_browse_test` 8개(쓰기 진입점 부재·캘린더 이동·비공개 무반응 포함) → **앱 157개 통과**, `flutter analyze` 무경고
+
 - **Phase 7 로컬 실행**: `cd backend && ./gradlew bootRun`(네이티브 PG 18 `recorme`) + `cd app && flutter run` + `adb reverse tcp:8080 tcp:8080`
+  - **웹 테스트**: `flutter run -d web-server --web-port=8000 --dart-define=API_BASE_URL=http://localhost:8080`. 포트 8000은 Supabase Site URL과 맞춘 값이라 OAuth 콜백이 돌아온다(다른 포트면 리다이렉트가 어긋난다). CORS는 `SecurityConfig`가 `http://localhost:*`를 허용한다
 
 ## 상태 범례
 

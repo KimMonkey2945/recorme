@@ -54,17 +54,8 @@ class _FeedPageState extends ConsumerState<FeedPage> {
       decoration: const BoxDecoration(gradient: AppColors.bgGradient),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.person_add_alt_outlined),
-              tooltip: '친구',
-              onPressed: () => context.push('/friends'),
-            ),
-            const SizedBox(width: AppSpacing.xs),
-          ],
-        ),
+        // 친구 탭에서 push 로 들어오므로 leading 을 지정하지 않아 뒤로가기가 자동 생성된다.
+        appBar: AppBar(backgroundColor: Colors.transparent),
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
